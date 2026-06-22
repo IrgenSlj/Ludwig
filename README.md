@@ -88,9 +88,16 @@ you can't tell a mesh blob "make the third shelf deeper." You can tell Ludwig.
 
 ```bash
 # take any generated scene and change it surgically — same scene, one edit
-python3 ludwig.py --edit "make the cap brushed copper and 20% taller" \
-                  --from renders/a-luxury-perfume-bottle-with-a-faceted-g_HERO.py
+python3 ludwig.py --edit "make the teapot glossy charcoal ceramic with a brass spout, handle and knob" \
+                  --from renders/a-sculptural-ceramic-teapot-clean-studio_r1_c0.py
 ```
+
+<p align="center">
+  <img src="docs/gallery/teapot.png" width="42%">
+  <b>&nbsp;&nbsp;→&nbsp;&nbsp;</b>
+  <img src="docs/gallery/teapot-edited.png" width="42%">
+</p>
+<p align="center"><sub>Same scene, same lighting and composition — only the materials changed, in ~30 seconds.</sub></p>
 
 The edit reuses the existing script and changes only what you asked for. That
 editability — diffable, parametric, steerable by language — is the entire reason

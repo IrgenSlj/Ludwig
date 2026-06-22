@@ -310,7 +310,9 @@ _AXES = ("FRAMING", "LIGHTING", "MATERIALS", "BRIEF", "BELIEVABILITY")
 
 
 def critique(brief, png):
-    return claude(CRITIQUE_BRIEF.format(png=png, brief=brief), allow_read=True)
+    # Image-reading critiques are the slow path (and slower under parallel load),
+    # so give them more headroom than codegen calls.
+    return claude(CRITIQUE_BRIEF.format(png=png, brief=brief), allow_read=True, timeout=420)
 
 
 def _score(text):
