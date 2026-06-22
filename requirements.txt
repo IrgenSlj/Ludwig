@@ -1,0 +1,3 @@
+# Ludwig has almost no Python dependencies — inference runs through the `claude`
+# CLI and rendering through Blender, both external.
+Pillow>=10.0      # cheap empty-render detection before spending a critique call
