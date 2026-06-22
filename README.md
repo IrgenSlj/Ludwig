@@ -79,6 +79,7 @@ is auto-detected on macOS/Linux/Windows; override with `export BLENDER_PATH=...`
 | `--rounds, -r` | max refine rounds | 3 |
 | `--target, -t` | stop when the best score ≥ this | 8 |
 | `--workers, -w` | parallel candidate workers | 3 |
+| `--quick, -q` | fast single-shot (1 candidate, 1 round) for iterating | off |
 
 ## The file is a conversation
 

@@ -451,6 +451,8 @@ def main():
     ap.add_argument("--rounds", "-r", type=int, default=3, help="max refinement rounds (default 3)")
     ap.add_argument("--target", "-t", type=float, default=8, help="stop when best score ≥ this (default 8)")
     ap.add_argument("--workers", "-w", type=int, default=3, help="parallel candidate workers (default 3)")
+    ap.add_argument("--quick", "-q", action="store_true",
+                    help="fast single-shot: 1 candidate, 1 round (great for iterating)")
     args = ap.parse_args()
 
     preflight()
@@ -460,7 +462,9 @@ def main():
             ap.error("--edit requires --from <scene.py>")
         run_edit(args.from_path, args.edit)
     elif args.brief:
-        run(args.brief, candidates=args.candidates, rounds=args.rounds,
+        candidates = 1 if args.quick else args.candidates
+        rounds = 1 if args.quick else args.rounds
+        run(args.brief, candidates=candidates, rounds=rounds,
             target=args.target, workers=args.workers)
     else:
         ap.error("provide a brief, or use --edit INSTRUCTION --from SCENE.py")
