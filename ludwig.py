@@ -73,14 +73,17 @@ except ImportError:
 
 
 # --------------------------------------------------------------------------- #
-# Inference: the locally-authenticated `claude` CLI is our LLM engine.
+# Inference: a pluggable LLM engine. Ludwig is not wired to one vendor.
+#   - "claude"   (default): the locally-authenticated `claude` CLI — best
+#                intelligence, BYO Claude, no API key.
+#   - "opencode": SST/Anomaly's provider-neutral agent — lets users bring ANY
+#                model (Anthropic, OpenAI, Gemini, OpenRouter) or run a FREE
+#                local model via Ollama. Pick with --provider / $LUDWIG_PROVIDER.
+# The seam keeps the orchestrator (candidate panel, score-gating) provider-blind.
 # --------------------------------------------------------------------------- #
 
-def claude(prompt, *, allow_read=False, timeout=240, retries=2):
-    """Call `claude -p` headlessly, with retry/backoff on transient failures."""
-    cmd = ["claude", "-p", prompt]
-    if allow_read:
-        cmd += ["--allowedTools", "Read"]
+def _run_cli(cmd, *, timeout, retries, who):
+    """Run an inference CLI headlessly with retry/backoff on transient failures."""
     last = ""
     for attempt in range(retries + 1):
         try:
@@ -88,11 +91,54 @@ def claude(prompt, *, allow_read=False, timeout=240, retries=2):
             if proc.returncode == 0 and proc.stdout.strip():
                 return proc.stdout.strip()
             last = proc.stderr.strip() or "empty response"
+        except FileNotFoundError:
+            raise RuntimeError(f"{who} not found on PATH")
         except subprocess.TimeoutExpired:
             last = f"timed out after {timeout}s"
         if attempt < retries:
             time.sleep(2 ** attempt)
-    raise RuntimeError(f"claude CLI failed after {retries + 1} attempts: {last}")
+    raise RuntimeError(f"{who} failed after {retries + 1} attempts: {last}")
+
+
+def _provider_claude(prompt, *, allow_read, image, timeout, retries):
+    # `claude` views the image with its own Read tool via the path in the prompt.
+    cmd = ["claude", "-p", prompt]
+    if allow_read:
+        cmd += ["--allowedTools", "Read"]
+    return _run_cli(cmd, timeout=timeout, retries=retries, who="the `claude` CLI")
+
+
+def _provider_opencode(prompt, *, allow_read, image, timeout, retries):
+    # `opencode run` is provider-neutral; attach the image with -f for vision.
+    # $LUDWIG_MODEL (provider/model, e.g. anthropic/claude-sonnet-4-5 or
+    # ollama/llama3.2-vision) overrides opencode's configured default.
+    cmd = ["opencode", "run"]
+    model = os.environ.get("LUDWIG_MODEL")
+    if model:
+        cmd += ["-m", model]
+    if image:
+        cmd += ["-f", image]
+    cmd.append(prompt)
+    return _run_cli(cmd, timeout=timeout, retries=retries, who="the `opencode` CLI")
+
+
+_PROVIDERS = {"claude": _provider_claude, "opencode": _provider_opencode}
+_PROVIDER_BIN = {"claude": "claude", "opencode": "opencode"}
+
+
+def _provider_name():
+    return os.environ.get("LUDWIG_PROVIDER", "claude")
+
+
+def infer(prompt, *, allow_read=False, image=None, timeout=240, retries=2):
+    """Provider-agnostic inference call. Dispatches to the selected backend."""
+    name = _provider_name()
+    fn = _PROVIDERS.get(name)
+    if fn is None:
+        sys.exit(f"Unknown inference provider {name!r}. "
+                 f"Choose one of: {', '.join(_PROVIDERS)}")
+    return fn(prompt, allow_read=allow_read, image=image,
+              timeout=timeout, retries=retries)
 
 
 def preflight():
@@ -102,10 +148,20 @@ def preflight():
         problems.append(
             "Blender not found. Install it, or set BLENDER_PATH to the executable, "
             "e.g.\n    export BLENDER_PATH=/path/to/blender")
-    if not shutil.which("claude"):
-        problems.append(
-            "The `claude` CLI was not found on PATH. Install it from "
-            "https://claude.com/claude-code and run `claude` once to log in.")
+    name = _provider_name()
+    if name not in _PROVIDERS:
+        problems.append(f"Unknown LUDWIG_PROVIDER={name!r}; choose: "
+                        f"{', '.join(_PROVIDERS)}")
+    elif not shutil.which(_PROVIDER_BIN[name]):
+        if name == "claude":
+            problems.append(
+                "The `claude` CLI was not found on PATH. Install it from "
+                "https://claude.com/claude-code and run `claude` once to log in.")
+        else:
+            problems.append(
+                f"The `{_PROVIDER_BIN[name]}` CLI was not found on PATH. Install "
+                "it from https://opencode.ai and configure a model, or switch back "
+                "with --provider claude.")
     if problems:
         sys.exit("Ludwig preflight failed:\n\n- " + "\n- ".join(problems))
     if not _HAS_PIL:
@@ -187,7 +243,7 @@ def generate_scene_code(brief, *, variant=None, critique=None, prior_code=None, 
             "keeps what worked and fixes the issues. You may diverge creatively.\n\n"
             f"FEEDBACK:\n{critique}\n\nBEST SCRIPT SO FAR:\n{prior_code}\n"
         )
-    return _extract_python(claude("\n".join(parts)))
+    return _extract_python(infer("\n".join(parts)))
 
 
 def _extract_python(text):
@@ -218,7 +274,7 @@ EDIT_BRIEF = textwrap.dedent("""\
 
 
 def edit_scene(prior_code, instruction):
-    return _extract_python(claude(EDIT_BRIEF.format(instruction=instruction, code=prior_code)))
+    return _extract_python(infer(EDIT_BRIEF.format(instruction=instruction, code=prior_code)))
 
 
 # --------------------------------------------------------------------------- #
@@ -337,7 +393,8 @@ _AXES = ("FRAMING", "LIGHTING", "MATERIALS", "BRIEF", "BELIEVABILITY")
 def critique(brief, png):
     # Image-reading critiques are the slow path (and slower under parallel load),
     # so give them more headroom than codegen calls.
-    return claude(CRITIQUE_BRIEF.format(png=png, brief=brief), allow_read=True, timeout=420)
+    return infer(CRITIQUE_BRIEF.format(png=png, brief=brief),
+                 allow_read=True, image=png, timeout=420)
 
 
 def _score(text):
@@ -358,11 +415,18 @@ def _score(text):
 # --------------------------------------------------------------------------- #
 
 def evaluate_candidate(brief, png, *, variant=None, seed_code=None, seed_critique=None):
-    code = generate_scene_code(brief, variant=variant, critique=seed_critique, prior_code=seed_code)
-    ok, log = render(code, png)
-    if not ok:
-        code = generate_scene_code(brief, prior_code=code, error=_blender_error(log))
+    # An inference failure (provider down, model unauthenticated, timeout after
+    # retries) must fail only THIS candidate, not crash the whole panel/run.
+    try:
+        code = generate_scene_code(brief, variant=variant,
+                                   critique=seed_critique, prior_code=seed_code)
         ok, log = render(code, png)
+        if not ok:
+            code = generate_scene_code(brief, prior_code=code, error=_blender_error(log))
+            ok, log = render(code, png)
+    except RuntimeError as e:
+        return {"code": None, "png": None, "score": -1,
+                "critique": "inference failed", "note": str(e)[:300]}
     # Persist every candidate's scene script next to its render for debugging.
     with open(png.replace(".png", ".py"), "w") as f:
         f.write(code)
@@ -372,7 +436,13 @@ def evaluate_candidate(brief, png, *, variant=None, seed_code=None, seed_critiqu
     if is_void(png):
         return {"code": code, "png": png, "score": 0,
                 "critique": "SCORE: 0\nKEEP: nothing\nFIXES:\n- empty/void frame; subject not in camera view"}
-    crit = critique(brief, png)
+    try:
+        crit = critique(brief, png)
+    except RuntimeError as e:
+        # The render exists and isn't void; keep it with a neutral score rather
+        # than discarding good work because the grader call failed.
+        return {"code": code, "png": png, "score": 0,
+                "critique": "critique failed", "note": str(e)[:300]}
     return {"code": code, "png": png, "score": _score(crit), "critique": crit}
 
 
@@ -554,7 +624,13 @@ def main():
     ap.add_argument("--selftest", action="store_true",
                     help="verify the whole stack (unit + Blender render) in one "
                          "command, no claude call; exits non-zero on failure")
+    ap.add_argument("--provider", choices=sorted(_PROVIDERS),
+                    help="inference backend (default: claude; or set $LUDWIG_PROVIDER). "
+                         "'opencode' enables any/local/free models via $LUDWIG_MODEL.")
     args = ap.parse_args()
+
+    if args.provider:
+        os.environ["LUDWIG_PROVIDER"] = args.provider
 
     if args.selftest:
         selftest()

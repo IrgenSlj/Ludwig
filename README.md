@@ -60,6 +60,14 @@ Ludwig runs inference through the locally-authenticated **`claude` CLI** — the
 no API key to manage and nothing to pay per token. If you can run `claude`, you can
 run Ludwig.
 
+Inference is **pluggable**, though — Ludwig isn't wired to one vendor. `claude`
+(the default) gives best-in-class intelligence; `--provider opencode` routes
+through [opencode](https://opencode.ai) so you can bring **any** model
+(Anthropic, OpenAI, Gemini, OpenRouter) or run a **free local** model via Ollama
+(`export LUDWIG_MODEL=ollama/llama3.2-vision`). The orchestrator stays
+provider-blind, so the same generate→render→critique loop runs on whatever brain
+you point it at.
+
 ## Quickstart
 
 ```bash

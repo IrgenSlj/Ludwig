@@ -22,6 +22,14 @@ All notable changes to Ludwig are documented here.
 - Smoke tests and CI.
 
 ### Added (post-v0)
+- **Pluggable inference (`--provider`)** — Ludwig is no longer wired to a single
+  vendor. `claude` (default) keeps best-in-class intelligence with zero API key;
+  `--provider opencode` routes through opencode's headless `run` so users can
+  bring ANY model (Anthropic/OpenAI/Gemini/OpenRouter) or a FREE local model via
+  Ollama (`$LUDWIG_MODEL=ollama/...`). The orchestrator stays provider-blind.
+- **Per-candidate fault isolation** — an inference failure (provider down,
+  model unauthenticated, timeout) now fails just that candidate instead of
+  crashing the whole panel/run.
 - **`L_seat(*objs)`** toolkit helper — drops a mesh, or a whole assembly while
   preserving relative positions, onto the floor (z=0). Directly attacks the
   critic's most frequent complaint after bad crops: subjects that float or sink.

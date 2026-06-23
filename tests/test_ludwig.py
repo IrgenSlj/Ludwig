@@ -106,6 +106,55 @@ def test_render_removes_stale_png(tmp_path=None):
     assert not os.path.exists(out)
 
 
+# --- inference provider seam (no real LLM call) ----------------------------- #
+
+def _capture_cmd(provider, **kw):
+    """Run infer() under a given provider with _run_cli stubbed; return the cmd."""
+    captured = {}
+    orig_run, orig_env = ludwig._run_cli, os.environ.get("LUDWIG_PROVIDER")
+
+    def _stub(cmd, **k):
+        captured["cmd"] = cmd
+        return "OK"
+    ludwig._run_cli = _stub
+    os.environ["LUDWIG_PROVIDER"] = provider
+    try:
+        out = ludwig.infer("PROMPT", **kw)
+    finally:
+        ludwig._run_cli = orig_run
+        if orig_env is None:
+            os.environ.pop("LUDWIG_PROVIDER", None)
+        else:
+            os.environ["LUDWIG_PROVIDER"] = orig_env
+    return captured["cmd"], out
+
+
+def test_provider_default_is_claude():
+    cmd, out = _capture_cmd("claude", allow_read=True)
+    assert cmd[:2] == ["claude", "-p"]
+    assert "--allowedTools" in cmd and out == "OK"
+
+
+def test_provider_opencode_builds_run_cmd():
+    cmd, _ = _capture_cmd("opencode", image="/tmp/x.png")
+    assert cmd[:2] == ["opencode", "run"]
+    assert "-f" in cmd and "/tmp/x.png" in cmd       # image attached for vision
+    assert cmd[-1] == "PROMPT"
+
+
+def test_provider_opencode_honors_model_env():
+    saved = os.environ.get("LUDWIG_MODEL")
+    os.environ["LUDWIG_MODEL"] = "ollama/llama3.2-vision"
+    try:
+        cmd, _ = _capture_cmd("opencode")
+        assert "-m" in cmd and "ollama/llama3.2-vision" in cmd
+    finally:
+        if saved is None:
+            os.environ.pop("LUDWIG_MODEL", None)
+        else:
+            os.environ["LUDWIG_MODEL"] = saved
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
