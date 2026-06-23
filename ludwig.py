@@ -184,6 +184,10 @@ def _agentic_build(brief, png, *, variant=None, seed_code=None, seed_critique=No
     says DONE or turns run out. Returns (code, ok, log) like _oneshot_build."""
     code, ok, log = _oneshot_build(brief, png, variant=variant,
                                    seed_code=seed_code, seed_critique=seed_critique)
+    # Refinements render to a SEPARATE path and are promoted only on success, so a
+    # broken refinement can never destroy the last-good render. (render() clears
+    # its output first, so refining straight onto `png` would delete good work.)
+    trial = png.replace(".png", "_try.png")
     applied, stop = 0, "turns_exhausted"  # diagnostics: did the model actually refine?
     for _ in range(max(0, AGENT_TURNS)):
         if not ok:
@@ -196,12 +200,17 @@ def _agentic_build(brief, png, *, variant=None, seed_code=None, seed_critique=No
             stop = "model_said_done"
             break
         new_code = _extract_python(resp)
-        nok, nlog = render(new_code, png)
+        nok, nlog = render(new_code, trial)
         if not nok:
             stop = "refine_errored"
             break  # keep the last good render rather than a broken refinement
+        os.replace(trial, png)            # promote the successful refinement
         code, ok, log = new_code, nok, nlog
         applied += 1
+    try:
+        os.unlink(trial)
+    except FileNotFoundError:
+        pass
     print(f"  [agentic] {applied}/{AGENT_TURNS} refines applied "
           f"({stop}) · {brief[:34]}", file=sys.stderr)
     return code, ok, log

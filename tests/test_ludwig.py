@@ -186,6 +186,8 @@ def test_agentic_build_loops_and_self_corrects(tmp_path=None):
         return responses[calls["infer"] - 1]
     def fake_render(code, png, **k):
         calls["render"] += 1
+        with open(png, "w") as fh:        # real render() guarantees the file exists on ok
+            fh.write("x")
         return True, "ok"
     ludwig.infer, ludwig.render = fake_infer, fake_render
     saved_turns = ludwig.AGENT_TURNS
@@ -195,6 +197,9 @@ def test_agentic_build_loops_and_self_corrects(tmp_path=None):
     finally:
         (ludwig.infer, ludwig.render, ludwig._oneshot_build, ludwig.AGENT_TURNS) = (
             orig_infer, orig_render, orig_oneshot, saved_turns)
+        for p in (out, out.replace(".png", "_try.png")):
+            if os.path.exists(p):
+                os.remove(p)
     assert ok and code == "import bpy  # CODE_v1"   # adopted v1, stopped on DONE
     assert calls["infer"] == 2 and calls["render"] == 1
 
