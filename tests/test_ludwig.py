@@ -155,6 +155,50 @@ def test_provider_opencode_honors_model_env():
             os.environ["LUDWIG_MODEL"] = saved
 
 
+# --- agentic worker plumbing (no real agent session) ------------------------ #
+
+def test_codegen_prompt_includes_brief_and_variant():
+    p = ludwig._codegen_prompt("a teapot", variant=0)
+    assert "a teapot" in p and "Interpretation A" in p
+
+
+def test_agentic_off_by_default():
+    assert ludwig.AGENTIC is False  # agentic is strictly opt-in (--agentic)
+
+
+def test_agent_refine_prompt_has_done_protocol_and_fields():
+    p = ludwig.AGENT_REFINE.format(brief="a vase", png="/r/x.png", code="import bpy")
+    assert "DONE" in p and "a vase" in p and "/r/x.png" in p and "import bpy" in p
+
+
+def test_agentic_build_loops_and_self_corrects(tmp_path=None):
+    """Drive _agentic_build with infer()/render() stubbed: it should re-render
+    improved code until the model replies DONE, returning the last good build."""
+    out = os.path.join(os.path.dirname(__file__), "_t_agent.png")
+    calls = {"infer": 0, "render": 0}
+    orig_infer, orig_render, orig_oneshot = (
+        ludwig.infer, ludwig.render, ludwig._oneshot_build)
+    ludwig._oneshot_build = lambda *a, **k: ("CODE_v0", True, "log0")
+    # first refine returns improved code, second says DONE
+    responses = ["import bpy  # CODE_v1", "DONE"]
+    def fake_infer(prompt, **k):
+        calls["infer"] += 1
+        return responses[calls["infer"] - 1]
+    def fake_render(code, png, **k):
+        calls["render"] += 1
+        return True, "ok"
+    ludwig.infer, ludwig.render = fake_infer, fake_render
+    saved_turns = ludwig.AGENT_TURNS
+    ludwig.AGENT_TURNS = 3
+    try:
+        code, ok, _ = ludwig._agentic_build("a vase", out, variant=0)
+    finally:
+        (ludwig.infer, ludwig.render, ludwig._oneshot_build, ludwig.AGENT_TURNS) = (
+            orig_infer, orig_render, orig_oneshot, saved_turns)
+    assert ok and code == "import bpy  # CODE_v1"   # adopted v1, stopped on DONE
+    assert calls["infer"] == 2 and calls["render"] == 1
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0

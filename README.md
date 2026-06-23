@@ -92,6 +92,10 @@ is auto-detected on macOS/Linux/Windows; override with `export BLENDER_PATH=...`
 | `--target, -t` | stop when the best score ≥ this | 8 |
 | `--workers, -w` | parallel candidate workers | 3 |
 | `--quick, -q` | fast single-shot (1 candidate, 1 round) for iterating | off |
+| `--agentic` | each candidate *views its own render* and self-corrects until it's good | off |
+| `--agent-turns` | self-correction turns per agentic candidate | 2 |
+| `--provider` | inference backend: `claude` (default) or `opencode` | claude |
+| `--model` | model alias for inference (e.g. `opus`, `sonnet`, `haiku`) | configured |
 
 ## The file is a conversation
 

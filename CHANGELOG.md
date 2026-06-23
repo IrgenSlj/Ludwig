@@ -22,6 +22,13 @@ All notable changes to Ludwig are documented here.
 - Smoke tests and CI.
 
 ### Added (post-v0)
+- **Agentic worker (`--agentic`)** — instead of a stateless one-shot, each
+  candidate now runs a self-correcting loop: the model *views its own render*
+  with its Read tool, judges it like an art director, and returns an improved
+  script — repeating until it replies `DONE` or `--agent-turns` is hit. The
+  external rubric critic still gates rounds (so scoring stays consistent), and
+  rendering stays in Ludwig's controlled path. Works on any vision-capable
+  provider; `--model` selects the brain (e.g. `opus`).
 - **Pluggable inference (`--provider`)** — Ludwig is no longer wired to a single
   vendor. `claude` (default) keeps best-in-class intelligence with zero API key;
   `--provider opencode` routes through opencode's headless `run` so users can

@@ -102,7 +102,10 @@ def _run_cli(cmd, *, timeout, retries, who):
 
 def _provider_claude(prompt, *, allow_read, image, timeout, retries):
     # `claude` views the image with its own Read tool via the path in the prompt.
-    cmd = ["claude", "-p", prompt]
+    cmd = ["claude"]
+    if AGENT_MODEL:                       # optional --model override (opus/sonnet/…)
+        cmd += ["--model", AGENT_MODEL]
+    cmd += ["-p", prompt]
     if allow_read:
         cmd += ["--allowedTools", "Read"]
     return _run_cli(cmd, timeout=timeout, retries=retries, who="the `claude` CLI")
@@ -139,6 +142,72 @@ def infer(prompt, *, allow_read=False, image=None, timeout=240, retries=2):
                  f"Choose one of: {', '.join(_PROVIDERS)}")
     return fn(prompt, allow_read=allow_read, image=image,
               timeout=timeout, retries=retries)
+
+
+# --------------------------------------------------------------------------- #
+# Agentic worker: instead of a stateless one-shot, the model VIEWS its own render
+# and self-corrects over several turns — collapsing generate->render->critique->
+# regenerate into the worker's own loop. Each turn passes the prior script and
+# the model reads its own render (the same image-viewing path critique() uses),
+# so it works on any vision-capable provider and is parallel-safe (no sessions).
+# Rendering stays in Ludwig's controlled path; only the *reasoning* is agentic.
+# The orchestrator (candidate panel + the validated external critique that gates
+# rounds) is unchanged.
+# --------------------------------------------------------------------------- #
+
+AGENTIC = os.environ.get("LUDWIG_AGENTIC") == "1"
+AGENT_TURNS = 2          # self-correction turns after the first render
+AGENT_MODEL = None       # e.g. "opus" / "sonnet"; None = claude's configured default
+
+
+AGENT_REFINE = textwrap.dedent("""\
+    Below is a Blender script you wrote and the render it produced. VIEW the
+    render with your Read tool and judge it like a tough, world-class 3D art
+    director against the brief: "{brief}".
+
+    If it is already portfolio-grade, reply with EXACTLY the single word: DONE
+    Otherwise return the FULL improved Blender script (ONLY Python — no prose, no
+    markdown fences) that fixes the biggest problems first: bad framing/crop, flat
+    lighting, single-hue materials, weak proportions, or a subject that floats or
+    sinks. Keep using the L_* toolkit (L_seat to ground it, L_autocam to frame it).
+
+    RENDER TO VIEW: {png}
+
+    YOUR PREVIOUS SCRIPT:
+    {code}
+""")
+
+
+def _agentic_build(brief, png, *, variant=None, seed_code=None, seed_critique=None):
+    """Generate -> render -> view-own-render -> improve, looping until the model
+    says DONE or turns run out. Returns (code, ok, log) like _oneshot_build."""
+    code, ok, log = _oneshot_build(brief, png, variant=variant,
+                                   seed_code=seed_code, seed_critique=seed_critique)
+    for _ in range(max(0, AGENT_TURNS)):
+        if not ok:
+            break
+        resp = infer(
+            AGENT_REFINE.format(brief=brief, png=os.path.abspath(png), code=code),
+            allow_read=True, image=png, timeout=420)
+        if resp.strip().upper().startswith("DONE"):
+            break
+        new_code = _extract_python(resp)
+        nok, nlog = render(new_code, png)
+        if not nok:
+            break  # keep the last good render rather than a broken refinement
+        code, ok, log = new_code, nok, nlog
+    return code, ok, log
+
+
+def _oneshot_build(brief, png, *, variant=None, seed_code=None, seed_critique=None):
+    """Stateless path: generate, render, and one error-repair attempt."""
+    code = generate_scene_code(brief, variant=variant,
+                               critique=seed_critique, prior_code=seed_code)
+    ok, log = render(code, png)
+    if not ok:
+        code = generate_scene_code(brief, prior_code=code, error=_blender_error(log))
+        ok, log = render(code, png)
+    return code, ok, log
 
 
 def preflight():
@@ -228,7 +297,7 @@ VARIANTS = [
 ]
 
 
-def generate_scene_code(brief, *, variant=None, critique=None, prior_code=None, error=None):
+def _codegen_prompt(brief, *, variant=None, critique=None, prior_code=None, error=None):
     parts = [CODEGEN_BRIEF, f"\nCREATIVE BRIEF:\n{brief}\n"]
     if variant is not None:
         parts.append(f"\nTake this distinct creative direction:\n{VARIANTS[variant % len(VARIANTS)]}\n")
@@ -243,7 +312,11 @@ def generate_scene_code(brief, *, variant=None, critique=None, prior_code=None, 
             "keeps what worked and fixes the issues. You may diverge creatively.\n\n"
             f"FEEDBACK:\n{critique}\n\nBEST SCRIPT SO FAR:\n{prior_code}\n"
         )
-    return _extract_python(infer("\n".join(parts)))
+    return "\n".join(parts)
+
+
+def generate_scene_code(brief, **kw):
+    return _extract_python(infer(_codegen_prompt(brief, **kw)))
 
 
 def _extract_python(text):
@@ -415,15 +488,14 @@ def _score(text):
 # --------------------------------------------------------------------------- #
 
 def evaluate_candidate(brief, png, *, variant=None, seed_code=None, seed_critique=None):
+    # Agentic worker (model views its own render and self-corrects) when enabled,
+    # else the stateless generate->render->repair path. Both return (code, ok, log).
+    build = _agentic_build if AGENTIC else _oneshot_build
     # An inference failure (provider down, model unauthenticated, timeout after
     # retries) must fail only THIS candidate, not crash the whole panel/run.
     try:
-        code = generate_scene_code(brief, variant=variant,
-                                   critique=seed_critique, prior_code=seed_code)
-        ok, log = render(code, png)
-        if not ok:
-            code = generate_scene_code(brief, prior_code=code, error=_blender_error(log))
-            ok, log = render(code, png)
+        code, ok, log = build(brief, png, variant=variant,
+                              seed_code=seed_code, seed_critique=seed_critique)
     except RuntimeError as e:
         return {"code": None, "png": None, "score": -1,
                 "critique": "inference failed", "note": str(e)[:300]}
@@ -609,6 +681,7 @@ def selftest():
 
 
 def main():
+    global AGENTIC, AGENT_TURNS, AGENT_MODEL
     ap = argparse.ArgumentParser(description="Ludwig — AI-native 3D design (hardened loop)")
     ap.add_argument("brief", nargs="?", help="natural-language description of the scene")
     ap.add_argument("--edit", "-e", metavar="INSTRUCTION",
@@ -627,10 +700,25 @@ def main():
     ap.add_argument("--provider", choices=sorted(_PROVIDERS),
                     help="inference backend (default: claude; or set $LUDWIG_PROVIDER). "
                          "'opencode' enables any/local/free models via $LUDWIG_MODEL.")
+    ap.add_argument("--agentic", action="store_true",
+                    help="agentic worker (claude only): each candidate runs one "
+                         "stateful session that VIEWS its own render and self-"
+                         "corrects, instead of stateless one-shots.")
+    ap.add_argument("--agent-turns", type=int, default=AGENT_TURNS, metavar="N",
+                    help=f"self-correction turns per agentic candidate (default {AGENT_TURNS})")
+    ap.add_argument("--model", metavar="ALIAS",
+                    help="claude model alias for all inference (e.g. opus, sonnet, "
+                         "haiku); default is your configured claude model")
     args = ap.parse_args()
 
     if args.provider:
         os.environ["LUDWIG_PROVIDER"] = args.provider
+
+    AGENT_TURNS = args.agent_turns
+    if args.model:
+        AGENT_MODEL = args.model
+    if args.agentic:
+        AGENTIC = True
 
     if args.selftest:
         selftest()
