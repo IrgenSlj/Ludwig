@@ -21,6 +21,20 @@ All notable changes to Ludwig are documented here.
   detection; retrying inference with backoff; preflight checks.
 - Smoke tests and CI.
 
+### Fixed
+- **Render timeouts no longer crash the run.** A slow Cycles hero render that
+  exceeded the subprocess budget raised an uncaught `TimeoutExpired`, killing the
+  whole pipeline *after* all the codegen/critique work. `render()` now catches it
+  and reports a normal render failure (hero renders also get a 600s budget).
+- **Stale renders can no longer mask a failed render.** Because Blender exits 0
+  even when a script raises, file-existence is the success signal — but a leftover
+  PNG from a previous run reusing the same slug could falsely pass. `render()` now
+  removes any existing output first, so the file reflects the current run.
+- `--edit` now reports honestly when the hero re-render fails instead of always
+  printing success.
+- Preflight prints a non-fatal note when Pillow is missing (void-frame detection
+  is disabled, so empty renders would otherwise silently cost a critique call).
+
 ### Known limitations
 - Geometry is primitive-assembled — strongest on hero objects / product renders;
   complex multi-object interiors are still crude. Richer geometry helpers are on

@@ -108,6 +108,10 @@ def preflight():
             "https://claude.com/claude-code and run `claude` once to log in.")
     if problems:
         sys.exit("Ludwig preflight failed:\n\n- " + "\n- ".join(problems))
+    if not _HAS_PIL:
+        print("Ludwig: Pillow not found — void-frame detection is disabled, so "
+              "empty renders will cost a critique call. `pip install Pillow` to "
+              "re-enable.", file=sys.stderr)
 
 
 # --------------------------------------------------------------------------- #
@@ -234,21 +238,37 @@ RENDER_FOOTER = textwrap.dedent("""\
 """)
 
 
-def render(script_code, out_png, *, engine="EEVEE", samples=48, res=(960, 600)):
+def render(script_code, out_png, *, engine="EEVEE", samples=48, res=(960, 600),
+           timeout=300):
     header = (f"OUT_PATH = {out_png!r}\nENGINE = {engine!r}\nSAMPLES = {samples}\n"
               f"RES_X = {res[0]}\nRES_Y = {res[1]}\n")
     full = f"{BLENDER_LIB}\n\n{header}\n{script_code}\n{RENDER_FOOTER}"
+    # Drop any stale PNG at this path first. Blender exits 0 even when the script
+    # raises, so the existence of a freshly-written file is our load-bearing
+    # success signal — a leftover render from a previous run reusing the same
+    # slug would otherwise mask a failure as success.
+    try:
+        os.unlink(out_png)
+    except FileNotFoundError:
+        pass
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
         f.write(full)
         script_path = f.name
     try:
         proc = subprocess.run(
             [BLENDER, "--background", "--python", script_path],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, timeout=timeout,
         )
         log = proc.stdout + "\n" + proc.stderr
         ok = os.path.exists(out_png) and "Error" not in proc.stderr
         return ok, log
+    except subprocess.TimeoutExpired as e:
+        # A slow Cycles hero render can exceed the budget; surface it as a normal
+        # render failure instead of crashing the whole run after all the work.
+        def _txt(x):
+            return x.decode(errors="replace") if isinstance(x, bytes) else (x or "")
+        partial = _txt(e.stdout) + "\n" + _txt(e.stderr)
+        return False, f"{partial}\nError: Blender render timed out after {timeout}s"
     finally:
         os.unlink(script_path)
 
@@ -397,7 +417,8 @@ def run(brief, *, candidates, rounds, target, workers):
     if best and best["png"] and best["score"] > 0:
         hero = os.path.join(RENDERS, f"{slug}_HERO.png")
         print(f"\n• rendering hero shot in Cycles → {hero}")
-        ok, log = render(best["code"], hero, engine="CYCLES", samples=128, res=(1280, 800))
+        ok, log = render(best["code"], hero, engine="CYCLES", samples=128,
+                         res=(1280, 800), timeout=600)
         if ok:
             best["hero"] = hero
             print(f"  ✓ hero: {hero}")
@@ -436,8 +457,11 @@ def run_edit(from_path, instruction):
         print("  ✗ edit render failed:\n" + _blender_error(log)[:400])
         return
     hero = out.replace(".png", "_HERO.png")
-    render(code, hero, engine="CYCLES", samples=128, res=(1280, 800))
-    print(f"  ✓ edited render → {out}\n  ✓ hero → {hero}")
+    hero_ok, _ = render(code, hero, engine="CYCLES", samples=128,
+                        res=(1280, 800), timeout=600)
+    print(f"  ✓ edited render → {out}")
+    print(f"  ✓ hero → {hero}" if hero_ok
+          else "  ! hero render failed; keeping the EEVEE edit.")
 
 
 def main():

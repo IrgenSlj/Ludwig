@@ -51,6 +51,54 @@ def test_toolkit_exposes_expected_helpers():
     assert "def L_backdrop" in ludwig.BLENDER_LIB
 
 
+# --- render() robustness (Blender stubbed, no real render needed) ----------- #
+
+class _FakeProc:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+def _with_blender(fn):
+    """Run fn with ludwig.BLENDER set so render() reaches the subprocess call."""
+    saved = ludwig.BLENDER
+    ludwig.BLENDER = saved or "/bin/true"
+    try:
+        return fn()
+    finally:
+        ludwig.BLENDER = saved
+
+
+def test_render_timeout_is_not_fatal(tmp_path=None):
+    import subprocess as sp
+    out = os.path.join(os.path.dirname(__file__), "_t_timeout.png")
+    orig = ludwig.subprocess.run
+
+    def boom(*a, **k):
+        raise sp.TimeoutExpired(cmd="blender", timeout=k.get("timeout", 1))
+    ludwig.subprocess.run = boom
+    try:
+        ok, log = _with_blender(lambda: ludwig.render("import bpy", out))
+    finally:
+        ludwig.subprocess.run = orig
+    assert ok is False
+    assert "timed out" in log
+
+
+def test_render_removes_stale_png(tmp_path=None):
+    """A leftover PNG must not mask a failed render that writes nothing."""
+    out = os.path.join(os.path.dirname(__file__), "_t_stale.png")
+    with open(out, "wb") as f:
+        f.write(b"stale")
+    orig = ludwig.subprocess.run
+    ludwig.subprocess.run = lambda *a, **k: _FakeProc(returncode=0)  # writes no png
+    try:
+        ok, _ = _with_blender(lambda: ludwig.render("import bpy", out))
+    finally:
+        ludwig.subprocess.run = orig
+    assert ok is False
+    assert not os.path.exists(out)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
