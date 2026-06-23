@@ -688,7 +688,8 @@ def run_eval(*, workers, stamp):
     os.makedirs(RENDERS, exist_ok=True)
     os.makedirs(EVAL_DIR, exist_ok=True)
     mode = "agentic" if AGENTIC else "oneshot"
-    print(f"\n=== Eval suite ({len(EVAL_BRIEFS)} briefs · mode={mode} · "
+    mode_label = f"{mode}×{AGENT_TURNS}t" if mode == "agentic" else mode
+    print(f"\n=== Eval suite ({len(EVAL_BRIEFS)} briefs · mode={mode_label} · "
           f"model={AGENT_MODEL or 'default'} · provider={_provider_name()}) ===")
 
     results = [None] * len(EVAL_BRIEFS)
@@ -711,7 +712,9 @@ def run_eval(*, workers, stamp):
         if vals:
             axis_mean[axis] = round(sum(vals) / len(vals), 2)
 
-    record = {"ts": stamp, "mode": mode, "model": AGENT_MODEL or "default",
+    record = {"ts": stamp, "mode": mode,
+              "agent_turns": AGENT_TURNS if mode == "agentic" else 0,
+              "model": AGENT_MODEL or "default",
               "provider": _provider_name(), "mean": mean, "failures": failures,
               "axis_mean": axis_mean, "briefs": results}
     with open(EVAL_RESULTS, "a") as f:
