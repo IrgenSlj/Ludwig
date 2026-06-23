@@ -68,6 +68,10 @@ pip install -r requirements.txt
 
 python3 ludwig.py "a sculptural ceramic teapot, clean studio product render"
 python3 ludwig.py "a luxury perfume bottle with a gold cap" --candidates 3 --rounds 2
+
+# verify your install end-to-end in ~2s (no API call): unit logic + a real
+# Blender render through the toolkit, incl. that L_seat grounds the subject
+python3 ludwig.py --selftest
 ```
 
 Renders and the generated, editable `.py` scene scripts land in `renders/`. Blender
@@ -118,6 +122,9 @@ The generated code never hand-rolls materials or lights — it calls helpers fro
   3-point rig: the classic product-render set.
 - `L_autocam(azimuth, elevation)` — auto-fits the subject in frame, eliminating
   the single most common failure (bad crops).
+- `L_seat(*objs)` — drops a mesh (or a whole assembly, preserving its relative
+  layout) onto the floor, killing the next most common failure: subjects that
+  float above or sink into the ground.
 - `L_bevel` / `L_apply` — bevel + smooth shading so edges catch light.
 
 This is the moat in miniature: a reliable judge (the critic) tells us exactly which

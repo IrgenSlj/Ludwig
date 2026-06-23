@@ -130,6 +130,8 @@ CODEGEN_BRIEF = textwrap.dedent("""\
                                         #   leather, ceramic, metal, plaster,
                                         #   concrete, plastic, glass
       L_apply(obj, material)            # assign material + bevel + smooth shading
+      L_seat(*objs)                     # drop mesh(es) AS A GROUP onto the floor
+                                        #   (z=0), preserving their relative layout
       L_ground(size, color, kind)       # add a floor (kind e.g. 'wood','concrete')
       L_lighting(mood)                   # complete balanced light rig. mood in:
                                         #   golden_hour, sunset, midday, overcast,
@@ -144,7 +146,10 @@ CODEGEN_BRIEF = textwrap.dedent("""\
       mesh a material via L_apply(obj, L_pbr(...)).
     - Compose each object from MULTIPLE well-proportioned parts that connect
       cleanly — NO single blocky cubes, NO floating/disconnected pieces. Parts
-      that belong together must touch and align. Seat everything on the ground.
+      that belong together must touch and align. After building the subject, seat
+      it on the floor with a SINGLE L_seat(...) call listing every mesh of the
+      subject — e.g. L_seat(body, lid, handle) — so nothing floats or sinks and
+      the assembly drops together. Do NOT pass the ground/backdrop to L_seat.
     - Give distinct objects distinct base colors and material kinds so the image
       has color variety (don't make everything one hue).
     - Call L_ground(...) unless the brief implies no floor.
@@ -199,8 +204,8 @@ EDIT_BRIEF = textwrap.dedent("""\
     as possible — same objects, layout, materials and lighting except where the
     instruction requires a change. This is a surgical edit, not a rewrite.
 
-    The same realism toolkit (L_pbr, L_apply, L_ground, L_lighting, L_autocam,
-    L_backdrop, ...) is in scope; reuse it.
+    The same realism toolkit (L_pbr, L_apply, L_seat, L_ground, L_lighting,
+    L_autocam, L_backdrop, ...) is in scope; reuse it.
 
     Output ONLY the full, updated Python script. No prose, no markdown fences.
 
@@ -464,6 +469,75 @@ def run_edit(from_path, instruction):
           else "  ! hero render failed; keeping the EEVEE edit.")
 
 
+# --------------------------------------------------------------------------- #
+# Self-test: one command to prove the whole stack works, no claude call needed.
+# --------------------------------------------------------------------------- #
+
+SELFTEST_SCENE = textwrap.dedent("""\
+    import bpy, math, mathutils
+    L_reset()
+    # Two parts built FLOATING high above the floor. A correct L_seat must drop
+    # the whole assembly to z~0 while preserving their relative offset.
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=1.2, location=(0, 0, 4.0))
+    ball = bpy.context.active_object
+    L_apply(ball, L_pbr("st_ball", (0.80, 0.20, 0.18), "ceramic"))
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.7, 0, 4.6))
+    box = bpy.context.active_object
+    L_apply(box, L_pbr("st_box", (0.20, 0.42, 0.80), "plastic"))
+    L_seat(ball, box)
+    bpy.context.view_layer.update()
+    _minz = min((o.matrix_world @ mathutils.Vector(c)).z
+                for o in (ball, box) for c in o.bound_box)
+    print("LUDWIG_SEAT_OK" if abs(_minz) < 1e-3 else f"LUDWIG_SEAT_FAIL minz={_minz}")
+    L_ground(size=30, color=(0.5, 0.45, 0.4), kind="wood")
+    L_lighting("studio")
+    L_autocam(azimuth_deg=40, elevation_deg=18)
+""")
+
+
+def selftest():
+    """Verify the whole pipeline in one command, spending zero claude tokens:
+    the pure-Python unit suite + a real Blender render through the toolkit
+    (materials, lighting, grounding, auto-framing) that asserts L_seat actually
+    seats the subject and that the frame isn't void. Exits non-zero on failure."""
+    checks = []  # (label, ok, detail)
+
+    # 1. Pure-Python unit suite (parsing, scoring, render robustness).
+    test_file = os.path.join(ROOT, "tests", "test_ludwig.py")
+    proc = subprocess.run([sys.executable, test_file], capture_output=True, text=True)
+    checks.append(("unit tests", proc.returncode == 0,
+                   proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""))
+
+    # 2. Real Blender render through the toolkit — no LLM, fully deterministic.
+    if not BLENDER or not os.path.exists(BLENDER):
+        checks.append(("blender render", False, "Blender not found (set BLENDER_PATH)"))
+    else:
+        out = os.path.join(tempfile.gettempdir(), "ludwig_selftest.png")
+        ok, log = render(SELFTEST_SCENE, out, samples=16, res=(480, 300))
+        checks.append(("blender render", ok,
+                       "" if ok else _blender_error(log)[:200]))
+        checks.append(("L_seat grounds subject", "LUDWIG_SEAT_OK" in log,
+                       "" if "LUDWIG_SEAT_OK" in log else "subject did not reach z=0"))
+        checks.append(("frame not void", ok and not is_void(out),
+                       "" if ok and not is_void(out) else "near-uniform / empty render"))
+
+    print("\nLudwig self-test")
+    print("─" * 48)
+    failed = 0
+    for label, ok, detail in checks:
+        mark = "✓" if ok else "✗"
+        failed += 0 if ok else 1
+        line = f"  {mark}  {label}"
+        if detail and not ok:
+            line += f"\n        {detail}"
+        print(line)
+    print("─" * 48)
+    if failed:
+        print(f"{len(checks) - failed}/{len(checks)} passed — SELF-TEST FAILED")
+        sys.exit(1)
+    print(f"{len(checks)}/{len(checks)} passed — all systems go.")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Ludwig — AI-native 3D design (hardened loop)")
     ap.add_argument("brief", nargs="?", help="natural-language description of the scene")
@@ -477,7 +551,14 @@ def main():
     ap.add_argument("--workers", "-w", type=int, default=3, help="parallel candidate workers (default 3)")
     ap.add_argument("--quick", "-q", action="store_true",
                     help="fast single-shot: 1 candidate, 1 round (great for iterating)")
+    ap.add_argument("--selftest", action="store_true",
+                    help="verify the whole stack (unit + Blender render) in one "
+                         "command, no claude call; exits non-zero on failure")
     args = ap.parse_args()
+
+    if args.selftest:
+        selftest()
+        return
 
     preflight()
     t0 = time.time()

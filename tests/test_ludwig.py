@@ -49,6 +49,13 @@ def test_toolkit_exposes_expected_helpers():
     assert "def L_lighting" in ludwig.BLENDER_LIB
     assert "def L_autocam" in ludwig.BLENDER_LIB
     assert "def L_backdrop" in ludwig.BLENDER_LIB
+    assert "def L_seat" in ludwig.BLENDER_LIB
+
+
+def test_codegen_brief_documents_seat():
+    # The model only calls helpers the brief tells it about; keep them in sync.
+    assert "L_seat" in ludwig.CODEGEN_BRIEF
+    assert "L_seat" in ludwig.EDIT_BRIEF
 
 
 # --- render() robustness (Blender stubbed, no real render needed) ----------- #

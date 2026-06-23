@@ -21,6 +21,16 @@ All notable changes to Ludwig are documented here.
   detection; retrying inference with backoff; preflight checks.
 - Smoke tests and CI.
 
+### Added (post-v0)
+- **`L_seat(*objs)`** toolkit helper — drops a mesh, or a whole assembly while
+  preserving relative positions, onto the floor (z=0). Directly attacks the
+  critic's most frequent complaint after bad crops: subjects that float or sink.
+  Wired into the codegen + edit briefs so the model uses it.
+- **`--selftest`** — one command that verifies the whole stack (pure-Python unit
+  suite + a real Blender render through the toolkit, asserting L_seat grounds the
+  subject and the frame isn't void) in ~2s, spending zero claude tokens. Exits
+  non-zero on failure, so it doubles as a CI gate.
+
 ### Fixed
 - **Render timeouts no longer crash the run.** A slow Cycles hero render that
   exceeded the subprocess budget raised an uncaught `TimeoutExpired`, killing the

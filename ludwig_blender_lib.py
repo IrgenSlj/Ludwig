@@ -231,8 +231,34 @@ def L_lighting(mood="golden_hour"):
 
 
 # --------------------------------------------------------------------------- #
-# Staging — camera aim + ground plane
+# Staging — seating, camera aim + ground plane
 # --------------------------------------------------------------------------- #
+
+def L_seat(*objs, ground_z=0.0):
+    """Drop one or more meshes AS A GROUP so the lowest point of the whole set
+    rests exactly on the ground (z=ground_z), preserving their relative positions.
+
+    This kills the single most common failure the critic flags: a subject that
+    floats above the floor or sinks into it. Pass EVERY mesh that makes up the
+    subject so the assembly drops together without breaking apart, e.g.
+        L_seat(body, lid, handle)
+    Call it after the parts are built and positioned, just before framing.
+    Returns the sole object when given one, else the tuple of objects.
+    """
+    meshes = [o for o in objs if getattr(o, "type", None) == "MESH"]
+    if not meshes:
+        return objs[0] if len(objs) == 1 else objs
+    # World-space matrices are lazily evaluated; force them current before we read
+    # bounding boxes, or a just-moved part reports a stale position.
+    bpy.context.view_layer.update()
+    min_z = min((o.matrix_world @ mathutils.Vector(corner)).z
+                for o in meshes for corner in o.bound_box)
+    dz = ground_z - min_z
+    for o in meshes:
+        o.location.z += dz
+    bpy.context.view_layer.update()
+    return objs[0] if len(objs) == 1 else objs
+
 
 def L_camera(location=(8, -8, 5), target=(0, 0, 1), lens=50.0):
     cd = bpy.data.cameras.new("L_cam")
