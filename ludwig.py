@@ -184,19 +184,26 @@ def _agentic_build(brief, png, *, variant=None, seed_code=None, seed_critique=No
     says DONE or turns run out. Returns (code, ok, log) like _oneshot_build."""
     code, ok, log = _oneshot_build(brief, png, variant=variant,
                                    seed_code=seed_code, seed_critique=seed_critique)
+    applied, stop = 0, "turns_exhausted"  # diagnostics: did the model actually refine?
     for _ in range(max(0, AGENT_TURNS)):
         if not ok:
+            stop = "render_broken"
             break
         resp = infer(
             AGENT_REFINE.format(brief=brief, png=os.path.abspath(png), code=code),
             allow_read=True, image=png, timeout=420)
         if resp.strip().upper().startswith("DONE"):
+            stop = "model_said_done"
             break
         new_code = _extract_python(resp)
         nok, nlog = render(new_code, png)
         if not nok:
+            stop = "refine_errored"
             break  # keep the last good render rather than a broken refinement
         code, ok, log = new_code, nok, nlog
+        applied += 1
+    print(f"  [agentic] {applied}/{AGENT_TURNS} refines applied "
+          f"({stop}) · {brief[:34]}", file=sys.stderr)
     return code, ok, log
 
 
