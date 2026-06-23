@@ -199,6 +199,45 @@ def test_agentic_build_loops_and_self_corrects(tmp_path=None):
     assert calls["infer"] == 2 and calls["render"] == 1
 
 
+# --- eval harness pure logic (no LLM/Blender) ------------------------------- #
+
+def test_axis_scores_parses_all_axes():
+    text = ("FRAMING: 7\nLIGHTING: 5.5\nMATERIALS: 6\nBRIEF: 8\n"
+            "BELIEVABILITY: 4\nKEEP: x")
+    ax = ludwig._axis_scores(text)
+    assert ax == {"FRAMING": 7.0, "LIGHTING": 5.5, "MATERIALS": 6.0,
+                  "BRIEF": 8.0, "BELIEVABILITY": 4.0}
+
+
+def test_axis_scores_empty_is_empty():
+    assert ludwig._axis_scores("no numbers") == {}
+
+
+def test_latest_record_returns_last_matching_mode(tmp_path=None):
+    import json as _json
+    f = os.path.join(os.path.dirname(__file__), "_t_results.jsonl")
+    rows = [{"mode": "oneshot", "mean": 4.0}, {"mode": "agentic", "mean": 5.0},
+            {"mode": "oneshot", "mean": 4.6}]
+    with open(f, "w") as fh:
+        for r in rows:
+            fh.write(_json.dumps(r) + "\n")
+    saved = ludwig.EVAL_RESULTS
+    ludwig.EVAL_RESULTS = f
+    try:
+        assert ludwig._latest_record("oneshot")["mean"] == 4.6   # last oneshot
+        assert ludwig._latest_record("agentic")["mean"] == 5.0
+        assert ludwig._latest_record("nope") is None
+    finally:
+        ludwig.EVAL_RESULTS = saved
+        os.remove(f)
+
+
+def test_eval_brief_suite_is_fixed_and_nonempty():
+    # The suite must stay stable for runs to be comparable over time.
+    assert len(ludwig.EVAL_BRIEFS) >= 4
+    assert all(isinstance(b, str) and b for b in ludwig.EVAL_BRIEFS)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0

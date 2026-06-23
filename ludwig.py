@@ -21,6 +21,7 @@ Usage:
 import argparse
 import concurrent.futures as cf
 import glob
+import json
 import os
 import re
 import shutil
@@ -612,6 +613,116 @@ def run_edit(from_path, instruction):
 
 
 # --------------------------------------------------------------------------- #
+# Eval harness: a fixed brief suite, scored by the (validated) critic, with
+# history committed to eval/results.jsonl. Each brief runs as ONE isolated
+# candidate (no panel, no rounds, no hero) so the only variable is the build
+# path — letting us A/B one-shot vs --agentic and track quality over time.
+# --------------------------------------------------------------------------- #
+
+EVAL_DIR = os.path.join(ROOT, "eval")
+EVAL_RESULTS = os.path.join(EVAL_DIR, "results.jsonl")
+
+EVAL_BRIEFS = [
+    "a ceramic coffee mug, studio product render",
+    "a wooden bar stool, studio product render",
+    "a minimalist desk lamp with a metal arm, studio product render",
+    "a perfume bottle with a faceted glass body and a gold cap, studio product render",
+    "a pair of leather hiking boots, studio product render",
+]
+
+
+def _axis_scores(text):
+    """Pull the per-axis 0-10 scores out of a critique block."""
+    out = {}
+    for axis in _AXES:
+        m = re.search(rf"{axis}:\s*(\d+(?:\.\d+)?)", text or "")
+        if m:
+            out[axis] = min(10.0, float(m.group(1)))
+    return out
+
+
+def _eval_one(idx, brief, mode):
+    png = os.path.join(RENDERS, f"eval_{mode}_{idx}.png")
+    r = evaluate_candidate(brief, png, variant=0)
+    return {"brief": brief, "score": r["score"],
+            "axes": _axis_scores(r.get("critique", "")),
+            "note": r.get("note", "")}
+
+
+def _latest_record(mode):
+    """Most recent eval record for a given mode, or None."""
+    if not os.path.exists(EVAL_RESULTS):
+        return None
+    found = None
+    with open(EVAL_RESULTS) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if rec.get("mode") == mode:
+                found = rec
+    return found
+
+
+def run_eval(*, workers, stamp):
+    os.makedirs(RENDERS, exist_ok=True)
+    os.makedirs(EVAL_DIR, exist_ok=True)
+    mode = "agentic" if AGENTIC else "oneshot"
+    print(f"\n=== Eval suite ({len(EVAL_BRIEFS)} briefs · mode={mode} · "
+          f"model={AGENT_MODEL or 'default'} · provider={_provider_name()}) ===")
+
+    results = [None] * len(EVAL_BRIEFS)
+    with cf.ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(_eval_one, i, b, mode): i
+                for i, b in enumerate(EVAL_BRIEFS)}
+        for fut in cf.as_completed(futs):
+            i = futs[fut]
+            results[i] = fut.result()
+            r = results[i]
+            print(f"  • {r['score']:>4}  {r['brief'][:48]}"
+                  + (f"   [{r['note'][:40]}]" if r["score"] < 0 else ""))
+
+    ok = [r for r in results if r["score"] >= 0]
+    failures = len(results) - len(ok)
+    mean = round(sum(r["score"] for r in ok) / len(ok), 2) if ok else 0.0
+    axis_mean = {}
+    for axis in _AXES:
+        vals = [r["axes"][axis] for r in ok if axis in r["axes"]]
+        if vals:
+            axis_mean[axis] = round(sum(vals) / len(vals), 2)
+
+    record = {"ts": stamp, "mode": mode, "model": AGENT_MODEL or "default",
+              "provider": _provider_name(), "mean": mean, "failures": failures,
+              "axis_mean": axis_mean, "briefs": results}
+    with open(EVAL_RESULTS, "a") as f:
+        f.write(json.dumps(record) + "\n")
+
+    print(f"\n  mean score: {mean}/10   ({len(ok)}/{len(results)} rendered"
+          + (f", {failures} failed)" if failures else ")"))
+    if axis_mean:
+        print("  by axis:   " + "  ".join(f"{a[:4]} {axis_mean[a]}" for a in _AXES if a in axis_mean))
+
+    # A/B: compare against the most recent run of the OTHER mode.
+    other = "oneshot" if mode == "agentic" else "agentic"
+    prev = _latest_record(other)
+    if prev:
+        delta = round(mean - prev["mean"], 2)
+        sign = "+" if delta >= 0 else ""
+        print(f"\n  A/B vs latest {other} ({prev['mean']}/10): "
+              f"{sign}{delta} for {mode}")
+    else:
+        print(f"\n  (no prior '{other}' run yet — run `--eval"
+              + ("" if mode == "agentic" else " --agentic")
+              + "` to complete the A/B)")
+    print("  history →", EVAL_RESULTS)
+    return record
+
+
+# --------------------------------------------------------------------------- #
 # Self-test: one command to prove the whole stack works, no claude call needed.
 # --------------------------------------------------------------------------- #
 
@@ -697,6 +808,10 @@ def main():
     ap.add_argument("--selftest", action="store_true",
                     help="verify the whole stack (unit + Blender render) in one "
                          "command, no claude call; exits non-zero on failure")
+    ap.add_argument("--eval", action="store_true",
+                    help="run the fixed brief suite, score it, append to "
+                         "eval/results.jsonl, and A/B vs the other mode "
+                         "(combine with --agentic / --model to compare).")
     ap.add_argument("--provider", choices=sorted(_PROVIDERS),
                     help="inference backend (default: claude; or set $LUDWIG_PROVIDER). "
                          "'opencode' enables any/local/free models via $LUDWIG_MODEL.")
@@ -726,6 +841,10 @@ def main():
 
     preflight()
     t0 = time.time()
+    if args.eval:
+        run_eval(workers=args.workers, stamp=time.strftime("%Y-%m-%dT%H:%M:%S"))
+        print(f"Elapsed: {time.time() - t0:.0f}s")
+        return
     if args.edit:
         if not args.from_path:
             ap.error("--edit requires --from <scene.py>")

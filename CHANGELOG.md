@@ -22,6 +22,12 @@ All notable changes to Ludwig are documented here.
 - Smoke tests and CI.
 
 ### Added (post-v0)
+- **Eval harness (`--eval`)** — a frozen brief suite, each run as one isolated
+  candidate and scored by the validated critic, with history appended to
+  `eval/results.jsonl` (mean + per-axis means + per-brief scores). Prints the
+  A/B delta vs the most recent run of the *other* mode, so "does `--agentic`
+  actually beat one-shot?" becomes a measured number, not a claim. Composes with
+  `--agentic` / `--model` / `--provider`.
 - **Agentic worker (`--agentic`)** — instead of a stateless one-shot, each
   candidate now runs a self-correcting loop: the model *views its own render*
   with its Read tool, judges it like an art director, and returns an improved
