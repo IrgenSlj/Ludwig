@@ -43,3 +43,36 @@ which points back at the geometry **substrate** as the real ceiling.
 
 Caveat: n=5, single run; per-brief generation is noisy (~±0.6), so treat these
 as directional. Re-run for a second sample before betting on the deltas.
+
+## Substrate experiment: retrieve-and-arrange (`--assets`)
+
+Tests the thesis that the geometry **substrate** is the real ceiling. In
+`--assets` mode the model calls `L_asset(query)` to import a real CC0 Poly Haven
+mesh for the subject instead of sculpting it from primitives, falling back to
+primitives when no asset matches (`L_asset` returns `None` below a match
+threshold). Run on the same frozen suite, so it's a fair, conservative A/B vs
+the primitive baseline: real meshes where they exist (mug/stool/lamp), primitive
+fallback where they don't (perfume bottle/boots have no CC0 match). The
+mechanism is proven — e.g. "ceramic vase" imports a real 9.4k-poly hand-glazed
+vase, a different league from a sculpted grey ovoid.
+
+### Result (surprising, and decision-grade)
+
+| mode | mean | BRIEF axis |
+|------|------|-----------|
+| one-shot (primitives) | 5.0 | 5.0 |
+| agentic ×3 (primitives + self-correct) | **5.52** | **5.8** |
+| **assets (retrieval)** | **4.8** | **4.2** |
+
+Retrieve-and-arrange did **not** win — it slightly *lost* (-0.2 vs one-shot), and
+its **BRIEF-adherence axis was the worst of any mode (4.2)**. Per-brief: the real
+bar chair edged the primitive (+0.4), the mug tied, but the desk lamp *regressed
+-1.6* — the retrieved lamp was a gorgeous orange clamp anglepoise when the brief
+asked for a *minimalist metal* one. The geometry was better; it was the wrong
+object, and you cannot re-prompt a downloaded mesh into the brief.
+
+Conclusion: on steerable product briefs the binding constraint is **brief-
+adherence / composition, not geometry crudeness**. Self-correction raises it
+(5.8); retrieval lowers it (4.2). So **sculpt-and-self-correct for the steerable
+hero subject; reserve retrieval for non-steered props/context** — which is also
+exactly what preserves Ludwig's design-as-code editability moat.
