@@ -15,7 +15,8 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -23,9 +24,17 @@ from starlette.concurrency import run_in_threadpool
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import ludwig  # noqa: E402
 
-from . import db, store  # noqa: E402
+from . import db, store, stream  # noqa: E402
 
-app = FastAPI(title="Ludwig daemon", version="0.0-m0")
+app = FastAPI(title="Ludwig daemon", version="0.1-m1")
+
+# Local dev: the Next.js web shell (M1) runs on a different port.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _EXT = {"code": ".py", "render": ".png", "hero": ".png", "preview": ".glb"}
 
@@ -41,6 +50,26 @@ class GenerateRequest(BaseModel):
 
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower())[:40].strip("-") or "scene"
+
+
+def _persist_result(project_id: str, run_id: str, best: dict) -> dict:
+    """Copy the winning program + renders into the project folder and record them.
+
+    Shared by the blocking and streaming endpoints. Marks the run done.
+    """
+    artifacts: dict[str, str] = {}
+    if best.get("code"):
+        p = store.write_text(project_id, "scene.py", best["code"])
+        artifacts["code"] = db.add_artifact(run_id, "code", p)
+    for kind, key in (("render", "png"), ("hero", "hero")):
+        src = best.get(key)
+        if src:
+            dest = store.copy_in(project_id, src, f"{kind}{_EXT[kind]}")
+            if dest:
+                artifacts[kind] = db.add_artifact(run_id, kind, dest)
+    db.finish_run(run_id, status="done", score=best.get("score"),
+                  critique=best.get("critique"))
+    return artifacts
 
 
 @app.get("/api/health")
@@ -83,22 +112,7 @@ async def generate(req: GenerateRequest) -> dict:
         db.finish_run(run_id, status="error", error="loop returned no candidate")
         raise HTTPException(status_code=500, detail="loop returned no candidate")
 
-    artifacts: dict[str, str] = {}
-    # the program (source of truth) — write it into the project folder
-    if best.get("code"):
-        p = store.write_text(project_id, "scene.py", best["code"])
-        artifacts["code"] = db.add_artifact(run_id, "code", p)
-    # the rendered outputs — copy from renders/ into the project folder
-    for kind, key in (("render", "png"), ("hero", "hero")):
-        src = best.get(key)
-        if src:
-            dest = store.copy_in(project_id, src, f"{kind}{_EXT[kind]}")
-            if dest:
-                artifacts[kind] = db.add_artifact(run_id, kind, dest)
-
-    db.finish_run(run_id, status="done", score=best.get("score"),
-                  critique=best.get("critique"))
-
+    artifacts = _persist_result(project_id, run_id, best)
     return {
         "project_id": project_id,
         "run_id": run_id,
@@ -106,6 +120,35 @@ async def generate(req: GenerateRequest) -> dict:
         "critique": best.get("critique"),
         "artifacts": artifacts,
     }
+
+
+@app.post("/api/generate/stream")
+async def generate_stream(req: GenerateRequest) -> StreamingResponse:
+    """Same as /api/generate but streams live progress as Server-Sent Events.
+
+    Emits: start → round / candidate / best / hero_start / hero / cleared / log …
+    → done (or error). The web shell (M1) renders these as they arrive.
+    """
+    candidates = 1 if req.quick else req.candidates
+    rounds = 1 if req.quick else req.rounds
+    mode = "agentic" if getattr(ludwig, "AGENTIC", False) else "oneshot"
+
+    project_id = db.create_project(_slug(req.brief), req.brief)
+    run_id = db.create_run(
+        project_id, mode,
+        {"candidates": candidates, "rounds": rounds, "target": req.target,
+         "workers": req.workers, "quick": req.quick},
+    )
+
+    gen = stream.run_and_stream(
+        req.brief, candidates=candidates, rounds=rounds,
+        target=req.target, workers=req.workers,
+        project_id=project_id, run_id=run_id, persist=_persist_result,
+    )
+    return StreamingResponse(
+        gen, media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/projects")
