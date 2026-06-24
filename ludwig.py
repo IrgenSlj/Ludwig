@@ -307,13 +307,22 @@ CODEGEN_BRIEF = textwrap.dedent("""\
       the assembly drops together. Do NOT pass the ground/backdrop to L_seat.
     - Give distinct objects distinct base colors and material kinds so the image
       has color variety (don't make everything one hue).
+    - BRIEF FIDELITY (this is graded hard): re-read the brief and make EVERY named
+      attribute visibly true — each stated color, material and style word
+      ('minimalist', 'brushed metal', 'faceted', 'glossy charcoal ceramic', etc.).
+      Do NOT add objects the brief did not ask for.
+    - NO DISPLAY PROPS: do not add a pedestal, plinth, riser, box, stand or podium
+      under the subject unless the brief explicitly asks for one. The subject sits
+      DIRECTLY on the ground/backdrop — a stray block under it is the most common
+      composition failure.
     - Call L_ground(...) unless the brief implies no floor.
     - Set mood with ONE call to L_lighting('<mood>'). Do NOT hand-tune sun/sky/fill.
       Pick the mood that matches the brief (e.g. 'golden_hour', 'studio', 'night').
     - CAMERA: call L_autocam(azimuth_deg=..., elevation_deg=...) — it auto-fits the
       whole subject in frame, so just choose a flattering ANGLE. Prefer a 3/4 view
       (azimuth ~30-50) at a low-to-moderate elevation (~12-25) over a flat frontal
-      product shot. This removes the #1 failure (bad crops).
+      product shot. This removes the #1 failure (bad crops). The subject should
+      FILL the frame — make it the hero, not a small object in a large empty room.
     - Do NOT call bpy.ops.render.*, do NOT set render.filepath/resolution/engine —
       Ludwig owns rendering. Build only the scene + camera + lights.
     - Must run headlessly in `blender --background` with no errors.

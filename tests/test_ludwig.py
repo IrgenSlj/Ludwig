@@ -163,6 +163,15 @@ def test_codegen_prompt_includes_brief_and_variant():
     assert "a teapot" in p and "Interpretation A" in p
 
 
+def test_codegen_brief_targets_measured_failures():
+    # The eval showed brief-adherence is the ceiling and renders kept gaining a
+    # stray pedestal; the brief must explicitly fight both. Keep them present.
+    b = ludwig.CODEGEN_BRIEF.lower()
+    assert "brief fidelity" in b                      # every named attribute visible
+    assert "pedestal" in b and "display props" in b   # no stray plinth under subject
+    assert "fill the frame" in b                       # subject is the hero
+
+
 def test_agentic_off_by_default():
     assert ludwig.AGENTIC is False  # agentic is strictly opt-in (--agentic)
 

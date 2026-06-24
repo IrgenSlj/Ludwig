@@ -272,7 +272,7 @@ def L_camera(location=(8, -8, 5), target=(0, 0, 1), lens=50.0):
     return co
 
 
-def L_autocam(azimuth_deg=35.0, elevation_deg=16.0, margin=1.45, lens=50.0):
+def L_autocam(azimuth_deg=35.0, elevation_deg=16.0, margin=1.3, lens=50.0):
     """Place the camera at a chosen angle and AUTO-FIT it so the whole subject is
     framed. Computes the bounding sphere of scene geometry (ignoring the ground/
     backdrop) and backs the camera off to fit. The reliable way to avoid bad crops."""

@@ -78,6 +78,17 @@ success). **Measuring caught it; asserting would not have.**
    mac-only). CLI now → thin *local* web UI (BYO Blender+model, zero hosting) →
    hosted webapp as the paid tier. Revenue wedge: one-sentence e-commerce shots.
 
+## Acted on it (not yet eval-confirmed)
+
+Following §2, the codegen brief now explicitly fights the measured failures:
+**brief fidelity** (every named color/material/style word must be visibly true),
+**no stray display props** (the recurring white pedestal under the subject), and
+**fill the frame** (plus a tighter `L_autocam` margin 1.45 → 1.3). These are
+principled and low-risk but **not yet proven** to lift scores — a single check
+still showed the model rendering an asked-for "wooden table" as a white plinth,
+i.e. brief-fidelity is hard and one rule doesn't force obedience. Confirm with
+`--eval --eval-repeats 3` before claiming a gain.
+
 ## Reproduce
 
 ```bash
