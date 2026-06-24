@@ -48,6 +48,24 @@ export interface ProjectDetail extends ProjectSummary {
   runs: Run[];
 }
 
+// ---- discovery (the mandatory pre-generation brief lock) --------------------
+
+export interface DiscoveryField {
+  name: string;
+  label: string;
+  type: "select" | "text";
+  options?: string[];
+  default: string;
+  help: string;
+}
+
+export interface DiscoverySchema {
+  schema: DiscoveryField[];
+  required: string[];
+}
+
+export type DiscoveryValues = Record<string, string>;
+
 // ---- stream event shapes ----------------------------------------------------
 
 export type StreamEvent =
@@ -81,6 +99,17 @@ export interface GenerateBody {
   rounds?: number;
   target?: number;
   workers?: number;
+  discovery?: DiscoveryValues;
+}
+
+// Raised when the daemon rejects a generation because the brief lock is invalid.
+export class DiscoveryError extends Error {
+  problems: string[];
+  constructor(message: string, problems: string[]) {
+    super(message);
+    this.name = "DiscoveryError";
+    this.problems = problems;
+  }
 }
 
 // ---- fetch helpers ----------------------------------------------------------
@@ -107,6 +136,10 @@ export function getProject(id: string): Promise<ProjectDetail> {
   return getJson<ProjectDetail>(`/api/projects/${id}`);
 }
 
+export function getDiscoverySchema(): Promise<DiscoverySchema> {
+  return getJson<DiscoverySchema>("/api/discovery/schema");
+}
+
 // Stream a generation run. EventSource cannot POST, so we use fetch + a reader
 // and parse SSE frames manually. Each parsed event is handed to `onEvent`.
 export async function streamGenerate(
@@ -121,6 +154,24 @@ export async function streamGenerate(
     signal,
   });
   if (!res.ok || !res.body) {
+    // The daemon rejects an invalid brief lock with HTTP 400 and a structured
+    // body: { detail: { error, problems: [...] } }. Surface it specifically so
+    // the UI can list the problems instead of showing a generic failure.
+    if (res.status === 400) {
+      try {
+        const data = await res.json();
+        const detail = data?.detail;
+        if (detail && Array.isArray(detail.problems)) {
+          throw new DiscoveryError(
+            detail.error || "Invalid brief lock.",
+            detail.problems,
+          );
+        }
+      } catch (err) {
+        if (err instanceof DiscoveryError) throw err;
+        // fall through to the generic error below
+      }
+    }
     throw new Error(`${res.status} ${res.statusText}`);
   }
 

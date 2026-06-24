@@ -24,7 +24,7 @@ from starlette.concurrency import run_in_threadpool
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import ludwig  # noqa: E402
 
-from . import db, glb, store, stream  # noqa: E402
+from . import db, discovery, glb, store, stream  # noqa: E402
 
 app = FastAPI(title="Ludwig daemon", version="0.1-m1")
 
@@ -46,6 +46,9 @@ class GenerateRequest(BaseModel):
     target: float = 8.0
     workers: int = 3
     quick: bool = False
+    # RULE 1: the locked discovery answers (units, target output, …). Optional at the
+    # API level for CLI/back-compat; the web UI requires them before enabling Generate.
+    discovery: dict | None = None
 
 
 def _slug(text: str) -> str:
@@ -88,23 +91,43 @@ def health() -> dict:
     }
 
 
-@app.post("/api/generate")
-async def generate(req: GenerateRequest) -> dict:
+@app.get("/api/discovery/schema")
+def discovery_schema() -> dict:
+    """The RULE 1 constraint form the web UI must collect before generating."""
+    return {"schema": discovery.DISCOVERY_SCHEMA, "required": sorted(discovery._REQUIRED)}
+
+
+def _prepare(req: GenerateRequest):
+    """Validate the lock, compose the effective brief, create project + run.
+
+    Returns (candidates, rounds, project_id, run_id, effective_brief).
+    """
+    if req.discovery is not None:
+        problems = discovery.validate(req.discovery)
+        if problems:
+            raise HTTPException(status_code=400,
+                                detail={"error": "discovery not locked", "problems": problems})
     candidates = 1 if req.quick else req.candidates
     rounds = 1 if req.quick else req.rounds
     mode = "agentic" if getattr(ludwig, "AGENTIC", False) else "oneshot"
+    effective_brief = discovery.compose_brief(req.brief, req.discovery)
 
     project_id = db.create_project(_slug(req.brief), req.brief)
     run_id = db.create_run(
-        project_id,
-        mode,
+        project_id, mode,
         {"candidates": candidates, "rounds": rounds, "target": req.target,
-         "workers": req.workers, "quick": req.quick},
+         "workers": req.workers, "quick": req.quick, "discovery": req.discovery},
     )
+    return candidates, rounds, project_id, run_id, effective_brief
+
+
+@app.post("/api/generate")
+async def generate(req: GenerateRequest) -> dict:
+    candidates, rounds, project_id, run_id, effective_brief = _prepare(req)
 
     try:
         best = await run_in_threadpool(
-            ludwig.run, req.brief,
+            ludwig.run, effective_brief,
             candidates=candidates, rounds=rounds,
             target=req.target, workers=req.workers,
         )
@@ -133,19 +156,10 @@ async def generate_stream(req: GenerateRequest) -> StreamingResponse:
     Emits: start → round / candidate / best / hero_start / hero / cleared / log …
     → done (or error). The web shell (M1) renders these as they arrive.
     """
-    candidates = 1 if req.quick else req.candidates
-    rounds = 1 if req.quick else req.rounds
-    mode = "agentic" if getattr(ludwig, "AGENTIC", False) else "oneshot"
-
-    project_id = db.create_project(_slug(req.brief), req.brief)
-    run_id = db.create_run(
-        project_id, mode,
-        {"candidates": candidates, "rounds": rounds, "target": req.target,
-         "workers": req.workers, "quick": req.quick},
-    )
+    candidates, rounds, project_id, run_id, effective_brief = _prepare(req)
 
     gen = stream.run_and_stream(
-        req.brief, candidates=candidates, rounds=rounds,
+        effective_brief, candidates=candidates, rounds=rounds,
         target=req.target, workers=req.workers,
         project_id=project_id, run_id=run_id, persist=_persist_result,
     )

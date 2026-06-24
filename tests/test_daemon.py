@@ -93,6 +93,44 @@ def test_missing_project_404(client):
     assert client.get("/api/projects/does-not-exist").status_code == 404
 
 
+def test_discovery_schema_and_compose():
+    from daemon import discovery
+
+    names = {f["name"] for f in discovery.DISCOVERY_SCHEMA}
+    assert {"units", "target_output", "tolerance"} <= names
+
+    # required-field + option validation
+    assert discovery.validate({}) != []
+    assert discovery.validate({"units": "cm", "target_output": "render"}) == []
+    assert any("not one of" in p
+               for p in discovery.validate({"units": "furlongs", "target_output": "render"}))
+
+    # composition appends a locked block; empties and n/a are skipped
+    composed = discovery.compose_brief(
+        "a ceramic mug",
+        {"units": "cm", "target_output": "render", "tolerance": "n/a",
+         "style": "minimalist", "constraints": ""},
+    )
+    assert "a ceramic mug" in composed
+    assert "constraints (locked" in composed.lower()
+    assert "minimalist" in composed and "cm" in composed
+    assert "tolerance" not in composed.lower()  # n/a skipped
+    assert discovery.compose_brief("x", None) == "x"
+
+
+def test_discovery_endpoint(client):
+    r = client.get("/api/discovery/schema")
+    assert r.status_code == 200
+    assert "schema" in r.json() and r.json()["required"]
+
+
+def test_generate_rejects_unlocked_invalid_discovery(client):
+    r = client.post("/api/generate", json={"brief": "a mug", "quick": True,
+                                           "discovery": {"units": "furlongs"}})
+    assert r.status_code == 400
+    assert "problems" in r.json()["detail"]
+
+
 def test_progress_parser():
     from daemon import progress
 
