@@ -65,7 +65,12 @@ export type StreamEvent =
       run_id: string;
       score: number | null;
       critique: string | null;
-      artifacts: { code?: string; render?: string; hero?: string };
+      artifacts: {
+        code?: string;
+        render?: string;
+        hero?: string;
+        preview?: string;
+      };
     }
   | { type: "error"; message: string };
 

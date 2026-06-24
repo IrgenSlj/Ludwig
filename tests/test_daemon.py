@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 def client(monkeypatch, tmp_path):
     monkeypatch.setenv("LUDWIG_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("LUDWIG_PROJECTS", str(tmp_path / "projects"))
+    monkeypatch.setenv("LUDWIG_DISABLE_GLB", "1")  # keep wiring tests Blender-free
 
     import ludwig
     from daemon import app as appmod
@@ -119,6 +120,7 @@ def _sse_events(text):
 def streaming_client(monkeypatch, tmp_path):
     monkeypatch.setenv("LUDWIG_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("LUDWIG_PROJECTS", str(tmp_path / "projects"))
+    monkeypatch.setenv("LUDWIG_DISABLE_GLB", "1")  # keep wiring tests Blender-free
 
     import ludwig
     from daemon import app as appmod
