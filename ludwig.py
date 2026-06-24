@@ -694,12 +694,21 @@ def _axis_scores(text):
     return out
 
 
-def _eval_one(idx, brief, mode):
-    png = os.path.join(RENDERS, f"eval_{mode}_{idx}.png")
-    r = evaluate_candidate(brief, png, variant=0)
-    return {"brief": brief, "score": r["score"],
-            "axes": _axis_scores(r.get("critique", "")),
-            "note": r.get("note", "")}
+def _eval_one(idx, brief, mode, repeats=1):
+    # Average `repeats` independent generations to cut the large per-brief noise
+    # (single runs swing ~±1, bigger than the mode deltas we want to detect).
+    scores, axis_acc = [], {}
+    for j in range(repeats):
+        png = os.path.join(RENDERS, f"eval_{mode}_{idx}_{j}.png")
+        r = evaluate_candidate(brief, png, variant=j)
+        scores.append(r["score"])
+        for a, v in _axis_scores(r.get("critique", "")).items():
+            axis_acc.setdefault(a, []).append(v)
+    valid = [s for s in scores if s >= 0]
+    mean = round(sum(valid) / len(valid), 2) if valid else -1
+    axes = {a: round(sum(v) / len(v), 2) for a, v in axis_acc.items()}
+    return {"brief": brief, "score": mean, "scores": scores,
+            "axes": axes, "repeats": repeats}
 
 
 def _latest_record(mode):
@@ -721,24 +730,26 @@ def _latest_record(mode):
     return found
 
 
-def run_eval(*, workers, stamp):
+def run_eval(*, workers, stamp, repeats=1):
     os.makedirs(RENDERS, exist_ok=True)
     os.makedirs(EVAL_DIR, exist_ok=True)
     mode = "assets" if ASSETS_MODE else ("agentic" if AGENTIC else "oneshot")
     mode_label = f"agentic×{AGENT_TURNS}t" if mode == "agentic" else mode
+    rep_label = f" · {repeats}× avg" if repeats > 1 else ""
     print(f"\n=== Eval suite ({len(EVAL_BRIEFS)} briefs · mode={mode_label} · "
-          f"model={AGENT_MODEL or 'default'} · provider={_provider_name()}) ===")
+          f"model={AGENT_MODEL or 'default'} · provider={_provider_name()}"
+          f"{rep_label}) ===")
 
     results = [None] * len(EVAL_BRIEFS)
     with cf.ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(_eval_one, i, b, mode): i
+        futs = {ex.submit(_eval_one, i, b, mode, repeats): i
                 for i, b in enumerate(EVAL_BRIEFS)}
         for fut in cf.as_completed(futs):
             i = futs[fut]
             results[i] = fut.result()
             r = results[i]
-            print(f"  • {r['score']:>4}  {r['brief'][:48]}"
-                  + (f"   [{r['note'][:40]}]" if r["score"] < 0 else ""))
+            spread = (f"  {r['scores']}" if repeats > 1 else "")
+            print(f"  • {r['score']:>4}  {r['brief'][:46]}{spread}")
 
     ok = [r for r in results if r["score"] >= 0]
     failures = len(results) - len(ok)
@@ -751,7 +762,7 @@ def run_eval(*, workers, stamp):
 
     record = {"ts": stamp, "mode": mode,
               "agent_turns": AGENT_TURNS if mode == "agentic" else 0,
-              "model": AGENT_MODEL or "default",
+              "repeats": repeats, "model": AGENT_MODEL or "default",
               "provider": _provider_name(), "mean": mean, "failures": failures,
               "axis_mean": axis_mean, "briefs": results}
     with open(EVAL_RESULTS, "a") as f:
@@ -868,6 +879,9 @@ def main():
                     help="run the fixed brief suite, score it, append to "
                          "eval/results.jsonl, and A/B vs the other mode "
                          "(combine with --agentic / --model to compare).")
+    ap.add_argument("--eval-repeats", type=int, default=1, metavar="N",
+                    help="average N generations per brief to cut per-brief noise "
+                         "(default 1; use 3+ to resolve small mode deltas)")
     ap.add_argument("--provider", choices=sorted(_PROVIDERS),
                     help="inference backend (default: claude; or set $LUDWIG_PROVIDER). "
                          "'opencode' enables any/local/free models via $LUDWIG_MODEL.")
@@ -903,7 +917,8 @@ def main():
     preflight()
     t0 = time.time()
     if args.eval:
-        run_eval(workers=args.workers, stamp=time.strftime("%Y-%m-%dT%H:%M:%S"))
+        run_eval(workers=args.workers, stamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+                 repeats=max(1, args.eval_repeats))
         print(f"Elapsed: {time.time() - t0:.0f}s")
         return
     if args.edit:
