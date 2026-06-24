@@ -214,6 +214,9 @@ def _agentic_build(brief, png, *, variant=None, seed_code=None, seed_critique=No
         if not nok:
             stop = "refine_errored"
             break  # repair also failed; keep the last good render
+        if is_void(trial):
+            stop = "refine_void"
+            break  # refinement emptied the frame; keep the prior good render
         os.replace(trial, png)            # promote the successful refinement
         code, ok, log = new_code, nok, nlog
         applied += 1

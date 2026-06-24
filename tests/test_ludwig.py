@@ -256,6 +256,32 @@ def test_agentic_refine_repairs_broken_refinement():
     assert len(infer_calls) == 3                # refine + repair + DONE
 
 
+def test_agentic_refine_rejects_void_refinement():
+    """A refinement that renders but is VOID (empty frame) must NOT be promoted
+    over the prior good render."""
+    out = os.path.join(os.path.dirname(__file__), "_t_agent3.png")
+    orig = (ludwig.infer, ludwig.render, ludwig._oneshot_build, ludwig.is_void)
+    ludwig._oneshot_build = lambda *a, **k: ("GOOD_V0", True, "log0")
+    ludwig.infer = lambda prompt, **k: "import bpy  # V1_void"
+    def fake_render(code, png, **k):
+        with open(png, "w") as fh:
+            fh.write("x")
+        return True, "ok"
+    ludwig.render = fake_render
+    ludwig.is_void = lambda png, **k: True       # every refinement looks empty
+    saved_turns = ludwig.AGENT_TURNS
+    ludwig.AGENT_TURNS = 3
+    try:
+        code, ok, _ = ludwig._agentic_build("a vase", out, variant=0)
+    finally:
+        (ludwig.infer, ludwig.render, ludwig._oneshot_build, ludwig.is_void) = orig
+        ludwig.AGENT_TURNS = saved_turns
+        for p in (out, out.replace(".png", "_try.png")):
+            if os.path.exists(p):
+                os.remove(p)
+    assert ok and code == "GOOD_V0"             # kept the good render, rejected the void
+
+
 # --- eval harness pure logic (no LLM/Blender) ------------------------------- #
 
 def test_axis_scores_parses_all_axes():
