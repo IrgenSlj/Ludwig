@@ -50,6 +50,7 @@ def test_toolkit_exposes_expected_helpers():
     assert "def L_autocam" in ludwig.BLENDER_LIB
     assert "def L_backdrop" in ludwig.BLENDER_LIB
     assert "def L_seat" in ludwig.BLENDER_LIB
+    assert "def L_asset" in ludwig.BLENDER_LIB
 
 
 def test_codegen_brief_documents_seat():

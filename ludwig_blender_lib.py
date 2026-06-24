@@ -382,3 +382,124 @@ def L_quality(engine="EEVEE", samples=64):
     scene.view_settings.view_transform = "AgX" if "AgX" in [
         v.name for v in scene.view_settings.bl_rna.properties["view_transform"].enum_items
     ] else scene.view_settings.view_transform
+
+
+# --------------------------------------------------------------------------- #
+# Asset retrieval — fetch real CC0 meshes from Poly Haven (no API key) and import
+# them headlessly, so the model can ARRANGE real, photoscanned geometry instead
+# of sculpting everything from primitives. L_asset returns None on any failure
+# (no match, no network), so the caller can fall back to building a primitive.
+# --------------------------------------------------------------------------- #
+
+import os as _os, re as _re, json as _json, tempfile as _tf
+import urllib.request as _ureq
+
+_PH_API = "https://api.polyhaven.com"
+_PH_CACHE = _os.path.join(_tf.gettempdir(), "ludwig_assets")
+_PH_UA = {"User-Agent": "Ludwig/0.1 (+https://github.com/IrgenSlj/Ludwig)"}
+_PH_CATALOG = None
+# light synonym map so natural briefs land on Poly Haven's asset naming
+_PH_SYNONYMS = {"mug": "cup", "couch": "sofa", "armchair": "chair",
+                "stool": "chair", "boots": "boot", "sneaker": "shoe",
+                "plant": "pot", "succulent": "plant"}
+
+
+def _ph_json(url):
+    with _ureq.urlopen(_ureq.Request(url, headers=_PH_UA), timeout=30) as r:
+        return _json.loads(r.read().decode())
+
+
+def _ph_fetch(url, dst):
+    with _ureq.urlopen(_ureq.Request(url, headers=_PH_UA), timeout=90) as r:
+        data = r.read()
+    with open(dst, "wb") as f:
+        f.write(data)
+
+
+def _ph_catalog():
+    global _PH_CATALOG
+    if _PH_CATALOG is None:
+        _PH_CATALOG = _ph_json(_PH_API + "/assets?type=models")
+    return _PH_CATALOG
+
+
+def _ph_match(query):
+    """Best Poly Haven model id for a text query, by keyword overlap, or None."""
+    cat = _ph_catalog()
+    words = set(_re.findall(r"[a-z0-9]+", query.lower()))
+    words |= {_PH_SYNONYMS[w] for w in list(words) if w in _PH_SYNONYMS}
+    best, best_score = None, 0
+    for aid, meta in cat.items():
+        hay = (aid.lower().replace("_", " ") + " "
+               + " ".join(meta.get("tags", [])) + " "
+               + " ".join(meta.get("categories", []))).lower()
+        score = len(words & set(_re.findall(r"[a-z0-9]+", hay)))
+        if score > best_score:
+            best, best_score = aid, score
+    return best
+
+
+def _ph_download(aid, res="1k"):
+    """Download an asset's gltf + bundled textures into a cache dir; return path."""
+    files = _ph_json(_PH_API + "/files/%s" % aid)
+    gltf = files["gltf"][res]["gltf"]
+    ddir = _os.path.join(_PH_CACHE, aid, res)
+    main = _os.path.join(ddir, _os.path.basename(gltf["url"]))
+    if _os.path.exists(main):
+        return main  # cached from a prior candidate/run
+    _os.makedirs(ddir, exist_ok=True)
+    _ph_fetch(gltf["url"], main)
+    for relpath, info in gltf.get("include", {}).items():
+        url = info["url"] if isinstance(info, dict) else info
+        dst = _os.path.join(ddir, relpath)
+        _os.makedirs(_os.path.dirname(dst), exist_ok=True)
+        _ph_fetch(url, dst)
+    return main
+
+
+def L_asset(query, location=(0, 0, 0), max_dim=2.0, on_ground=True, res="1k"):
+    """Fetch a real CC0 mesh matching `query` from Poly Haven, import it, scale
+    it to ~`max_dim` units on its largest axis, center it at `location`, seat it
+    on the ground, and return a parent Empty controlling the whole asset.
+    Returns None on any failure so the caller can build a primitive instead."""
+    try:
+        aid = _ph_match(query)
+        if not aid:
+            print("L_asset: no Poly Haven match for %r" % query)
+            return None
+        path = _ph_download(aid, res)
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=path)
+        new = [o for o in bpy.data.objects if o not in before]
+        meshes = [o for o in new if o.type == "MESH"]
+        if not meshes:
+            return None
+        empty = bpy.data.objects.new("L_asset_" + aid, None)
+        bpy.context.scene.collection.objects.link(empty)
+        for o in new:
+            if o.parent is None:
+                o.parent = empty
+                o.matrix_parent_inverse = empty.matrix_world.inverted()
+        bpy.context.view_layer.update()
+
+        def _bounds():
+            pts = [o.matrix_world @ mathutils.Vector(c)
+                   for o in meshes for c in o.bound_box]
+            lo = mathutils.Vector((min(p[i] for p in pts) for i in range(3)))
+            hi = mathutils.Vector((max(p[i] for p in pts) for i in range(3)))
+            return lo, hi
+
+        lo, hi = _bounds()
+        biggest = max(hi - lo) or 1.0
+        empty.scale = (max_dim / biggest,) * 3
+        bpy.context.view_layer.update()
+        lo, hi = _bounds()
+        center = (lo + hi) / 2.0
+        empty.location.x += location[0] - center.x
+        empty.location.y += location[1] - center.y
+        empty.location.z += (location[2] - lo.z) if on_ground else (location[2] - center.z)
+        bpy.context.view_layer.update()
+        return empty
+    except Exception as e:
+        print("L_asset(%r) failed: %s" % (query, e))
+        return None
