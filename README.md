@@ -142,6 +142,21 @@ The generated code never hand-rolls materials or lights — it calls helpers fro
 This is the moat in miniature: a reliable judge (the critic) tells us exactly which
 capability to build next, and we build it into the toolkit.
 
+## What we've measured
+
+Ludwig's claims are backed by an eval harness, not vibes. The headline findings
+(full log in [`docs/FINDINGS.md`](docs/FINDINGS.md)):
+
+- **The critic is reliable** — re-grading one render varies by stdev ≈ 0.2 and it
+  cleanly rank-orders good vs. bad, so it's a trustworthy steering signal.
+- **The quality ceiling is brief-adherence & composition, not geometry crudeness.**
+  Self-correction raises brief-adherence; swapping in real meshes *lowers* it.
+- **Retrieving real meshes loses on steerable subjects** — gorgeous geometry, but
+  the wrong object you can't re-prompt. This *vindicates* design-as-code: keep the
+  hero sculpted-and-steerable, reserve retrieval for props/context.
+- **Agentic self-correction is a modest, turn-hungry win** (best mode so far) —
+  a "hero render" setting, not the default.
+
 ## Roadmap
 
 Ludwig starts in **3D viz / product rendering** (artists) and expands outward.
@@ -151,7 +166,12 @@ Ludwig starts in **3D viz / product rendering** (artists) and expands outward.
 - [x] Realism toolkit: PBR materials, lighting presets, studio set, auto-framing
 - [x] **`--edit`** — re-prompt an existing design (the editability moat)
 - [x] Cross-platform Blender detection, retrying inference, preflight checks
-- [ ] Richer geometry: curve/loft helpers, asset import, geometry nodes
+- [x] **`--agentic`** — the worker views its own render and self-corrects in a loop
+- [x] **Pluggable inference** — `--provider claude|opencode` (BYO/free/local models)
+- [x] **Eval harness** (`--eval`) + **`--selftest`** — quality is measured, not asserted
+- [x] **`L_asset`** — retrieve real CC0 meshes (best for props; see findings below)
+- [ ] Props-only retrieval layer: real meshes for context, sculpted steerable hero
+- [ ] Composition/staging intelligence (the measured quality bottleneck)
 - [ ] Live mode via [BlenderMCP](https://github.com/ahujasid/blender-mcp) — watch edits in real time
 - [ ] Web product surface: prompt box, gallery, version diffs, "regenerate this part"
 - [ ] **Architecture** vertical — parametric buildings + drawings via IFC / Grasshopper

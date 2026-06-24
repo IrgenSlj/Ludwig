@@ -22,6 +22,17 @@ All notable changes to Ludwig are documented here.
 - Smoke tests and CI.
 
 ### Added (post-v0)
+- **`L_asset` + `--assets`** — retrieve real CC0 Poly Haven meshes (no API key)
+  and arrange them, with a primitive fallback when no asset matches. Measured to
+  *lose* on steerable subjects (loses brief-adherence) — best reserved for
+  props/context. See [docs/FINDINGS.md](docs/FINDINGS.md).
+- **`--eval-repeats N`** — average N generations per brief to cut the large
+  per-brief noise, so small mode deltas are actually resolvable.
+- **Agentic refinement hardening** — a broken refinement gets one error-fed-back
+  repair (keeping the refinement intent); refinements that render an empty/void
+  frame are rejected rather than promoted.
+- **[docs/FINDINGS.md](docs/FINDINGS.md)** — the measured research log (critic
+  reliability, the brief-adherence ceiling, retrieval vs. steerability, agentic).
 - **Eval harness (`--eval`)** — a frozen brief suite, each run as one isolated
   candidate and scored by the validated critic, with history appended to
   `eval/results.jsonl` (mean + per-axis means + per-brief scores). Prints the
