@@ -202,8 +202,18 @@ def _agentic_build(brief, png, *, variant=None, seed_code=None, seed_critique=No
         new_code = _extract_python(resp)
         nok, nlog = render(new_code, trial)
         if not nok:
+            # The refinement broke in Blender — don't discard the turn. Feed the
+            # error back for ONE repair that keeps the refinement intent. (The
+            # eval showed ~2/5 refinements erroring; this rescues most of them.)
+            try:
+                new_code = generate_scene_code(brief, prior_code=new_code,
+                                               error=_blender_error(nlog))
+                nok, nlog = render(new_code, trial)
+            except RuntimeError:
+                nok = False
+        if not nok:
             stop = "refine_errored"
-            break  # keep the last good render rather than a broken refinement
+            break  # repair also failed; keep the last good render
         os.replace(trial, png)            # promote the successful refinement
         code, ok, log = new_code, nok, nlog
         applied += 1

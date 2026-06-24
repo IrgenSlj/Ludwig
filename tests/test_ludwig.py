@@ -217,6 +217,45 @@ def test_agentic_build_loops_and_self_corrects(tmp_path=None):
     assert calls["infer"] == 2 and calls["render"] == 1
 
 
+def test_agentic_refine_repairs_broken_refinement():
+    """A refinement that errors in Blender gets one repair (error fed back) and
+    is then promoted, instead of the loop giving up on the first error."""
+    out = os.path.join(os.path.dirname(__file__), "_t_agent2.png")
+    orig_infer, orig_render, orig_oneshot = (
+        ludwig.infer, ludwig.render, ludwig._oneshot_build)
+    ludwig._oneshot_build = lambda *a, **k: ("V0", True, "log0")
+    infer_calls = []
+
+    def fake_infer(prompt, **k):
+        infer_calls.append(prompt)
+        n = len(infer_calls)
+        if n == 1:
+            return "import bpy  # V1_broken"     # refine: will fail first render
+        if n == 2:
+            return "import bpy  # V1_FIXED"      # repair via generate_scene_code
+        return "DONE"
+
+    def fake_render(code, png, **k):
+        ok = ("V1_FIXED" in code) or ("V0" in code)   # broken refinement fails
+        if ok:
+            with open(png, "w") as fh:
+                fh.write("x")
+        return ok, ("ok" if ok else "Error: boom")
+    ludwig.infer, ludwig.render = fake_infer, fake_render
+    saved_turns = ludwig.AGENT_TURNS
+    ludwig.AGENT_TURNS = 2
+    try:
+        code, ok, _ = ludwig._agentic_build("a vase", out, variant=0)
+    finally:
+        (ludwig.infer, ludwig.render, ludwig._oneshot_build, ludwig.AGENT_TURNS) = (
+            orig_infer, orig_render, orig_oneshot, saved_turns)
+        for p in (out, out.replace(".png", "_try.png")):
+            if os.path.exists(p):
+                os.remove(p)
+    assert ok and "V1_FIXED" in code            # repaired refinement was promoted
+    assert len(infer_calls) == 3                # refine + repair + DONE
+
+
 # --- eval harness pure logic (no LLM/Blender) ------------------------------- #
 
 def test_axis_scores_parses_all_axes():
