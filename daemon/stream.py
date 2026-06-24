@@ -94,7 +94,8 @@ async def run_and_stream(brief, *, candidates, rounds, target, workers,
                 yield _sse({"type": "error", "message": "loop returned no candidate"})
             else:
                 best = outcome["best"]
-                artifacts = persist(project_id, run_id, best)
+                from starlette.concurrency import run_in_threadpool
+                artifacts = await run_in_threadpool(persist, project_id, run_id, best)
                 yield _sse({"type": "done", "project_id": project_id, "run_id": run_id,
                             "score": best.get("score"), "critique": best.get("critique"),
                             "artifacts": artifacts})

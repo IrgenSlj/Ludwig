@@ -7,6 +7,7 @@ import {
   streamGenerate,
   type StreamEvent,
 } from "./lib/api";
+import ModelViewer from "./ModelViewer";
 
 interface LogRow {
   cls: string;
@@ -18,6 +19,7 @@ interface DoneState {
   score: number | null;
   critique: string | null;
   imageId?: string;
+  previewId?: string;
 }
 
 function rowFor(ev: StreamEvent): LogRow | null {
@@ -91,6 +93,7 @@ export default function Generator() {
             score: ev.score,
             critique: ev.critique,
             imageId: ev.artifacts.hero ?? ev.artifacts.render,
+            previewId: ev.artifacts.preview,
           });
         }
       });
@@ -159,6 +162,17 @@ export default function Generator() {
             <img src={artifactUrl(done.imageId)} alt="hero render" />
           ) : (
             <div className="muted">No image artifact returned.</div>
+          )}
+          {done.previewId && (
+            <>
+              <div className="muted" style={{ margin: "12px 0 6px" }}>
+                Rotate · interactive 3D
+              </div>
+              <ModelViewer
+                src={artifactUrl(done.previewId)}
+                alt="Interactive 3D preview of the generated object"
+              />
+            </>
           )}
           {done.critique && <div className="critique">{done.critique}</div>}
           <p style={{ marginBottom: 0 }}>

@@ -24,7 +24,7 @@ from starlette.concurrency import run_in_threadpool
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import ludwig  # noqa: E402
 
-from . import db, store, stream  # noqa: E402
+from . import db, glb, store, stream  # noqa: E402
 
 app = FastAPI(title="Ludwig daemon", version="0.1-m1")
 
@@ -61,6 +61,10 @@ def _persist_result(project_id: str, run_id: str, best: dict) -> dict:
     if best.get("code"):
         p = store.write_text(project_id, "scene.py", best["code"])
         artifacts["code"] = db.add_artifact(run_id, "code", p)
+        # interactive preview: export the scene to a web-viewable .glb (M2)
+        glb_path = glb.maybe_export(best["code"], store.project_dir(project_id) / f"preview{_EXT['preview']}")
+        if glb_path:
+            artifacts["preview"] = db.add_artifact(run_id, "preview", glb_path)
     for kind, key in (("render", "png"), ("hero", "hero")):
         src = best.get(key)
         if src:
@@ -112,7 +116,7 @@ async def generate(req: GenerateRequest) -> dict:
         db.finish_run(run_id, status="error", error="loop returned no candidate")
         raise HTTPException(status_code=500, detail="loop returned no candidate")
 
-    artifacts = _persist_result(project_id, run_id, best)
+    artifacts = await run_in_threadpool(_persist_result, project_id, run_id, best)
     return {
         "project_id": project_id,
         "run_id": run_id,
