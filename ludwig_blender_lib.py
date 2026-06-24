@@ -423,8 +423,10 @@ def _ph_catalog():
     return _PH_CATALOG
 
 
-def _ph_match(query):
-    """Best Poly Haven model id for a text query, by keyword overlap, or None."""
+def _ph_match(query, min_score=2):
+    """Best Poly Haven model id for a text query, by keyword overlap. Returns
+    None below `min_score` so a weak match (e.g. a lantern for 'perfume bottle')
+    is rejected and the caller can fall back to primitives."""
     cat = _ph_catalog()
     words = set(_re.findall(r"[a-z0-9]+", query.lower()))
     words |= {_PH_SYNONYMS[w] for w in list(words) if w in _PH_SYNONYMS}
@@ -436,7 +438,7 @@ def _ph_match(query):
         score = len(words & set(_re.findall(r"[a-z0-9]+", hay)))
         if score > best_score:
             best, best_score = aid, score
-    return best
+    return best if best_score >= min_score else None
 
 
 def _ph_download(aid, res="1k"):

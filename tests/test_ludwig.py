@@ -167,6 +167,18 @@ def test_agentic_off_by_default():
     assert ludwig.AGENTIC is False  # agentic is strictly opt-in (--agentic)
 
 
+def test_assets_mode_injects_l_asset_instruction():
+    saved = ludwig.ASSETS_MODE
+    try:
+        ludwig.ASSETS_MODE = False
+        assert "L_asset" not in ludwig._codegen_prompt("a vase")
+        ludwig.ASSETS_MODE = True
+        p = ludwig._codegen_prompt("a vase")
+        assert "L_asset(" in p and "if obj is None" in p  # asset call + primitive fallback
+    finally:
+        ludwig.ASSETS_MODE = saved
+
+
 def test_agent_refine_prompt_has_done_protocol_and_fields():
     p = ludwig.AGENT_REFINE.format(brief="a vase", png="/r/x.png", code="import bpy")
     assert "DONE" in p and "a vase" in p and "/r/x.png" in p and "import bpy" in p

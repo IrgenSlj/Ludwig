@@ -313,9 +313,33 @@ VARIANTS = [
     "Interpretation D: a more graphic, stylized composition with confident color.",
 ]
 
+# Injected when --assets is on: prefer real retrieved meshes over sculpted ones.
+ASSETS_MODE = os.environ.get("LUDWIG_ASSETS") == "1"
+ASSETS_INSTRUCTION = textwrap.dedent("""\
+
+    ASSET MODE — prefer REAL retrieved meshes over hand-built primitives:
+    - For the MAIN subject (and any real-world prop), call
+        obj = L_asset("<short noun>", location=(x, y, 0), max_dim=<size in units>)
+      which finds a real, already-textured CC0 mesh, imports it, scales it to
+      ~max_dim, centers it at location and seats it on the floor. Use a SHORT
+      noun query: "bar stool", "desk lamp", "ceramic vase", "office chair".
+    - L_asset returns None when no good match exists. You MUST guard and fall
+      back to building that object from primitives when it does:
+          obj = L_asset("bar stool", max_dim=2.5)
+          if obj is None:
+              obj = ...  # build it from primitives with L_pbr/L_apply as usual
+    - Do NOT call L_apply/L_pbr on an object returned by L_asset — it already has
+      real PBR materials. Only material primitives you build yourself.
+    - Everything else is the same: L_reset() first, then L_ground(...),
+      L_lighting('<mood>'), and L_autocam(...) to frame it.
+""")
+
 
 def _codegen_prompt(brief, *, variant=None, critique=None, prior_code=None, error=None):
-    parts = [CODEGEN_BRIEF, f"\nCREATIVE BRIEF:\n{brief}\n"]
+    parts = [CODEGEN_BRIEF]
+    if ASSETS_MODE:
+        parts.append(ASSETS_INSTRUCTION)
+    parts.append(f"\nCREATIVE BRIEF:\n{brief}\n")
     if variant is not None:
         parts.append(f"\nTake this distinct creative direction:\n{VARIANTS[variant % len(VARIANTS)]}\n")
     if error and prior_code:
@@ -687,8 +711,8 @@ def _latest_record(mode):
 def run_eval(*, workers, stamp):
     os.makedirs(RENDERS, exist_ok=True)
     os.makedirs(EVAL_DIR, exist_ok=True)
-    mode = "agentic" if AGENTIC else "oneshot"
-    mode_label = f"{mode}×{AGENT_TURNS}t" if mode == "agentic" else mode
+    mode = "assets" if ASSETS_MODE else ("agentic" if AGENTIC else "oneshot")
+    mode_label = f"agentic×{AGENT_TURNS}t" if mode == "agentic" else mode
     print(f"\n=== Eval suite ({len(EVAL_BRIEFS)} briefs · mode={mode_label} · "
           f"model={AGENT_MODEL or 'default'} · provider={_provider_name()}) ===")
 
@@ -811,7 +835,7 @@ def selftest():
 
 
 def main():
-    global AGENTIC, AGENT_TURNS, AGENT_MODEL
+    global AGENTIC, AGENT_TURNS, AGENT_MODEL, ASSETS_MODE
     ap = argparse.ArgumentParser(description="Ludwig — AI-native 3D design (hardened loop)")
     ap.add_argument("brief", nargs="?", help="natural-language description of the scene")
     ap.add_argument("--edit", "-e", metavar="INSTRUCTION",
@@ -838,6 +862,9 @@ def main():
                     help="agentic worker (claude only): each candidate runs one "
                          "stateful session that VIEWS its own render and self-"
                          "corrects, instead of stateless one-shots.")
+    ap.add_argument("--assets", action="store_true",
+                    help="retrieve-and-arrange: prefer real CC0 Poly Haven meshes "
+                         "(L_asset) for subjects over sculpted primitives.")
     ap.add_argument("--agent-turns", type=int, default=AGENT_TURNS, metavar="N",
                     help=f"self-correction turns per agentic candidate (default {AGENT_TURNS})")
     ap.add_argument("--model", metavar="ALIAS",
@@ -853,6 +880,8 @@ def main():
         AGENT_MODEL = args.model
     if args.agentic:
         AGENTIC = True
+    if args.assets:
+        ASSETS_MODE = True
 
     if args.selftest:
         selftest()
