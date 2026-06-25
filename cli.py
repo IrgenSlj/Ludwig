@@ -68,6 +68,16 @@ def selftest() -> int:
         rate, _ = harness.run(reference.build)
         check("eval pass-rate harness reports 100% on the oracle", rate == 1.0, f"got {rate:.2f}")
 
+        import tempfile
+        from backends import step as step_backend
+        with tempfile.TemporaryDirectory() as td:
+            sp = step_backend.compile(bracket, td)
+            rl, rw, rh = step_backend.reimport_bbox(sp)
+            check("STEP round-trips through OCCT (FreeCAD-openable)",
+                  sp.exists() and sp.stat().st_size > 0
+                  and abs(rl - 80) <= tol and abs(rw - 40) <= tol and abs(rh - 6) <= tol,
+                  f"reimport bbox {rl:.3f}×{rw:.3f}×{rh:.3f}")
+
     ok = all(passed for _, passed, _ in checks)
     for label, passed, detail in checks:
         mark = "ok  " if passed else "FAIL"
@@ -131,8 +141,20 @@ def compile_prompt(prompt: str, *, rounds: int = 2) -> int:
           f"{len(res.ir.manifest)} named dims · {res.rounds} repair round(s)")
     for c in (res.critique.checks if res.critique else []):
         print(f"  [{c.status.value:4}] {c.check}" + (f" — {c.message}" if c.message else ""))
-    print("OK — compiled to a valid solid")
-    return 0
+
+    # Persist the recipe (the source of truth) and, if the critic passed, the STEP deliverable.
+    from pathlib import Path
+    from backends import step as step_backend
+    out = Path("out")
+    out.mkdir(exist_ok=True)
+    recipe = out / f"{res.ir.id}.py"
+    recipe.write_text(res.program + "\n")
+    if res.passed:  # pre-export validation hook (BRIEF §5): no fabrication file leaves on a failing critic
+        step_path = step_backend.compile(res.ir, out)
+        print(f"\nwrote recipe {recipe} · STEP {step_path}")
+        return 0
+    print(f"\nwrote recipe {recipe} · STEP withheld — critic not all-pass (fabrication gate)")
+    return 1
 
 
 def main(argv: list[str]) -> int:
