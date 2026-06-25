@@ -8,7 +8,7 @@ Legend: **Gate** = the demonstrable thing that proves the session is done.
 
 ---
 
-## S1 — Re-foundation reset  ✅ (this session)
+## S1 — Re-foundation reset (this session)
 Tag `mesh-era-m4`; branch `refoundation`. Finalize the founding doc (BRIEF.md) with the 7 hardening
 edits. Rewrite CLAUDE.md / README. Build the `ir/ geometry/ backends/ critic/ agent/ toolkit/ prompts/
 store/` skeleton as importable stubs. Salvage the provider-blind inference (`agent/inference.py`) and the
@@ -17,7 +17,7 @@ store/` skeleton as importable stubs. Salvage the provider-blind inference (`age
 
 ## P0 — The spine
 
-### S2 — IR core + geometry service + the pass-rate instrument  ✅
+### S2 — IR core + geometry service + the pass-rate instrument
 `Element/Part`, `Param` (unit-carrying), `Relation`, `NamedDim`, `ProgramNode`. `BRepHandle` + the
 CadQuery/OCCT service (lazy). The thin `toolkit/` element-API seed (box, hole, register-dim).
 **[H6]** Stand up the frozen held-out brief set + the `first-pass geometric pass-rate` harness in `eval/`.
@@ -26,7 +26,7 @@ CadQuery/OCCT service (lazy). The thin `toolkit/` element-API seed (box, hole, r
 `cli.py --eval` reports the pass-rate (100% on the reference oracle over a 5-brief frozen set), standards.yaml
 resolves clearance holes (M8→⌀9.0). The LLM codegen builder replaces the oracle in **S3** — then the number gets real.
 
-### S3 — The loop  ✅
+### S3 — The loop
 Port the provider-blind inference into a real `agent/loop.py`: codegen → execute → (provisional verify) → repair,
 pointed at the IR. `prompts/codegen.md` + `prompts/repair.md`. Cheap-model codegen, seam unchanged.
 **Gate:** prompt → generated CadQuery program → executed IR for the bracket, end to end, headless.
@@ -35,7 +35,7 @@ pointed at the IR. `prompts/codegen.md` + `prompts/repair.md`. Cheap-model codeg
 ([H1] confirmed; see `docs/FINDINGS.md`). Loop tests run token-free via mocked inference. Verify is provisional —
 the real critic panel is S4.
 
-### S4 — Deterministic critic v0  ✅
+### S4 — Deterministic critic v0
 The verifier panel: `geometric` (OCCT manifold/watertight via BRepCheck), `dimensional` (named-dim exact, 1e-6),
 `semantic` (units present, no orphan geometry, declared hole count). A `critic.panel` registry aggregates them;
 the loop calls it and stays panel-agnostic — adding a critic is `register(...)`, not a loop change ([H4]).
