@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from agent import inference
-from critic.base import CheckResult, Critique, Status
+from critic.base import Critique
 from ir.elements import Element
 
 _PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
@@ -141,27 +141,10 @@ def execute(program: str) -> tuple[Optional[Element], Optional[str]]:
 
 
 def verify(el: Element, brief: Brief) -> Critique:
-    """PROVISIONAL geometric/dimensional verifier (S3). Replaced by the critic panel in S4."""
-    from geometry import GeometryService
-    from toolkit.standards import bbox_gate
-
-    g = GeometryService()
-    tol = bbox_gate()
-    checks: list[CheckResult] = []
-    length, width, height = g.bbox(el.geometry)
-    built = {"length": length, "width": width, "height": height}
-    for name, want in brief.named_dims.items():
-        have = built.get(name)
-        ok = have is not None and abs(have - want) <= tol
-        checks.append(CheckResult(f"dim:{name}", Status.PASS if ok else Status.FAIL,
-                                  "" if ok else f"declared {want}, built {have}", el.id))
-    if brief.holes is not None:
-        n = g.cylindrical_face_count(el.geometry)
-        checks.append(CheckResult("hole_count", Status.PASS if n == brief.holes else Status.FAIL,
-                                  "" if n == brief.holes else f"declared {brief.holes}, built {n}", el.id))
-    checks.append(CheckResult("solid_valid",
-                              Status.PASS if g.is_valid(el.geometry) else Status.FAIL, "", el.id))
-    return Critique(checks=checks)
+    """Run the deterministic critic PANEL (BRIEF §6). The loop is panel-agnostic — adding a critic
+    is `critic.panel.register(...)`, never a change here (BRIEF §0 gate / [H4])."""
+    from critic import panel
+    return panel.evaluate(el, brief)
 
 
 # --------------------------------------------------------------------------- #

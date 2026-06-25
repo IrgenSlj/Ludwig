@@ -76,11 +76,12 @@ def selftest() -> int:
     return 0 if ok else 1
 
 
-def run_eval(*, live: bool = False) -> int:
+def run_eval(*, live: bool = False, repair: bool = False) -> int:
     """First-pass geometric pass-rate over the frozen held-out brief set ([H6]).
 
-    Default uses the deterministic reference oracle (no tokens). `--live` swaps in real LLM codegen
-    (`eval.llm.build`) — the actual measurement of how reliably the model writes correct CadQuery.
+    Default uses the deterministic reference oracle (no tokens). `--live` swaps in real LLM codegen;
+    `--live --repair` measures the post-repair rate (the full loop + critic panel) — the number that
+    reflects what the loop actually ships.
     """
     try:
         import cadquery  # noqa: F401
@@ -91,7 +92,10 @@ def run_eval(*, live: bool = False) -> int:
     from eval import harness
     if live:
         from eval import llm as builder_mod
-        builder, label = builder_mod.build, "LIVE LLM codegen, first-pass"
+        if repair:
+            builder, label = builder_mod.build_repaired, "LIVE LLM codegen, post-repair"
+        else:
+            builder, label = builder_mod.build, "LIVE LLM codegen, first-pass"
     else:
         from eval import reference
         builder, label = reference.build, "reference oracle"
@@ -100,7 +104,7 @@ def run_eval(*, live: bool = False) -> int:
     for bid, ok in results:
         print(f"  [{'ok  ' if ok else 'FAIL'}] {bid}")
     passed = sum(o for _, o in results)
-    print(f"first-pass geometric pass-rate ({label}): {rate * 100:.0f}%  ({passed}/{len(results)})")
+    print(f"geometric pass-rate ({label}): {rate * 100:.0f}%  ({passed}/{len(results)})")
     return 0 if rate == 1.0 else 1
 
 
@@ -135,7 +139,7 @@ def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         return selftest()
     if "--eval" in argv:
-        return run_eval(live="--live" in argv)
+        return run_eval(live="--live" in argv, repair="--repair" in argv)
     prompts = [a for a in argv if not a.startswith("--")]
     if prompts:
         return compile_prompt(prompts[0])
