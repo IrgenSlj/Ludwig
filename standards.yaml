@@ -1,0 +1,57 @@
+# standards.yaml — Ludwig's project-standards file (the CLAUDE.md analogue for geometry).
+#
+# The single highest-leverage file: it is how Ludwig knows what "a good part / drawing" means
+# for THIS practice. Codegen and the critic both consult it. Non-coders edit it.
+# Seeded from the mesh-era standards/{units,tolerances}.md; grows from real use, not speculatively.
+
+units:
+  length: mm                 # mm EVERYWHERE — units explicit and asserted (the #1 silent CAD bug)
+  angle: deg
+  assert_units: true         # every Param must carry a unit; codegen asserts this
+
+tolerances:
+  # dimensional verification tolerance — the critic checks named dims to this exactness
+  linear: 1.0e-6             # mm; "exact" for the dimensional critic
+  bbox_gate: 1.0e-3          # mm; P0 spine gate: bbox within ±this of declared
+  angular: 1.0e-4            # deg
+
+# Domain semantics codegen must consult rather than guess (BRIEF §10).
+# e.g. an "M8 clearance hole" is ⌀9.0, NOT ⌀8.0.
+clearance_holes_mm:          # ISO 273 "medium" fit: nominal -> drilled diameter
+  M3: 3.4
+  M4: 4.5
+  M5: 5.5
+  M6: 6.6
+  M8: 9.0
+  M10: 11.0
+  M12: 13.5
+  M16: 17.5
+  M20: 22.0
+
+manufacturing:
+  min_wall_mm: 1.5           # P0 heuristic only — NEVER a P0 gate (OCCT booleans fail here); real analysis P1
+  default_material: steel
+
+# Drawing conventions — line-weight hierarchy for the drawing backend (P0.5 → conventioned P2).
+drawing:
+  line_weights_mm:
+    cut: 0.50
+    visible: 0.35
+    hidden: 0.18
+    dimension: 0.13
+  hlr_algorithm: exact       # exact | polygonal — toggle; polygonal is faster/more robust, faceted curves
+
+# IR -> IFC type mapping seed (P1+). Grows as SpatialElement types arrive.
+ifc_map:
+  Part: IfcBuildingElementProxy
+  Panel: IfcWall            # precast wall panel; IFC4precast refinement in P1
+  Profile: IfcMember
+  Wall: IfcWall
+  Slab: IfcSlab
+  Column: IfcColumn
+  Beam: IfcBeam
+
+# Inference policy (provider-blind; never sell inference). Model tiering per BRIEF §5.
+inference:
+  codegen_tier: cheap        # bulk candidate generation
+  critic_tier: best          # the verifier / hard reasoning gets the strongest model

@@ -1,35 +1,57 @@
 # CLAUDE.md — working instructions for Ludwig
 
 ## What Ludwig is
-An AI-native design tool: a prompt becomes a **generated, editable program** (the source of
-truth), run through a self-correcting loop — `generate → run → evaluate → repair` — that keeps
-the best result. Today the engine is **Blender** (Python `bpy`) and the evaluator is a **vision
-critic**; both are designed to be swappable (CadQuery/IFC engines, geometry/schema validators).
+**AI-native precision design.** You describe what you want; Ludwig **compiles** a precise,
+parametric model — a typed semantic IR owning exact OCCT B-rep geometry — verifies it is correct
+and fabricable with a **deterministic critic**, and emits the derived backends (STEP/IFC for fab+BIM,
+DXF/SVG drawings, render, presentation). The model is a **re-promptable program**, never an opaque
+file. The loop is `generate → verify → repair`. Engine, backends, and critic are all swappable.
+
+> Ludwig is a **compiler**: natural language + a hierarchical program → the IR (the truth) →
+> derived backends. CadQuery/OCCT is the geometry *service*; IFC/STEP are *backends*; neither is
+> the truth. See **[BRIEF.md](BRIEF.md)** — the founding architecture & roadmap. Read it first, every session.
 
 ## The plan of record
-**[BRIEF.md](BRIEF.md) is the working spec.** It defines the architecture, the core contracts
-(`ToolAdapter`, `Sensor`), and the milestone roadmap (M0–M6). Read it before any structural work.
+**[BRIEF.md](BRIEF.md)** is the spec (architecture, first principles, P0–P4). **[docs/ROADMAP_SESSIONS.md](docs/ROADMAP_SESSIONS.md)**
+sequences the work session-by-session. **[docs/UX_BRIEF.md](docs/UX_BRIEF.md)** is the P3 UI/UX seam.
 
-## Milestone discipline (non-negotiable)
-- **One milestone per branch/PR.** Implement only the current M{n} deliverable; do not start M{n+1}.
-- **Strangler-fig:** wrap the working `ludwig.py`, don't rewrite it. The contracts refactor is M4 —
-  until then, new code (the daemon) imports `ludwig.py` thinly.
-- **The gate at every milestone:** `python3 ludwig.py --selftest` stays green (pure-Python unit
-  suite + a real Blender render through the toolkit, ~2s, no LLM tokens), and the eval harness
-  (`python3 ludwig.py --eval`) stays runnable. `cli/`-equivalent CLI back-compat must not break.
-- After M4, a new engine/sensor must be addable **without modifying the orchestrator**. If it can't,
-  the contracts are wrong — fix the contracts, not the loop.
+## Phase discipline (non-negotiable)
+- **One session deliverable per branch/PR.** Implement only the current session's slice; do not skip ahead.
+- **The gate at every phase:** `python3 cli.py --selftest` stays green (pure-Python checks; later, a real
+  OCCT build through the toolkit), and the eval harness (`first-pass geometric pass-rate` over a frozen
+  held-out brief set) stays runnable. CLI back-compat must not break.
+- After the contracts exist, a new **backend** or **critic** must be addable **without modifying the loop**.
+  If it can't, the contracts are wrong — fix the contracts, not the loop.
+- **Grow the IR from real use.** Add a type or op only when a brief/critic finding demands it. Never pre-build the ontology.
 
-## Key facts about the current code
-- `ludwig.py` — orchestrator + loop. `run(brief, *, candidates, rounds, target, workers)` returns
-  the winning `{code, critique, score, png, hero}`. `run_edit(from_path, instruction)` is the
-  re-prompt path. `selftest()` is the regression guard. Importable as a module.
-- `ludwig_blender_lib.py` — the `L_*` realism toolkit, prepended to every generated scene.
-- `eval/` — frozen brief suite + `results.jsonl` history; the measured quality signal.
-- Inference is **bring-your-own** via a CLI on `PATH` (`claude` default, `opencode` pluggable).
-  **Never sell/hardcode inference** — BYO stays free forever.
+## Locked conventions (from BRIEF §10 — do not relitigate without sign-off)
+- **mm everywhere, units explicit and asserted.** The #1 silent CAD bug.
+- **Codegen targets raw CadQuery + a thin element-API side-car** that registers named dims into the
+  manifest. **Measure raw-vs-wrapped first-pass geometric pass-rate before expanding the wrapper.**
+  Do NOT mandate "element-API only" — it trades away reliability we can't spare (~50% first-pass).
+- **`--edit` must produce a minimal diff.** A rewrite-on-edit is a bug; editability is the whole thesis.
+- **References are by program lineage, never persistent kernel handle.** Topological naming is the CAD rewrite trap.
+- **Domain semantics live in `standards.yaml`** (e.g. M8 clearance hole = ⌀9.0). Codegen consults it.
+- **Deterministic-first critic.** Vision is demoted to soft, pairwise, aesthetic-only, render-backend-only.
+- **Provider-blind, local-first, BYO inference** via the thin CLI seam (`agent/inference.py`). Never sell inference.
+  Cheap model for bulk codegen; best model reserved for the critic / hard reasoning.
+- **Trusted toolkit only.** No untrusted third-party skills/plugins (a tool that emits fabrication files
+  cannot execute untrusted code).
+- **Measure, don't assert.** Back claims with a pass-rate run, not vibes (`docs/FINDINGS.md`).
+
+## Key facts about the current code (P0 skeleton — being filled in)
+- `ir/` — the typed element model (`Element`, `Param`, `Relation`, `NamedDim`, `ProgramNode`, crystallization).
+- `geometry/` — the OCCT/CadQuery service + `BRepHandle` (heavy deps imported lazily).
+- `backends/` — derived projections; `render_toolkit.py` is the salvaged `L_*` Blender toolkit (P1 render backend).
+- `critic/` — the deterministic verifier panel.
+- `agent/` — `inference.py` (the provider-blind seam, salvaged) + `loop.py` (generate→verify→repair).
+- `toolkit/` — the thin element-API codegen registers against.
+- `cli.py` — entry + `--selftest`. `standards.yaml` — the project-standards file.
 
 ## Conventions
-- Python 3.11+ (dev env is 3.14). Keep the core dependency-light; the daemon may add FastAPI/SQLite.
-- `renders/` and `__pycache__/` are gitignored; generated artifacts don't get committed.
-- Quality is **measured, not asserted** — back claims with an eval run, not vibes (see docs/FINDINGS.md).
+- Python 3.11+ (dev env is 3.14). Core stays dependency-light; heavy kernels (cadquery, ifcopenshell, bpy)
+  are imported lazily inside the modules that need them, never at package import time (keeps `--selftest`/CI green
+  before they're installed).
+- `renders/`, build artifacts, and `__pycache__/` are gitignored; generated artifacts don't get committed.
+- **The recoverable history of the mesh era is the git tag `mesh-era-m4`.** Anything deleted in the
+  re-foundation is one `git checkout mesh-era-m4 -- <path>` away.

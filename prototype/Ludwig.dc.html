@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{ --amber:#C2913B; --red:#B5462E; --teal:#3C8C78; }
+  .lud *{ box-sizing:border-box; }
+  .lud[data-theme="light"]{
+    --canvas:#F2EEE6; --surface:#F7F4ED; --surface2:#ECE7DC;
+    --ink:#262320; --ink2:#6E675B; --ink3:#A39B8C; --hairline:rgba(38,35,30,.16);
+    --hairline2:rgba(38,35,30,.08); --accent:#262320; --glass:rgba(247,244,237,.86);
+    --amber:#B5852E; --red:#AB4029; --teal:#347B68;
+  }
+  .lud[data-theme="dark"]{
+    --canvas:#201D1A; --surface:#272320; --surface2:#1A1714;
+    --ink:#EBE6DC; --ink2:#9B9488; --ink3:#5F594F; --hairline:rgba(235,230,220,.16);
+    --hairline2:rgba(235,230,220,.07); --accent:#EBE6DC; --glass:rgba(39,35,32,.82);
+    --amber:#CE9C45; --red:#C2543B; --teal:#52A88F;
+  }
+  @keyframes lud-blink{ 0%,100%{opacity:1} 50%{opacity:0} }
+  @keyframes lud-rise{ from{transform:translateY(9px)} to{transform:translateY(0)} }
+  @keyframes lud-spin{ to{ transform:rotate(360deg) } }
+  @keyframes lud-pulse{ 0%,100%{opacity:.4} 50%{opacity:1} }
+  .lud input[type=range]{ -webkit-appearance:none; appearance:none; height:2px; background:var(--hairline); border-radius:0; outline:none; }
+  .lud input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:10px; height:16px; background:var(--ink); border-radius:1px; cursor:ew-resize; }
+  .lud input[type=range]::-moz-range-thumb{ width:10px; height:16px; background:var(--ink); border:none; border-radius:1px; cursor:ew-resize; }
+  .lud-scroll::-webkit-scrollbar{ width:6px; } .lud-scroll::-webkit-scrollbar-thumb{ background:var(--hairline); }
+</style>
+</helmet>
+<div class="lud" data-theme="{{ theme }}" style="position:fixed; inset:0; background:var(--canvas); color:var(--ink); font-family:'Hanken Grotesk',system-ui,sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased;">
+
+  <div ref="{{ setStage }}" style="position:absolute; inset:0; cursor:grab;"></div>
+
+  <sc-if value="{{ showEmpty }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; gap:18px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.32em; color:var(--ink3);">EMPTY STAGE</div>
+      <div style="font-size:30px; font-weight:500; letter-spacing:-.015em; color:var(--ink2); max-width:520px; text-align:center; line-height:1.25;">Describe what you want to build.</div>
+      <div style="display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink3); letter-spacing:.08em;">PRESS <span style="border:1px solid var(--hairline); border-radius:4px; padding:3px 7px; color:var(--ink2);">⌘ K</span> TO DESCRIBE</div>
+    </div>
+  </sc-if>
+
+  <!-- TOP BAR -->
+  <div style="position:absolute; top:0; left:0; right:0; height:46px; display:flex; align-items:center; justify-content:space-between; padding:0 16px; z-index:20;">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div style="font-weight:700; font-size:14px; letter-spacing:.34em; padding-left:.34em;">LUDWIG</div>
+      <div style="width:1px; height:14px; background:var(--hairline);"></div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink2); letter-spacing:.04em;">{{ projectLabel }}</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <div style="display:flex; border:1px solid var(--hairline); border-radius:6px; overflow:hidden; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em;">
+        <div onClick="{{ setMassing }}" style="padding:6px 11px; cursor:pointer; background:{{ massingBg }}; color:{{ massingFg }};">MASSING</div>
+        <div onClick="{{ setPart }}" style="padding:6px 11px; cursor:pointer; background:{{ partBg }}; color:{{ partFg }}; border-left:1px solid var(--hairline);">PART</div>
+      </div>
+      <div onClick="{{ toggleTheme }}" style="display:flex; align-items:center; justify-content:center; width:30px; height:28px; border:1px solid var(--hairline); border-radius:6px; cursor:pointer; font-size:13px; color:var(--ink2);">{{ themeGlyph }}</div>
+    </div>
+  </div>
+
+  <!-- VERIFIER READOUT -->
+  <sc-if value="{{ compiled }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute; top:58px; left:16px; z-index:18; display:flex; flex-direction:column; gap:6px; animation:lud-rise .5s ease both;">
+      <div style="display:flex; align-items:center; gap:8px; padding:7px 11px; background:var(--glass); border:1px solid var(--hairline); border-radius:7px; backdrop-filter:blur(8px);">
+        <div style="width:7px; height:7px; border-radius:50%; background:{{ statusColor }};"></div>
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.04em; color:var(--ink);">{{ verifierLabel }}</div>
+      </div>
+      <div style="display:flex; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.05em;">
+        <div style="display:flex; align-items:center; gap:5px; padding:4px 8px; background:var(--glass); border:1px solid var(--hairline); border-radius:6px;"><span style="color:var(--teal);">●</span><span style="color:var(--ink2);">{{ verifier.verified }} OK</span></div>
+        <div style="display:flex; align-items:center; gap:5px; padding:4px 8px; background:var(--glass); border:1px solid var(--hairline); border-radius:6px;"><span style="color:var(--amber);">●</span><span style="color:var(--ink2);">{{ verifier.warnings }} WARN</span></div>
+        <div style="display:flex; align-items:center; gap:5px; padding:4px 8px; background:var(--glass); border:1px solid var(--hairline); border-radius:6px;"><span style="color:var(--red);">●</span><span style="color:var(--ink2);">{{ verifier.fails }} FAIL</span></div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- PROGRAM OUTLINE (left) -->
+  <sc-if value="{{ outlineOpen }}" hint-placeholder-val="{{ false }}">
+    <div class="lud-scroll" style="position:absolute; top:140px; left:16px; bottom:90px; width:248px; z-index:16; background:var(--glass); border:1px solid var(--hairline); border-radius:9px; backdrop-filter:blur(10px); display:flex; flex-direction:column; overflow:hidden; animation:lud-rise .35s ease both;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid var(--hairline2);">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.2em; color:var(--ink2);">PROGRAM</div>
+        <div onClick="{{ closeOutline }}" style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink3); cursor:pointer; line-height:1;">×</div>
+      </div>
+      <div class="lud-scroll" style="overflow-y:auto; padding:5px 0;">
+        <sc-for list="{{ outlineNodes }}" as="node" hint-placeholder-count="6">
+          <div onClick="{{ node.onClick }}" style="display:flex; align-items:center; gap:8px; padding:5px 13px 5px {{ node.pad }}; cursor:pointer; background:{{ node.bg }}; border-left:2px solid {{ node.bar }};">
+            <div style="width:5px; height:5px; border-radius:1px; background:{{ node.dot }}; flex:0 0 auto;"></div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.02em; color:{{ node.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ node.label }}</div>
+            <div style="flex:1 0 auto;"></div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--ink3);">{{ node.tag }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ACTIVITY RAIL (right) -->
+  <sc-if value="{{ railOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; top:58px; right:16px; bottom:90px; width:258px; z-index:16; background:var(--glass); border:1px solid var(--hairline); border-radius:9px; backdrop-filter:blur(10px); display:flex; flex-direction:column; overflow:hidden; animation:lud-rise .35s ease both;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid var(--hairline2);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.2em; color:var(--ink2);">ACTIVITY</div>
+          <sc-if value="{{ agentBusy }}" hint-placeholder-val="{{ false }}"><div style="width:9px; height:9px; border:1.5px solid var(--hairline); border-top-color:var(--ink2); border-radius:50%; animation:lud-spin .8s linear infinite;"></div></sc-if>
+        </div>
+        <div onClick="{{ toggleRail }}" style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink3); cursor:pointer; line-height:1;">×</div>
+      </div>
+      <div class="lud-scroll" style="overflow-y:auto; padding:6px 0; flex:1;">
+        <sc-for list="{{ activityItems }}" as="a" hint-placeholder-count="4">
+          <div style="display:flex; gap:10px; padding:7px 14px; animation:lud-rise .3s ease both;">
+            <div style="display:flex; flex-direction:column; align-items:center; padding-top:2px;">
+              <div style="width:8px; height:8px; border-radius:50%; background:{{ a.dotBg }}; border:1.5px solid {{ a.dotBorder }};"></div>
+              <div style="width:1px; flex:1; background:var(--hairline2); margin-top:4px;"></div>
+            </div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:12px; color:{{ a.fg }}; line-height:1.35;">{{ a.label }}</div>
+              <sc-if value="{{ a.detail }}" hint-placeholder-val="{{ false }}"><div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--ink3); margin-top:2px; letter-spacing:.02em;">{{ a.detail }}</div></sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:10px 13px; border-top:1px solid var(--hairline2); font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--ink3); letter-spacing:.05em; display:flex; justify-content:space-between;">
+        <span>{{ activityStatus }}</span><span onClick="{{ openIntent }}" style="cursor:pointer; color:var(--ink2);">+ STEER</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- SELECTION PARAM PANEL -->
+  <sc-if value="{{ hasSelection }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; left:280px; bottom:96px; width:300px; z-index:17; background:var(--glass); border:1px solid var(--hairline); border-radius:9px; backdrop-filter:blur(10px); overflow:hidden; animation:lud-rise .3s ease both;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 13px; border-bottom:1px solid var(--hairline2);">
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.18em; color:var(--ink3);">{{ sel.kind }}</div>
+          <div style="font-size:14px; font-weight:600; letter-spacing:-.01em;">{{ sel.label }}</div>
+        </div>
+        <div onClick="{{ clearSelection }}" style="font-family:'IBM Plex Mono',monospace; font-size:14px; color:var(--ink3); cursor:pointer; line-height:1;">×</div>
+      </div>
+      <div style="padding:6px 13px 12px;">
+        <sc-for list="{{ sel.params }}" as="p" hint-placeholder-count="3">
+          <div style="padding:9px 0; border-bottom:1px solid var(--hairline2);">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:7px;">
+              <span style="font-size:12px; color:var(--ink2);">{{ p.name }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:500; color:var(--ink);">{{ p.display }}</span>
+            </div>
+            <input type="range" min="{{ p.min }}" max="{{ p.max }}" step="{{ p.step }}" value="{{ p.value }}" onInput="{{ p.onInput }}" onPointerDown="{{ p.onGrab }}" onPointerUp="{{ p.onRelease }}" style="width:100%;" />
+          </div>
+        </sc-for>
+        <div style="display:flex; align-items:center; gap:7px; margin-top:11px; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--ink3); letter-spacing:.04em;">
+          <span style="color:{{ cascadeColor }};">◇</span><span>{{ cascadeNote }}</span>
+        </div>
+        <div style="margin-top:8px; font-size:11px; color:var(--ink3); line-height:1.4;">Shaped by: <span style="color:var(--ink2);">{{ sel.provenance }}</span></div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- CRYSTALLIZATION CHIP -->
+  <sc-if value="{{ showCrystal }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; right:290px; bottom:96px; z-index:17; background:var(--glass); border:1px solid var(--hairline); border-radius:9px; backdrop-filter:blur(10px); padding:11px 13px; width:212px; animation:lud-rise .3s ease both;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:9px;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.18em; color:var(--ink3);">CRYSTALLIZATION</div>
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink);">{{ crystalPct }}</div>
+      </div>
+      <div style="height:3px; background:var(--hairline); border-radius:2px; overflow:hidden; margin-bottom:10px;">
+        <div style="height:100%; width:{{ crystalPct }}; background:var(--ink2);"></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:7px; margin-bottom:11px; font-size:11px; color:var(--ink2);">
+        <span style="display:inline-block; width:8px; height:8px; border:1px dashed var(--ink3);"></span><span>{{ looseLabel }}</span>
+      </div>
+      <div onClick="{{ crystallize }}" style="text-align:center; padding:8px; border:1px solid var(--ink); border-radius:6px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.12em; color:var(--ink);">{{ crystalAction }}</div>
+    </div>
+  </sc-if>
+
+  <!-- BOTTOM: REPRESENTATION SWITCHER + DESCRIBE -->
+  <div style="position:absolute; bottom:18px; left:0; right:0; display:flex; align-items:center; justify-content:center; gap:12px; z-index:18;">
+    <sc-if value="{{ compiled }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--hairline); border-radius:9px; backdrop-filter:blur(10px); padding:4px; gap:2px;">
+        <sc-for list="{{ repItems }}" as="r" hint-placeholder-count="5">
+          <div onClick="{{ r.onClick }}" style="padding:8px 14px; border-radius:6px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; background:{{ r.bg }}; color:{{ r.fg }};">{{ r.label }}</div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <div onClick="{{ openIntent }}" style="display:flex; align-items:center; gap:9px; padding:10px 16px; background:var(--ink); color:var(--canvas); border-radius:9px; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,.14);">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:13px;">⌘K</span>
+      <span style="font-size:13px; font-weight:500;">{{ describeLabel }}</span>
+    </div>
+  </div>
+
+  <!-- INTENT BAR OVERLAY -->
+  <sc-if value="{{ intentOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeIntent }}" style="position:absolute; inset:0; z-index:40; background:rgba(20,18,16,.32); backdrop-filter:blur(3px); display:flex; align-items:flex-start; justify-content:center; padding-top:18vh;">
+      <div onClick="{{ stop }}" style="width:640px; max-width:90vw; background:var(--surface); border:1px solid var(--hairline); border-radius:13px; box-shadow:0 24px 80px rgba(0,0,0,.3); overflow:hidden; animation:lud-rise .22s ease both;">
+        <div style="display:flex; align-items:center; gap:12px; padding:18px 20px;">
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink3);">›</span>
+          <input ref="{{ setIntentInput }}" value="{{ intentText }}" onInput="{{ onIntentInput }}" onKeyDown="{{ onIntentKey }}" placeholder="Describe the design, or a change to make…" style="flex:1; border:none; outline:none; background:transparent; font-family:'Hanken Grotesk',sans-serif; font-size:19px; color:var(--ink); font-weight:500;" />
+          <div onClick="{{ runIntent }}" style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--ink2); border:1px solid var(--hairline); border-radius:6px; padding:6px 9px; cursor:pointer;">COMPILE ⏎</div>
+        </div>
+        <div style="border-top:1px solid var(--hairline2); padding:9px 14px;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.18em; color:var(--ink3); padding:5px 6px;">SUGGESTED INTENT</div>
+          <sc-for list="{{ suggestions }}" as="s" hint-placeholder-count="3">
+            <div onClick="{{ s.onClick }}" style="display:flex; align-items:center; gap:10px; padding:9px 6px; border-radius:6px; cursor:pointer;" style-hover="background:var(--surface2);">
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink3);">{{ s.tag }}</span>
+              <span style="font-size:13px; color:var(--ink); flex:1;">{{ s.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    theme:'light', beachhead:'massing', rep:'3d',
+    intentOpen:false, intentText:'', compiled:false, compiling:false,
+    selected:null, outlineOpen:false, railOpen:false, showEmpty:true,
+    crystalLocked:false, grabbing:false,
+    params:{ floorH:3.6, floors:5, setback:0.55, thickness:0.22, opening:1.4, openH:1.6, rib:0.18 },
+    verifier:{ verified:8, warnings:1, fails:1 },
+    activity:[],
+  };
+
+  // ---------- refs ----------
+  setStage = (el)=>{ this.stageEl = el; };
+  setIntentInput = (el)=>{ this.intentEl = el; if(el) setTimeout(()=>el.focus(),30); };
+
+  componentDidMount(){
+    this.onKey = (e)=>{
+      if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); this.openIntent(); }
+      if(e.key==='Escape'){ this.setState({intentOpen:false}); }
+    };
+    window.addEventListener('keydown', this.onKey);
+    this.onResize = ()=> this.resize();
+    window.addEventListener('resize', this.onResize);
+    this.tweens = [];
+    this.cam = { az:0.85, pol:1.04, rad:34, tx:0, ty:9, tz:0 };
+    this.camT = { ...this.cam };
+    this.focusY = 9; this.fitRad = 34;
+    this.clipC = 999;
+    this.boot();
+  }
+  componentWillUnmount(){
+    window.removeEventListener('keydown', this.onKey);
+    window.removeEventListener('resize', this.onResize);
+    cancelAnimationFrame(this._raf);
+    if(this.renderer) this.renderer.dispose();
+  }
+
+  async boot(){
+    try{
+      const T = await import('https://unpkg.com/three@0.160.0/build/three.module.js');
+      this.T = T;
+      this.initScene();
+      this.loop();
+    }catch(err){ console.error('three load failed', err); }
+  }
+
+  // ---------- theme colors for 3D ----------
+  pal(){
+    const dark = this.state.theme==='dark';
+    return dark ? {
+      bg:0x201D1A, solid:0x3A352F, glass:0x4A443C, ink:0xC9C2B5,
+      amber:0xCE9C45, red:0xC2543B, teal:0x52A88F, ground:0x1A1714, light:0xF0EAdd
+    } : {
+      bg:0xF2EEE6, solid:0xDED8CC, glass:0xE9E4D9, ink:0x35302A,
+      amber:0xB5852E, red:0xAB4029, teal:0x347B68, ground:0xE6E0D4, light:0xFFFFFF
+    };
+  }
+
+  initScene(){
+    const T=this.T, el=this.stageEl;
+    const w=el.clientWidth||window.innerWidth, h=el.clientHeight||window.innerHeight;
+    const renderer=new T.WebGLRenderer({antialias:true, alpha:false, preserveDrawingBuffer:true});
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+    renderer.setSize(w,h);
+    renderer.localClippingEnabled=true;
+    renderer.shadowMap.enabled=true; renderer.shadowMap.type=T.PCFSoftShadowMap;
+    el.appendChild(renderer.domElement);
+    this.renderer=renderer;
+    const scene=new T.Scene(); this.scene=scene;
+    const cam=new T.PerspectiveCamera(34, w/h, 0.1, 400); this.camera=cam;
+    this.clip=new T.Plane(new T.Vector3(0,0,-1), 999);
+
+    this.hemi=new T.HemisphereLight(0xffffff, 0x808080, 0.55); scene.add(this.hemi);
+    this.dir=new T.DirectionalLight(0xffffff, 0.85);
+    this.dir.position.set(9,16,7); this.dir.castShadow=true;
+    this.dir.shadow.mapSize.set(2048,2048);
+    const d=22; const s=this.dir.shadow.camera; s.left=-d; s.right=d; s.top=d; s.bottom=-d; s.near=1; s.far=60;
+    this.dir.shadow.bias=-0.0004;
+    scene.add(this.dir);
+    this.fill=new T.DirectionalLight(0xffffff,0.18); this.fill.position.set(-8,5,-6); scene.add(this.fill);
+
+    this.modelGroup=new T.Group(); scene.add(this.modelGroup);
+    this.ground=null;
+
+    this.applyBg();
+    this.attachInput();
+    this.resize();
+    window.__ludwig=this;
+    window.__ludwigRender=()=>{ if(this.renderer){ this.stepTweens(); const c=this.cam; this.cam={...this.camT}; const x=c.tx+this.camT.rad*Math.sin(this.camT.pol)*Math.sin(this.camT.az), y=c.ty+this.camT.rad*Math.cos(this.camT.pol), z=c.tz+this.camT.rad*Math.sin(this.camT.pol)*Math.cos(this.camT.az); this.camera.position.set(this.camT.tx+this.camT.rad*Math.sin(this.camT.pol)*Math.sin(this.camT.az), this.camT.ty+this.camT.rad*Math.cos(this.camT.pol), this.camT.tz+this.camT.rad*Math.sin(this.camT.pol)*Math.cos(this.camT.az)); this.camera.lookAt(this.camT.tx,this.camT.ty,this.camT.tz); this.clip.constant=this.clipC; this.renderer.render(this.scene,this.camera); } };
+  }
+
+  applyBg(){
+    const p=this.pal();
+    this.scene.background=new this.T.Color(p.bg);
+    this.hemi.intensity = this.state.theme==='dark'?0.42:0.6;
+  }
+
+  // ---------- input: orbit + pick ----------
+  attachInput(){
+    const dom=this.renderer.domElement;
+    let down=false, lx=0, ly=0, moved=0;
+    dom.addEventListener('pointerdown',(e)=>{ down=true; lx=e.clientX; ly=e.clientY; moved=0; dom.setPointerCapture(e.pointerId); this.stageEl.style.cursor='grabbing'; });
+    dom.addEventListener('pointermove',(e)=>{
+      if(!down) return;
+      const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY; moved+=Math.abs(dx)+Math.abs(dy);
+      if(this.state.rep==='3d' || this.state.rep==='render'){
+        this.camT.az -= dx*0.006; this.camT.pol=Math.max(0.18,Math.min(1.5,this.camT.pol - dy*0.006));
+      } else {
+        this.camT.az -= dx*0.003;
+      }
+    });
+    const up=(e)=>{ if(!down) return; down=false; this.stageEl.style.cursor='grab';
+      if(moved<5) this.pick(e); };
+    dom.addEventListener('pointerup',up);
+    dom.addEventListener('pointercancel',()=>{down=false;});
+    dom.addEventListener('wheel',(e)=>{ e.preventDefault(); this.camT.rad=Math.max(8,Math.min(46,this.camT.rad*(1+e.deltaY*0.0012))); },{passive:false});
+  }
+
+  pick(e){
+    const T=this.T, r=this.renderer.domElement.getBoundingClientRect();
+    const m=new T.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
+    const rc=new T.Raycaster(); rc.setFromCamera(m,this.camera);
+    const hits=rc.intersectObjects(this.modelGroup.children,true).filter(h=>h.object.userData&&h.object.userData.nodeId);
+    if(hits.length){ this.selectNode(hits[0].object.userData.nodeId); }
+    else { this.clearSelection(); }
+  }
+
+  // ---------- geometry ----------
+  mat(color, opts={}){
+    const T=this.T; const p=this.pal();
+    return new T.MeshStandardMaterial({ color, roughness:opts.rough??0.92, metalness:0.0,
+      transparent:opts.transparent??false, opacity:opts.opacity??1,
+      clippingPlanes:[this.clip], clipShadows:true, side:opts.side||T.FrontSide,
+      emissive: opts.emissive!==undefined? new T.Color(opts.emissive):new T.Color(0x000000),
+      emissiveIntensity: opts.emissiveIntensity??0 });
+  }
+  edges(geo, color, opts={}){
+    const T=this.T;
+    const eg=new T.EdgesGeometry(geo, opts.thresh??18);
+    const lm = opts.dashed
+      ? new T.LineDashedMaterial({ color, dashSize:0.22, gapSize:0.16, transparent:true, opacity:opts.opacity??0.9, clippingPlanes:[this.clip] })
+      : new T.LineBasicMaterial({ color, transparent:true, opacity:opts.opacity??0.92, clippingPlanes:[this.clip] });
+    const ls=new T.LineSegments(eg, lm);
+    if(opts.dashed) ls.computeLineDistances();
+    return ls;
+  }
+  solidBox(g, w,hh,d, x,y,z, opts={}){
+    const T=this.T, p=this.pal();
+    const geo=new T.BoxGeometry(w,hh,d);
+    const mesh=new T.Mesh(geo, this.mat(opts.color??p.solid, opts));
+    mesh.position.set(x,y,z); mesh.castShadow=true; mesh.receiveShadow=true;
+    if(opts.nodeId) mesh.userData.nodeId=opts.nodeId;
+    g.add(mesh);
+    const e=this.edges(geo, opts.edgeColor??p.ink, {opacity:opts.edgeOpacity??0.9, dashed:opts.dashed});
+    e.position.copy(mesh.position); if(opts.nodeId) e.userData.nodeId=opts.nodeId;
+    g.add(e);
+    return mesh;
+  }
+
+  rebuild(reveal){
+    const T=this.T; if(!this.scene) return;
+    // dispose old
+    this.modelGroup.traverse(o=>{ if(o.geometry)o.geometry.dispose(); if(o.material){(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose());} });
+    this.modelGroup.clear();
+    if(this.ground){ this.scene.remove(this.ground); this.ground=null; }
+    const p=this.pal();
+    // ground / contact
+    const gMat=new T.MeshStandardMaterial({color:p.ground, roughness:1, metalness:0, transparent:true, opacity: this.state.rep==='render'?1:0.0});
+    this.ground=new T.Mesh(new T.PlaneGeometry(120,120), gMat);
+    this.ground.rotation.x=-Math.PI/2; this.ground.position.y=-0.01; this.ground.receiveShadow=true;
+    this.scene.add(this.ground);
+
+    if(this.state.beachhead==='massing') this.buildMassing();
+    else this.buildPart();
+
+    if(reveal){
+      this.frameModel();
+      this.modelGroup.position.y=-1.2; this.modelGroup.scale.set(1,0.001,1);
+      this.tween(this.modelGroup.position,'y',0,650);
+      this.tween(this.modelGroup.scale,'y',1,750);
+    }
+  }
+
+  frameModel(){
+    if(this.state.beachhead==='massing'){ this.focusY=(this.state.params.floorH*Math.round(this.state.params.floors))/2+0.6; this.fitRad=this.focusY*3.4; }
+    else { this.focusY=2.6; this.fitRad=15; }
+    this.camT.ty=this.focusY; this.cam.ty=this.focusY;
+    this.camT.rad=this.fitRad;
+  }
+
+  buildMassing(){
+    const T=this.T, p=this.pal(), P=this.state.params;
+    const N=Math.round(P.floors), fh=P.floorH, sb=P.setback;
+    let w=11, d=7.5;
+    // podium
+    this.solidBox(this.modelGroup, w+0.6, 0.7, d+0.6, 0, 0.35, 0, {nodeId:'podium', color:p.solid});
+    // core
+    this.solidBox(this.modelGroup, 2.4, fh*N+0.4, 2.0, -2.2, (fh*N)/2+0.6, -0.6, {nodeId:'core', color:p.glass, edgeOpacity:0.5});
+    for(let i=0;i<N;i++){
+      const y=0.7+ i*fh;
+      const fw=w - i*sb*0.5, fd=d - i*sb*0.5;
+      const looseTop = (!this.state.crystalLocked && i===N-1);
+      // slab
+      this.solidBox(this.modelGroup, fw+0.2, 0.26, fd+0.2, 0, y+0.13, 0, {nodeId:'floor', color:p.solid, dashed:looseTop, opacity:looseTop?0.5:1, transparent:looseTop, edgeOpacity:looseTop?0.55:0.92});
+      // glazed volume
+      const isAmber = (i===1); // facade panel below min thickness on level 2
+      this.solidBox(this.modelGroup, fw, fh-0.5, fd, 0, y+fh/2, 0, {
+        nodeId: isAmber?'facade':'floor',
+        color:p.glass, rough:0.7, transparent:true, opacity:looseTop?0.12:0.32,
+        edgeColor: isAmber? p.amber : p.ink, edgeOpacity: looseTop?0.4:(isAmber?0.95:0.6),
+        dashed:looseTop,
+        emissive: isAmber? p.amber: undefined, emissiveIntensity: isAmber?0.18:0
+      });
+      // verified room marker on level 1 (teal floor tint)
+      if(i===0){
+        const rm=new T.Mesh(new T.PlaneGeometry(fw*0.5, fd*0.6), new T.MeshBasicMaterial({color:p.teal, transparent:true, opacity:0.16, clippingPlanes:[this.clip]}));
+        rm.rotation.x=-Math.PI/2; rm.position.set(2.0, y+0.28, 0.4); rm.userData.nodeId='room';
+        this.modelGroup.add(rm);
+      }
+    }
+    // red clash marker: a small node where core meets podium
+    const clash=new T.Mesh(new T.SphereGeometry(0.32,16,16), new T.MeshBasicMaterial({color:p.red, transparent:true, opacity:0.9}));
+    clash.position.set(-2.2, 0.9, 0.45); clash.userData.nodeId='clash'; this.modelGroup.add(clash);
+    const ring=new T.Mesh(new T.RingGeometry(0.42,0.5,24), new T.MeshBasicMaterial({color:p.red, transparent:true, opacity:0.5, side:T.DoubleSide}));
+    ring.position.copy(clash.position); ring.lookAt(this.camera.position); this.modelGroup.add(ring); this.clashRing=ring;
+    this._dependents=['floor'];
+  }
+
+  buildPart(){
+    const T=this.T, p=this.pal(), P=this.state.params;
+    const W=6, H=4.4, th=P.thickness*4, ow=P.opening*1.4, oh=P.openH*1.4;
+    // panel shape with opening
+    const shape=new T.Shape();
+    shape.moveTo(-W/2,-H/2); shape.lineTo(W/2,-H/2); shape.lineTo(W/2,H/2); shape.lineTo(-W/2,H/2); shape.lineTo(-W/2,-H/2);
+    const hole=new T.Path();
+    const cx=0.6, cy=0.4;
+    hole.moveTo(cx-ow/2,cy-oh/2); hole.lineTo(cx+ow/2,cy-oh/2); hole.lineTo(cx+ow/2,cy+oh/2); hole.lineTo(cx-ow/2,cy+oh/2); hole.lineTo(cx-ow/2,cy-oh/2);
+    shape.holes.push(hole);
+    const geo=new T.ExtrudeGeometry(shape,{depth:th, bevelEnabled:false});
+    geo.center();
+    const mesh=new T.Mesh(geo, this.mat(p.solid,{rough:0.95}));
+    mesh.castShadow=true; mesh.receiveShadow=true; mesh.userData.nodeId='shell';
+    mesh.rotation.x=-0.0; mesh.position.y=H/2+0.3;
+    this.modelGroup.add(mesh);
+    const e=this.edges(geo,p.ink,{opacity:0.92}); e.position.copy(mesh.position); e.userData.nodeId='shell'; this.modelGroup.add(e);
+    // opening edge highlight (amber chamfer below spec) — draw ring of edges around hole via a thin frame
+    const fr=new T.Mesh(new T.BoxGeometry(ow,0.06,th+0.05), this.mat(p.amber,{emissive:p.amber, emissiveIntensity:0.25}));
+    fr.position.set(cx, H/2+0.3 + cy + oh/2, 0); fr.userData.nodeId='chamfer'; this.modelGroup.add(fr);
+    // perimeter rib (back)
+    const ribD=P.rib*3;
+    const rib=this.solidBox(this.modelGroup, W, H, ribD, 0, H/2+0.3, -(th/2+ribD/2), {nodeId:'rib', color:p.glass, rough:0.9, transparent:true, opacity:0.0, edgeOpacity:0.5});
+    // anchor inserts (verified teal)
+    [[-1.8,1.4],[1.8,1.4]].forEach((a,i)=>{
+      const an=new T.Mesh(new T.CylinderGeometry(0.18,0.18,th+0.2,20), this.mat(p.teal,{emissive:p.teal, emissiveIntensity:0.3}));
+      an.rotation.x=Math.PI/2; an.position.set(a[0], H/2+0.3 + a[1], 0); an.userData.nodeId='anchor'; this.modelGroup.add(an);
+    });
+    this._dependents=['shell'];
+  }
+
+  // ---------- tween ----------
+  tween(obj,key,to,ms,onDone){
+    const from=obj[key], t0=performance.now();
+    this.tweens.push({obj,key,from,to,ms,t0,onDone});
+  }
+  stepTweens(){
+    const now=performance.now();
+    this.tweens=this.tweens.filter(t=>{
+      const k=Math.min(1,(now-t.t0)/t.ms);
+      const e=1-Math.pow(1-k,3);
+      t.obj[t.key]=t.from+(t.to-t.from)*e;
+      if(k>=1){ if(t.onDone)t.onDone(); return false; } return true;
+    });
+  }
+
+  // ---------- loop ----------
+  loop(){
+    this._raf=requestAnimationFrame(()=>this.loop());
+    if(!this.renderer) return;
+    this.stepTweens();
+    const c=this.cam, ct=this.camT;
+    c.az+=(ct.az-c.az)*0.12; c.pol+=(ct.pol-c.pol)*0.12; c.rad+=(ct.rad-c.rad)*0.12;
+    c.tx+=(ct.tx-c.tx)*0.12; c.ty+=(ct.ty-c.ty)*0.12; c.tz+=(ct.tz-c.tz)*0.12;
+    const x=c.tx+c.rad*Math.sin(c.pol)*Math.sin(c.az);
+    const y=c.ty+c.rad*Math.cos(c.pol);
+    const z=c.tz+c.rad*Math.sin(c.pol)*Math.cos(c.az);
+    this.camera.position.set(x,y,z); this.camera.lookAt(c.tx,c.ty,c.tz);
+    this.clip.constant += (this.clipC-this.clip.constant)*0.1;
+    if(this.clashRing){ this.clashRing.lookAt(this.camera.position); const s=1+Math.sin(performance.now()*0.004)*0.12; this.clashRing.scale.set(s,s,s); }
+    // cascade pulse
+    if(this.state.grabbing){ const e=0.2+Math.abs(Math.sin(performance.now()*0.006))*0.5;
+      this.modelGroup.traverse(o=>{ if(o.isMesh && o.userData.nodeId && this._dependents.includes(o.userData.nodeId) && o.material.emissive){ o.material.emissiveIntensity=e*0.5; o.material.emissive.setHex(this.pal().ink); } });
+    }
+    this.renderer.render(this.scene,this.camera);
+  }
+
+  resize(){
+    if(!this.renderer||!this.stageEl) return;
+    const w=this.stageEl.clientWidth, h=this.stageEl.clientHeight;
+    this.renderer.setSize(w,h); this.camera.aspect=w/h; this.camera.updateProjectionMatrix();
+  }
+
+  // ---------- representation ----------
+  setRep(rep){
+    this.setState({rep, selected:null});
+    const views={
+      '3d':   {az:0.85,pol:1.04,rm:1.0,clip:999},
+      'plan': {az:0.0001,pol:0.06,rm:1.18,clip:999},
+      'section':{az:0.0001,pol:1.16,rm:0.92,clip:0.2},
+      'elev': {az:0.0001,pol:1.5,rm:1.0,clip:999},
+      'render':{az:0.62,pol:0.98,rm:0.92,clip:999},
+    };
+    const v=views[rep]; if(!v) return;
+    this.camT.az=v.az; this.camT.pol=v.pol; this.camT.rad=this.fitRad*v.rm; this.camT.ty=this.focusY;
+    if(rep==='section'){ this.clip.constant=12; this.clipC=v.clip; } else { this.clipC=v.clip; }
+    // render develop
+    const dev = rep==='render';
+    if(this.ground){ this.tween(this.ground.material,'opacity', dev?0.95:0.0, 600); }
+    this.tween(this.dir,'intensity', dev?1.15:0.85, 600);
+    this.tween(this.hemi,'intensity', this.state.theme==='dark'?(dev?0.3:0.42):(dev?0.42:0.6), 600);
+  }
+
+  // ---------- actions ----------
+  openIntent=()=>{ this.setState({intentOpen:true, intentText: this.state.compiled? '' : (this.state.beachhead==='massing'?'A 5-storey residential tower, slender, with a stepped massing and a glazed ground floor':'A precast concrete facade panel, 6m × 4.4m, with a window opening and two lifting anchors') }); };
+  closeIntent=()=>{ this.setState({intentOpen:false}); };
+  stop=(e)=>{ e.stopPropagation(); };
+  onIntentInput=(e)=>{ this.setState({intentText:e.target.value}); };
+  onIntentKey=(e)=>{ if(e.key==='Enter') this.runIntent(); };
+  pickSuggestion=(text)=>{ this.setState({intentText:text}); setTimeout(()=>this.runIntent(),60); };
+
+  runIntent=()=>{
+    const first=!this.state.compiled;
+    this.setState({intentOpen:false, compiling:true, showEmpty:false, railOpen:true, activity:[]});
+    const steps = this.state.beachhead==='massing' ? [
+      {label:'Parsing intent → typed program', detail:'building · 5 floors · stepped', d:260},
+      {label:'Compiling parametric elements', detail:'slabs · core · facade · podium', d:520},
+      {label:'Deriving representations', detail:'3d · plan · section · elev', d:480},
+      {label:'Running critic', detail:'egress · thickness · clash', d:560},
+      {label:'Model ready — 1 warning, 1 clash', detail:'tap signals on the stage', d:200, status:'flag'},
+    ] : [
+      {label:'Parsing intent → typed program', detail:'panel · opening · 2 anchors', d:260},
+      {label:'Compiling parametric solid', detail:'shell · rib · inserts', d:520},
+      {label:'Deriving fabrication views', detail:'face · section · drill', d:460},
+      {label:'Running critic', detail:'cover · chamfer · anchor pull', d:540},
+      {label:'Model ready — chamfer below spec', detail:'review on the stage', d:200, status:'flag'},
+    ];
+    let acc=[]; let t=0;
+    steps.forEach((s,i)=>{
+      t+=s.d;
+      setTimeout(()=>{
+        acc=acc.map(a=>({...a, status: a.status==='running'?'done':a.status}));
+        acc.push({label:s.label, detail:s.detail, status:(i===steps.length-1)?(s.status||'done'):'running'});
+        this.setState({activity:[...acc]});
+        if(i===1 && first){ this.rebuild(true); }
+        if(i===1 && !first){ this.rebuild(true); }
+        if(i===steps.length-1){
+          this.setState({compiling:false, compiled:true, outlineOpen:true});
+        }
+      }, t);
+    });
+  };
+
+  toggleTheme=()=>{ this.setState({theme:this.state.theme==='light'?'dark':'light'}, ()=>{ this.applyBg(); if(this.state.compiled) this.rebuild(false); }); };
+  setMassing=()=>{ if(this.state.beachhead==='massing') return; this.setState({beachhead:'massing', selected:null, crystalLocked:false}, ()=>{ if(this.state.compiled){ this.rebuild(false); this.frameModel(); this.setRep(this.state.rep);} }); };
+  setPart=()=>{ if(this.state.beachhead==='part') return; this.setState({beachhead:'part', selected:null, crystalLocked:false}, ()=>{ if(this.state.compiled){ this.rebuild(false); this.frameModel(); this.setRep(this.state.rep);} }); };
+  toggleRail=()=>{ this.setState({railOpen:!this.state.railOpen}); };
+  closeOutline=()=>{ this.setState({outlineOpen:false}); };
+
+  selectNode=(id)=>{
+    this.setState({selected:id, outlineOpen:true});
+  };
+  clearSelection=()=>{ this.setState({selected:null}); };
+
+  paramGrab=()=>{ this.setState({grabbing:true}); };
+  paramRelease=()=>{ this.setState({grabbing:false}, ()=>{
+    // settle: reset emissive on dependents (rebuild keeps it clean for massing)
+    if(this.state.beachhead==='massing') this.rebuild(false);
+  }); };
+  setParam=(key,val)=>{
+    const params={...this.state.params, [key]:parseFloat(val)};
+    this.setState({params}, ()=>{ this.rebuild(false); });
+  };
+
+  crystallize=()=>{
+    if(this.state.crystalLocked) return;
+    this.setState({crystalLocked:true, verifier:{...this.state.verifier, verified:this.state.verifier.verified+1}}, ()=>{
+      this.rebuild(false);
+      // snap pop
+      this.modelGroup.scale.set(1,1.0,1);
+      this.tween(this.modelGroup.scale,'y',1.04,120,()=>this.tween(this.modelGroup.scale,'y',1,180));
+    });
+  };
+
+  // ---------- derived render values ----------
+  outlineData(){
+    const sel=this.state.selected;
+    const mk=(id,label,depth,tag,dotKind)=>{
+      const on = sel===id;
+      const colors={ ok:'var(--teal)', warn:'var(--amber)', fail:'var(--red)', n:'var(--ink3)', loose:'var(--ink3)' };
+      return { id, label, pad:(12+depth*16)+'px',
+        bg: on?'var(--surface2)':'transparent', bar: on?'var(--ink)':'transparent',
+        fg: on?'var(--ink)':'var(--ink2)', dot: colors[dotKind]||'var(--ink3)', tag,
+        onClick:()=>this.selectNode(id) };
+    };
+    if(this.state.beachhead==='massing'){
+      const N=Math.round(this.state.params.floors);
+      const rows=[ mk('','TOWER A',0,'BLDG','n') ];
+      rows.push(mk('podium','PODIUM',1,'','n'));
+      rows.push(mk('core','CORE',1,'','n'));
+      for(let i=N;i>=1;i--){
+        const id = (i===N? 'floor' : i===2? 'facade' : i===1?'room':'floor');
+        const tag = i===N? (this.state.crystalLocked?'':'LOOSE') : i===2?'WARN': i===1?'OK':'';
+        const dk = i===N?(this.state.crystalLocked?'n':'loose'): i===2?'warn': i===1?'ok':'n';
+        rows.push(mk(id,'FLOOR '+String(i).padStart(2,'0'),1,tag,dk));
+      }
+      rows.push(mk('clash','CORE/PODIUM JOINT',1,'FAIL','fail'));
+      return rows;
+    }
+    return [
+      {id:'',label:'PRECAST P-204',pad:'12px',bg:'transparent',bar:'transparent',fg:'var(--ink2)',dot:'var(--ink3)',tag:'PART',onClick:()=>{}},
+      mk('shell','SHELL',1,'','n'),
+      mk('chamfer','OPENING CHAMFER',1,'WARN','warn'),
+      mk('rib','PERIMETER RIB',1,'','n'),
+      mk('anchor','LIFT ANCHORS ×2',1,'OK','ok'),
+    ];
+  }
+
+  selData(){
+    const id=this.state.selected; if(!id) return null;
+    const P=this.state.params;
+    const mkp=(name,key,min,max,step,unit,fmt)=>({ name, value:P[key], min,max,step,
+      display:(fmt?fmt(P[key]):P[key].toFixed(2))+(unit?' '+unit:''),
+      onInput:(e)=>this.setParam(key,e.target.value),
+      onGrab:this.paramGrab, onRelease:this.paramRelease });
+    const map={
+      floor:{ kind:'SLAB · UNIT', label:'Floor 03', prov:'"slender, stepped massing"',
+        params:[ mkp('Floor-to-floor','floorH',2.8,4.5,0.05,'m'), mkp('Floor count','floors',3,8,1,'',v=>v.toFixed(0)), mkp('Setback per level','setback',0,1.1,0.05,'m') ] },
+      facade:{ kind:'FACADE PANEL', label:'Facade · L02', prov:'critic: below min thickness',
+        params:[ mkp('Floor-to-floor','floorH',2.8,4.5,0.05,'m'), mkp('Setback per level','setback',0,1.1,0.05,'m') ] },
+      core:{ kind:'CIRCULATION', label:'Core', prov:'"glazed ground floor"',
+        params:[ mkp('Floor-to-floor','floorH',2.8,4.5,0.05,'m'), mkp('Floor count','floors',3,8,1,'',v=>v.toFixed(0)) ] },
+      podium:{ kind:'BASE', label:'Podium', prov:'"glazed ground floor"',
+        params:[ mkp('Setback per level','setback',0,1.1,0.05,'m') ] },
+      room:{ kind:'PROGRAM ZONE', label:'Unit 01 — verified', prov:'critic: egress OK',
+        params:[ mkp('Floor-to-floor','floorH',2.8,4.5,0.05,'m') ] },
+      clash:{ kind:'CRITIC · CLASH', label:'Core meets podium', prov:'critic: 1 hard clash',
+        params:[ mkp('Setback per level','setback',0,1.1,0.05,'m') ] },
+      shell:{ kind:'PRECAST SOLID', label:'Panel shell', prov:'"6m × 4.4m precast panel"',
+        params:[ mkp('Panel thickness','thickness',0.12,0.4,0.01,'m'), mkp('Opening width','opening',0.6,2.4,0.05,'m'), mkp('Opening height','openH',0.8,2.4,0.05,'m') ] },
+      chamfer:{ kind:'CRITIC · CHAMFER', label:'Opening chamfer', prov:'critic: below cover spec',
+        params:[ mkp('Opening width','opening',0.6,2.4,0.05,'m'), mkp('Opening height','openH',0.8,2.4,0.05,'m') ] },
+      rib:{ kind:'STIFFENER', label:'Perimeter rib', prov:'"precast panel"',
+        params:[ mkp('Rib depth','rib',0.08,0.32,0.01,'m'), mkp('Panel thickness','thickness',0.12,0.4,0.01,'m') ] },
+      anchor:{ kind:'CAST-IN · VERIFIED', label:'Lift anchors ×2', prov:'critic: anchor pull OK',
+        params:[ mkp('Panel thickness','thickness',0.12,0.4,0.01,'m') ] },
+    };
+    const d=map[id]; if(!d) return null;
+    return { kind:d.kind, label:d.label, provenance:d.prov, params:d.params };
+  }
+
+  renderVals(){
+    const S=this.state;
+    const sel=this.selData();
+    const v=S.verifier;
+    const statusColor = v.fails>0? 'var(--red)' : v.warnings>0? 'var(--amber)' : 'var(--teal)';
+    const verifierLabel = v.fails>0? 'NEEDS REPAIR' : v.warnings>0? 'CHECK WARNINGS' : 'VERIFIED · FABRICABLE';
+    const reps=[ ['3d','3D'],['plan','PLAN'],['section','SECTION'],['elev','ELEV'],['render','RENDER'] ];
+    const repItems=reps.map(([id,label])=>({ label, onClick:()=>this.setRep(id),
+      bg: S.rep===id?'var(--ink)':'transparent', fg: S.rep===id?'var(--canvas)':'var(--ink2)' }));
+    const aMap={ done:{dotBg:'var(--ink2)',dotBorder:'var(--ink2)',fg:'var(--ink2)'},
+      running:{dotBg:'transparent',dotBorder:'var(--ink)',fg:'var(--ink)'},
+      flag:{dotBg:'var(--amber)',dotBorder:'var(--amber)',fg:'var(--ink)'},
+      queued:{dotBg:'transparent',dotBorder:'var(--hairline)',fg:'var(--ink3)'} };
+    const activityItems=S.activity.map(a=>({ label:a.label, detail:a.detail, ...(aMap[a.status]||aMap.done) }));
+    const suggestionsRaw = S.beachhead==='massing'
+      ? [ ['↳','Add a stepped two-storey setback to the top floors'], ['↳','Open the ground floor — fully glazed lobby'], ['◳','Branch: a bolder cantilevered massing'] ]
+      : [ ['↳','Widen the opening to 1.8m and re-check cover'], ['↳','Add a third lifting anchor, centred'], ['◳','Branch: a deeper-ribbed structural variant'] ];
+    const suggestions=suggestionsRaw.map(([tag,text])=>({tag,text,onClick:()=>this.pickSuggestion(text)}));
+
+    return {
+      theme:S.theme,
+      projectLabel: S.compiled ? (S.beachhead==='massing'?'TOWER A · schematic':'PRECAST P-204 · for-fab') : 'no model',
+      themeGlyph: S.theme==='light'?'☾':'☀',
+      massingBg: S.beachhead==='massing'?'var(--ink)':'transparent', massingFg: S.beachhead==='massing'?'var(--canvas)':'var(--ink2)',
+      partBg: S.beachhead==='part'?'var(--ink)':'transparent', partFg: S.beachhead==='part'?'var(--canvas)':'var(--ink2)',
+      showEmpty: !S.compiled && !S.compiling,
+      compiled: S.compiled,
+      outlineOpen: S.outlineOpen && S.compiled,
+      railOpen: S.railOpen,
+      agentBusy: S.compiling,
+      outlineNodes: this.outlineData(),
+      activityItems,
+      activityStatus: S.compiling? 'WORKING…' : (S.compiled? 'IDLE · '+Math.round(S.params.floors)+' FLOORS' : 'IDLE'),
+      verifier:v, statusColor, verifierLabel,
+      hasSelection: !!sel, sel: sel||{kind:'',label:'',params:[],provenance:''},
+      cascadeColor: S.grabbing?'var(--ink)':'var(--ink3)',
+      cascadeNote: S.grabbing? 'cascade live — dependents lit' : (sel? 'grab a value to preview cascade' : ''),
+      repItems,
+      describeLabel: S.compiled? 'Describe a change' : 'Describe',
+      intentOpen:S.intentOpen, intentText:S.intentText, suggestions,
+      showCrystal: S.compiled && S.beachhead==='massing',
+      crystalPct: S.crystalLocked? '100%' : '60%',
+      looseLabel: S.crystalLocked? 'Roof — locked' : 'Roof — loose (indicative)',
+      crystalAction: S.crystalLocked? 'FULLY CRYSTALLIZED' : 'CRYSTALLIZE ROOF',
+      // handlers
+      setStage:this.setStage, setIntentInput:this.setIntentInput,
+      setMassing:this.setMassing, setPart:this.setPart, toggleTheme:this.toggleTheme,
+      toggleRail:this.toggleRail, closeOutline:this.closeOutline,
+      openIntent:this.openIntent, closeIntent:this.closeIntent, stop:this.stop,
+      onIntentInput:this.onIntentInput, onIntentKey:this.onIntentKey, runIntent:this.runIntent,
+      clearSelection:this.clearSelection, crystallize:this.crystallize,
+    };
+  }
+}
+</script>
+</body>
+</html>
