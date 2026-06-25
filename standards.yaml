@@ -31,6 +31,7 @@ clearance_holes_mm:          # ISO 273 "medium" fit: nominal -> drilled diameter
 manufacturing:
   min_wall_mm: 1.5           # P0 heuristic only — NEVER a P0 gate (OCCT booleans fail here); real analysis P1
   default_material: steel
+  cover_mm: 40
 
 # Drawing conventions — line-weight hierarchy for the drawing backend (P0.5 → conventioned P2).
 drawing:

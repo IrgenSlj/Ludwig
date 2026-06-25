@@ -33,3 +33,13 @@ def tol_linear() -> float:
 def bbox_gate() -> float:
     """The P0 spine bbox gate: declared dims must match within this (mm)."""
     return float(load()["tolerances"]["bbox_gate"])
+
+
+def cover_mm() -> float:
+    """Concrete cover to a cast-in anchor (mm)."""
+    return float(load()["manufacturing"]["cover_mm"])
+
+
+def min_wall_mm() -> float:
+    """Minimum wall thickness heuristic (mm)."""
+    return float(load()["manufacturing"]["min_wall_mm"])

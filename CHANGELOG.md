@@ -4,6 +4,12 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P1/S10 (manufacturing critic — anchor cover)
+- `critic/manufacturing.py`: checks each cast-in anchor's edge clearance against `standards.yaml:
+  manufacturing.cover_mm` (40 mm); registered into the critic panel (adding it needed no loop change, [H4]).
+- `Element` gained a `features` list; `toolkit.anchor` records each anchor's position/diameter/depth so the
+  critic can reason about it. selftest 13/13, oracle 6/6, 66 tests.
+
 ### Added — P1/S9 (IFC backend — the BIM deliverable)
 - `backends/ifc.py`: authors valid IFC4 via IfcOpenShell's stable low-level `create_entity` API (spatial
   hierarchy + units + an extruded-box body). The IR `type` maps to an IFC class via `standards.yaml: ifc_map`
