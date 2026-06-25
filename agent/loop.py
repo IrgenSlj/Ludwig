@@ -65,6 +65,8 @@ def _api_and_standards() -> str:
         "- box(id, length, width, height) -> Element   # extents registered as named dims length/width/height\n"
         "- hole(element, diameter, (x, y))             # through-hole; (x, y) from the top-face centre, mm\n"
         f"- clearance_hole(element, \"M8\", (x, y))       # diameter from standards (M8 -> ⌀{clear['M8']}), never guessed\n"
+        "- panel(id, length, height, thickness) -> Element   # a precast wall panel (type 'Panel')\n"
+        "- anchor(element, diameter, (x, y), depth)    # a cast-in blind pocket in the top (+z) edge\n"
         "- raw CadQuery is available as `cq`; assign solids to element.geometry and call "
         "element.register_dim(name, value)\n"
         "All units mm. Do not print; just build `element`.\n\n"
@@ -133,7 +135,7 @@ def execute(program: str) -> tuple[Optional[Element], Optional[str]]:
     ns = {
         "cq": cadquery, "cadquery": cadquery, "standards": standards, "Element": Element,
         "part": toolkit.part, "box": toolkit.box, "hole": toolkit.hole,
-        "clearance_hole": toolkit.clearance_hole,
+        "clearance_hole": toolkit.clearance_hole, "panel": toolkit.panel, "anchor": toolkit.anchor,
     }
     try:
         exec(compile(_strip_fences(program), "<ludwig-program>", "exec"), ns)

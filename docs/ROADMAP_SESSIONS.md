@@ -77,6 +77,13 @@ salvaged `render_toolkit.py`. Pairwise judge panel. Real min-wall. Clearances/co
 **[H7] decision point:** confirm the one IR serves fab + first BIM type without contortion (or fork deliberately).
 **Gate (BRIEF §7):** precast panel → IFC4precast + STEP + shop drawing + render, all critic-verified.
 
+- **S8 — Panel type + precast brief (done).** `toolkit.panel` (type 'Panel') + `anchor` (cast-in blind pocket);
+  added the precast-panel brief (3000×2000×200, two M16 cast-in anchors) to the frozen set + reference oracle +
+  the live codegen API. It flows through the existing STEP + drawing backends and passes the critic. Oracle
+  eval 6/6, selftest 12/12. (Render needs a Blender binary — deferred; the headless beachhead work continues.)
+- **S9 — IFC backend** (IfcOpenShell → IFC, `ifc_map` from standards.yaml). *next.*
+- **S10 — pairwise judge + manufacturing critic** (cover, real min-wall).
+
 ## P2 — Buildings (architect tool) — multi-session, drawing engine alone is several
 `SpatialElement`, relationship graph, `Space`/`Storey`/`Project`, hierarchical program, IDS+geometry compliance
 critic, rich crystallization behavior **[H3]**, and the **conventioned drawing engine** (the real moat / hardest part).

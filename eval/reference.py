@@ -6,12 +6,17 @@ real `first-pass geometric pass-rate` ([H6]) instead of the trivial 100% a corre
 """
 from __future__ import annotations
 
-from toolkit import box, clearance_hole, hole
+from toolkit import anchor, box, clearance_hole, hole, panel
 from ir.elements import Element
 
 
 def build(brief: dict) -> Element:
     bid, d = brief["id"], brief["dims"]
+    if bid == "precast_panel":
+        el = panel(bid, d["length"], d["height"], d["width"])  # length, height, thickness(=width)
+        anchor(el, 17.5, (-750, 0), 150)  # two M16 cast-in lifting anchors (⌀17.5), 150mm deep
+        anchor(el, 17.5, (750, 0), 150)
+        return el
     el = box(bid, d["length"], d["width"], d["height"])
     if bid == "bracket":
         clearance_hole(el, "M8", (-25, 0))

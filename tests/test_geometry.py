@@ -28,6 +28,19 @@ def test_reference_oracle_passes_every_brief():
     assert rate == 1.0, results
 
 
+def test_precast_panel_builds_and_passes():
+    from eval import reference
+    from eval.briefs import BRIEFS
+    from eval.harness import geometric_pass
+    from geometry import GeometryService
+    from toolkit.standards import bbox_gate
+
+    pb = next(b for b in BRIEFS if b["id"] == "precast_panel")
+    el = reference.build(pb)
+    assert el.type == "Panel"  # the new IR type is exercised
+    assert geometric_pass(el, pb, GeometryService(), bbox_gate())  # 3000×200×2000, 2 anchor pockets
+
+
 def test_harness_discriminates_a_wrong_build():
     # an off-by-5mm height build must FAIL the gate — proves the instrument has real signal
     def bad(b):

@@ -4,6 +4,12 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P1/S8 (Panel type + precast-panel brief)
+- `toolkit.panel` (a Part of type 'Panel') + `toolkit.anchor` (a cast-in blind pocket), exposed to the live
+  codegen API. Added the precast-panel brief (3000×2000×200 mm, two M16 cast-in anchors) to the frozen set,
+  the reference oracle, and the codegen prompt — grown from the P1 gate, not speculatively (principle #7).
+- It flows through the existing STEP + drawing backends and passes the critic. Oracle eval 6/6; 60 tests.
+
 ### Added — P0/S7 (drawing backend — HLR SVG elevation) · P0 COMPLETE
 - `backends/drawing.py`: OCCT HLR → SVG elevation (via CadQuery's HLR projection) with a named-dimension
   overlay from the manifest. Best-effort and off the spine gate (HLR is fragile); falls back to a default
