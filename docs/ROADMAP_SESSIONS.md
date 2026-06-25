@@ -48,6 +48,9 @@ geometric pass-rate **100% (5/5)** vs **60% first-pass** — the critic's exact 
 `backends/step.py` (OCCT STEP write, gated as a fabrication export per permissions). Rebuild `cli.py --selftest`
 around the bracket spine (no LLM tokens). FreeCAD-open verification.
 **Gate:** `cli.py "steel bracket 80×40×6, two M8 holes"` → STEP that opens in FreeCAD with correct geometry.
+**Done:** `backends/step.py` exports OCCT STEP; `cli.py "<prompt>"` writes `out/<id>.py` (recipe) + `out/<id>.step`,
+gated by a pre-export critic hook (no fabrication file on a failing critic). `--selftest` round-trips the STEP back
+through OCCT (the kernel FreeCAD uses) and checks the bbox — 11/11. Live compile produced a valid 25 KB STEP.
 
 ### S6 — `--edit` minimal-diff + lineage/provenance
 `--edit` re-prompts the program and emits a *minimal* diff. `provenance` resolves a selection to a program node

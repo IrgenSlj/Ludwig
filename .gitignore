@@ -7,3 +7,4 @@ __pycache__/
 projects/
 *.db
 .pytest_cache/
+out/

@@ -4,6 +4,13 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P0/S5 (STEP backend — the fabrication deliverable)
+- `backends/step.py`: OCCT STEP export + a round-trip helper (re-read through OCCT to prove the file is
+  valid, openable geometry). It is a fabrication export, gated by a pre-export critic hook (BRIEF §5).
+- `cli.py "<prompt>"` now writes `out/<id>.py` (the recipe / source of truth) and `out/<id>.step`, and
+  withholds the STEP if the critic isn't all-pass. `--selftest` round-trips the bracket STEP (11/11).
+- Verified live: a prompt produced a valid 25 KB ISO-10303-21 STEP file.
+
 ### Added — P0/S4 (the deterministic critic panel)
 - `critic/`: `geometric` (OCCT manifold/watertight via BRepCheck), `dimensional` (named-dim exact, 1e-6),
   `semantic` (units present, no orphan geometry, declared hole count), aggregated by a `critic.panel`
