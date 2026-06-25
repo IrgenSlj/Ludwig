@@ -56,6 +56,9 @@ through OCCT (the kernel FreeCAD uses) and checks the bbox — 11/11. Live compi
 `--edit` re-prompts the program and emits a *minimal* diff. `provenance` resolves a selection to a program node
 (**[H2]** never a kernel handle). Lineage stable across regeneration.
 **Gate:** "make the holes M10" changes only the relevant lines; the rest of the diff is empty.
+**Done:** `agent.loop.edit` + `cli.py --edit <recipe.py> "<change>"` re-prompt the program text (lineage, not a
+kernel handle [H2]), print a unified diff, re-verify, and re-export the STEP. Live: "M8 → M10" produced a
+3-line diff (the two hole calls + their comment), 0 repair rounds — a minimal edit, not a rewrite.
 
 ### S7 — Drawing backend (P0.5, outside the spine gate)
 `backends/drawing.py`: OCCT HLR → SVG + ezdxf DXF, dims queried from the manifest. Exact↔polygonal HLR toggle.

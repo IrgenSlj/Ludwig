@@ -98,6 +98,16 @@ def _repair_prompt(program: str, brief: Brief, critique: Optional[Critique], err
     )
 
 
+def _edit_prompt(program: str, instruction: str) -> str:
+    return (
+        f"{_read('edit.md')}\n\n{_api_and_standards()}\n"
+        f"## The current program\n{program}\n\n"
+        f"## The change to make\n{instruction}\n\n"
+        "Return ONLY the full updated Python program — change as little as possible; keep every other "
+        "line byte-for-byte identical. No prose, no fences."
+    )
+
+
 # --------------------------------------------------------------------------- #
 # execute + verify
 # --------------------------------------------------------------------------- #
@@ -178,4 +188,25 @@ def run(brief: Brief, *, rounds: int = 2, model: Optional[str] = None) -> LoopRe
     return LoopResult(program, el, crit, passed, rnd, err)
 
 
-__all__ = ["Brief", "LoopResult", "execute", "verify", "generate", "first_pass", "run"]
+def edit(program: str, instruction: str, *, brief: Optional[Brief] = None,
+         rounds: int = 1, model: Optional[str] = None) -> LoopResult:
+    """Re-prompt an existing program with a change, aiming for a MINIMAL diff (the editability thesis).
+
+    References are by program lineage, not kernel handle ([H2]): the edit rewrites the *program text*
+    and re-executes; nothing points into a stale B-rep.
+    """
+    b = brief or Brief(prompt=instruction)
+    new = _strip_fences(inference.infer(_edit_prompt(program, instruction), model=model))
+    el, err = execute(new)
+    crit = verify(el, b) if el is not None else None
+    rnd = 0
+    while rnd < rounds and (el is None or not crit.passed):
+        new = _strip_fences(inference.infer(_repair_prompt(new, b, crit, err), model=model))
+        el, err = execute(new)
+        crit = verify(el, b) if el is not None else None
+        rnd += 1
+    passed = el is not None and crit is not None and crit.passed
+    return LoopResult(new, el, crit, passed, rnd, err)
+
+
+__all__ = ["Brief", "LoopResult", "execute", "verify", "generate", "first_pass", "run", "edit"]
