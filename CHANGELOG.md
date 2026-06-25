@@ -4,6 +4,13 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P0/S7 (drawing backend — HLR SVG elevation) · P0 COMPLETE
+- `backends/drawing.py`: OCCT HLR → SVG elevation (via CadQuery's HLR projection) with a named-dimension
+  overlay from the manifest. Best-effort and off the spine gate (HLR is fragile); falls back to a default
+  projection if options are rejected. The compile path emits the SVG alongside the STEP. `--selftest` 12/12.
+- **P0 spine complete (S1–S7):** prompt → exact OCCT B-rep → deterministic critic → repair → STEP
+  (FreeCAD-valid) → minimal-diff `--edit` → derived drawing. First-pass 60% / post-repair 100%.
+
 ### Added — P0/S6 (--edit minimal-diff — the editability thesis)
 - `agent.loop.edit` + `cli.py --edit <recipe.py> "<change>"`: re-prompt an existing program toward the
   smallest possible diff, re-verify with the critic, re-export the STEP. References are by program lineage,

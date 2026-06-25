@@ -22,3 +22,15 @@ def test_step_exports_and_round_trips(tmp_path):
 
 def test_step_is_a_fabrication_export():
     assert step.fabrication is True  # gated behind the pre-export critic hook (BRIEF §5)
+
+
+def test_drawing_exports_svg_with_dims(tmp_path):
+    from backends import drawing
+
+    el = box("bracket", 80, 40, 6)
+    el.register_dim("note", 0)  # manifest has at least the three extents already
+    path = drawing.compile(el, tmp_path)
+    assert path.exists() and path.suffix == ".svg"
+    text = path.read_text()
+    assert "<svg" in text and "length = 80" in text  # HLR projection + dimension overlay
+    assert not drawing.fabrication  # a drawing is not a gated fabrication export
