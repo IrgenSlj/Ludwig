@@ -81,8 +81,13 @@ salvaged `render_toolkit.py`. Pairwise judge panel. Real min-wall. Clearances/co
   added the precast-panel brief (3000×2000×200, two M16 cast-in anchors) to the frozen set + reference oracle +
   the live codegen API. It flows through the existing STEP + drawing backends and passes the critic. Oracle
   eval 6/6, selftest 12/12. (Render needs a Blender binary — deferred; the headless beachhead work continues.)
-- **S9 — IFC backend** (IfcOpenShell → IFC, `ifc_map` from standards.yaml). *next.*
-- **S10 — pairwise judge + manufacturing critic** (cover, real min-wall).
+- **S9 — IFC backend (done).** `backends/ifc.py` authors valid IFC4 via IfcOpenShell's stable low-level
+  `create_entity` API; the IR `type` maps to an IFC class via `standards.yaml: ifc_map`. The precast panel
+  exports `Panel → IfcWall`, the bracket `Part → IfcBuildingElementProxy`; both re-open. The compile path
+  emits `.ifc` alongside the STEP. selftest 13/13. **[H7] early-positive:** the one IR served fab (STEP) and
+  BIM (IFC) without contortion. (Fidelity note: IFC carries the semantic element + a representative massing
+  solid; exact holes/pockets stay in the STEP — inherent to IFC. Full IFC4precast property sets: later.)
+- **S10 — pairwise judge + manufacturing critic** (cover, real min-wall). *next.*
 
 ## P2 — Buildings (architect tool) — multi-session, drawing engine alone is several
 `SpatialElement`, relationship graph, `Space`/`Storey`/`Project`, hierarchical program, IDS+geometry compliance

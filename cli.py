@@ -86,6 +86,19 @@ def selftest() -> int:
                   dp.suffix == ".svg" and "<svg" in txt and "length = 80" in txt,
                   f"{dp.name}, {len(txt)} bytes")
 
+        try:
+            import ifcopenshell  # noqa: F401
+            from backends import ifc as ifc_backend
+            with tempfile.TemporaryDirectory() as td:
+                ip = ifc_backend.compile(bracket, td)
+                summary = ifc_backend.reimport_summary(ip)
+                check("IFC exports + round-trips (IfcOpenShell)",
+                      ip.exists() and summary["schema"] == "IFC4"
+                      and summary["element_classes"] == ["IfcBuildingElementProxy"],
+                      str(summary))
+        except ImportError:
+            print("  [skip] IFC check — ifcopenshell not installed")
+
     ok = all(passed for _, passed, _ in checks)
     for label, passed, detail in checks:
         mark = "ok  " if passed else "FAIL"
@@ -160,6 +173,11 @@ def compile_prompt(prompt: str, *, rounds: int = 2) -> int:
     if res.passed:  # pre-export validation hook (BRIEF §5): no fabrication file leaves on a failing critic
         step_path = step_backend.compile(res.ir, out)
         line = f"\nwrote recipe {recipe} · STEP {step_path}"
+        try:  # IFC (BIM) deliverable — best-effort
+            from backends import ifc
+            line += f" · IFC {ifc.compile(res.ir, out)}"
+        except Exception as e:
+            line += f" · IFC skipped ({type(e).__name__})"
         try:  # P0.5 drawing — best-effort, HLR is fragile and never blocks the spine
             from backends import drawing
             line += f" · drawing {drawing.compile(res.ir, out)}"
