@@ -175,11 +175,27 @@ def first_pass(brief: Brief, *, model: Optional[str] = None):
     return program, el, err
 
 
-def run(brief: Brief, *, rounds: int = 2, model: Optional[str] = None) -> LoopResult:
-    """Generate → execute → verify → repair until pass or rounds exhausted."""
-    program = generate(brief, model=model)
-    el, err = execute(program)
-    crit = verify(el, brief) if el is not None else None
+def run(brief: Brief, *, candidates: int = 1, rounds: int = 2, model: Optional[str] = None) -> LoopResult:
+    """Generate → execute → verify → repair until pass or rounds exhausted.
+
+    When `candidates` > 1, generates that many first-pass attempts and selects the best by the
+    deterministic critic (fewest failures). A true pairwise aesthetic judge among passing candidates
+    is deferred — it needs the render backend; selection here is by the deterministic critic only.
+    With `candidates=1` (the default) behaviour is identical to before: one generation, then repair.
+    """
+    def _rank(a):
+        _program, _el, _crit, _err = a
+        return (1, 0) if _el is None else (0, len(_crit.failures))
+
+    attempts = []
+    for _ in range(candidates):
+        program = generate(brief, model=model)
+        el, err = execute(program)
+        crit = verify(el, brief) if el is not None else None
+        attempts.append((program, el, crit, err))
+
+    program, el, crit, err = min(attempts, key=_rank)
+
     rnd = 0
     while rnd < rounds and (el is None or not crit.passed):
         program = _strip_fences(inference.infer(_repair_prompt(program, brief, crit, err), model=model))

@@ -139,7 +139,7 @@ def run_eval(*, live: bool = False, repair: bool = False) -> int:
     return 0 if rate == 1.0 else 1
 
 
-def compile_prompt(prompt: str, *, rounds: int = 2) -> int:
+def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2) -> int:
     """The compile path: prompt → generated program → executed IR (BRIEF §5, S3 gate)."""
     try:
         import cadquery  # noqa: F401
@@ -150,7 +150,7 @@ def compile_prompt(prompt: str, *, rounds: int = 2) -> int:
     from geometry import GeometryService
 
     print(f"› compiling: {prompt}\n")
-    res = run(Brief(prompt=prompt), rounds=rounds)
+    res = run(Brief(prompt=prompt), candidates=candidates, rounds=rounds)
     print("--- program ---")
     print(res.program)
     print("\n--- result ---")
@@ -233,15 +233,30 @@ def main(argv: list[str]) -> int:
         return selftest()
     if "--eval" in argv:
         return run_eval(live="--live" in argv, repair="--repair" in argv)
+
+    # Parse --candidates N or --candidates=N (default 1)
+    candidates = 1
+    for i, arg in enumerate(argv):
+        if arg.startswith("--candidates="):
+            try:
+                candidates = int(arg.split("=", 1)[1])
+            except ValueError:
+                pass
+        elif arg == "--candidates" and i + 1 < len(argv):
+            try:
+                candidates = int(argv[i + 1])
+            except ValueError:
+                pass
+
     pos = [a for a in argv if not a.startswith("--")]
     if "--edit" in argv:
         if len(pos) < 2:
             raise SystemExit('Usage: cli.py --edit <recipe.py> "<change>"')
         return edit_recipe(pos[0], pos[1])
     if pos:
-        return compile_prompt(pos[0])
+        return compile_prompt(pos[0], candidates=candidates)
     raise SystemExit(
-        'Usage: cli.py "<prompt>"  |  --edit <recipe.py> "<change>"  |  --selftest  |  --eval [--live] [--repair].'
+        'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  --selftest  |  --eval [--live] [--repair].'
     )
 
 
