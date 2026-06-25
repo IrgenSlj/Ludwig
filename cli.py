@@ -78,6 +78,14 @@ def selftest() -> int:
                   and abs(rl - 80) <= tol and abs(rw - 40) <= tol and abs(rh - 6) <= tol,
                   f"reimport bbox {rl:.3f}×{rw:.3f}×{rh:.3f}")
 
+        from backends import drawing as drawing_backend
+        with tempfile.TemporaryDirectory() as td:
+            dp = drawing_backend.compile(bracket, td)
+            txt = dp.read_text()
+            check("drawing exports a dimensioned HLR SVG",
+                  dp.suffix == ".svg" and "<svg" in txt and "length = 80" in txt,
+                  f"{dp.name}, {len(txt)} bytes")
+
     ok = all(passed for _, passed, _ in checks)
     for label, passed, detail in checks:
         mark = "ok  " if passed else "FAIL"
@@ -151,7 +159,13 @@ def compile_prompt(prompt: str, *, rounds: int = 2) -> int:
     recipe.write_text(res.program + "\n")
     if res.passed:  # pre-export validation hook (BRIEF §5): no fabrication file leaves on a failing critic
         step_path = step_backend.compile(res.ir, out)
-        print(f"\nwrote recipe {recipe} · STEP {step_path}")
+        line = f"\nwrote recipe {recipe} · STEP {step_path}"
+        try:  # P0.5 drawing — best-effort, HLR is fragile and never blocks the spine
+            from backends import drawing
+            line += f" · drawing {drawing.compile(res.ir, out)}"
+        except Exception as e:
+            line += f" · drawing skipped ({type(e).__name__})"
+        print(line)
         return 0
     print(f"\nwrote recipe {recipe} · STEP withheld — critic not all-pass (fabrication gate)")
     return 1

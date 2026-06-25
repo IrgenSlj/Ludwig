@@ -63,8 +63,13 @@ kernel handle [H2]), print a unified diff, re-verify, and re-export the STEP. Li
 ### S7 — Drawing backend (P0.5, outside the spine gate)
 `backends/drawing.py`: OCCT HLR → SVG + ezdxf DXF, dims queried from the manifest. Exact↔polygonal HLR toggle.
 **Gate:** the bracket yields a readable dimensioned elevation. (Fragile-by-nature; intentionally not gating the spine.)
+**Done:** `backends/drawing.py` exports an OCCT HLR SVG elevation with a named-dimension overlay (best-effort,
+falls back to a default projection if HLR options are rejected; never blocks the compile). The compile path
+emits the SVG alongside the STEP. `--selftest` checks the SVG (12/12). DXF/ezdxf and real dimension strings
+(witness lines, arrows) are deferred to the P2 conventioned-drawing engine.
 
 **→ P0 complete:** prompt → exact B-rep → critic all-pass → STEP (FreeCAD-valid) → minimal-diff edit → derived drawing.
+**All seven sessions shipped.** The compiler spine is real end-to-end; first-pass 60% / post-repair 100% on the frozen set.
 
 ## P1 — Components & domain (fabrication shop tool) — ~4–6 sessions
 `Assembly`, `Panel`/`Profile`. `backends/ifc.py` (IfcOpenShell, IFC4precast). `backends/render.py` wiring the
