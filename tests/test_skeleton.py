@@ -12,7 +12,7 @@ PURE_MODULES = [
     "geometry", "geometry.service",
     "toolkit", "toolkit.elements", "toolkit.standards",
     "eval", "eval.briefs", "eval.harness", "eval.reference", "eval.llm",
-    "backends", "backends.base", "backends.step", "backends.drawing", "backends.render",
+    "backends", "backends.base", "backends.step", "backends.drawing", "backends.render", "backends.ifc",
     "critic", "critic.base", "critic.panel", "critic.dimensional", "critic.geometric", "critic.semantic",
     "agent", "agent.inference", "agent.loop",
     "store", "store.db",

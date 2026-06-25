@@ -24,6 +24,22 @@ def test_step_is_a_fabrication_export():
     assert step.fabrication is True  # gated behind the pre-export critic hook (BRIEF §5)
 
 
+def test_ifc_exports_and_round_trips(tmp_path):
+    pytest.importorskip("ifcopenshell")
+    from backends import ifc
+    from toolkit import anchor, panel
+
+    el = panel("wallpanel", 3000, 2000, 200)
+    anchor(el, 17.5, (-750, 0), 150)
+    anchor(el, 17.5, (750, 0), 150)
+    path = ifc.compile(el, tmp_path)
+    assert path.exists() and path.suffix == ".ifc"
+
+    summary = ifc.reimport_summary(path)
+    assert summary["schema"] == "IFC4"
+    assert summary["element_classes"] == ["IfcWall"]  # Panel -> IfcWall via standards.yaml ifc_map
+
+
 def test_drawing_exports_svg_with_dims(tmp_path):
     from backends import drawing
 

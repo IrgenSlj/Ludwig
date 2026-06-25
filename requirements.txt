@@ -3,6 +3,7 @@
 
 PyYAML>=6.0          # standards.yaml loader (P0)
 cadquery>=2.8        # P0/S2 — OCCT exact B-rep geometry service (the locked kernel; imported lazily)
+ifcopenshell>=0.8    # P1/S9 — IFC (BIM) authoring (imported lazily)
 
 # --- installed per phase, imported lazily inside the modules that use them ---
 # ezdxf>=1.1         # P0.5/S7 — DXF drawing writer (HLR → DXF/SVG)

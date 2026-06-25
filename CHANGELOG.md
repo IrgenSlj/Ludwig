@@ -4,6 +4,15 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P1/S9 (IFC backend — the BIM deliverable)
+- `backends/ifc.py`: authors valid IFC4 via IfcOpenShell's stable low-level `create_entity` API (spatial
+  hierarchy + units + an extruded-box body). The IR `type` maps to an IFC class via `standards.yaml: ifc_map`
+  (`Panel → IfcWall`, `Part → IfcBuildingElementProxy`); both round-trip. The compile path emits `.ifc`
+  alongside the STEP; `--selftest` round-trips it (13/13). 62 tests.
+- **[H7] early-positive:** the same IR served the fab deliverable (STEP) and the BIM deliverable (IFC)
+  without contortion. Fidelity note: IFC carries the semantic element + representative massing; exact
+  geometry stays in the STEP (inherent to IFC). Full IFC4precast property sets deferred.
+
 ### Added — P1/S8 (Panel type + precast-panel brief)
 - `toolkit.panel` (a Part of type 'Panel') + `toolkit.anchor` (a cast-in blind pocket), exposed to the live
   codegen API. Added the precast-panel brief (3000×2000×200 mm, two M16 cast-in anchors) to the frozen set,

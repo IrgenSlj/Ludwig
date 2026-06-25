@@ -16,7 +16,7 @@ jobs:
       - name: Install (core + kernel + test)
         run: |
           python -m pip install --upgrade pip
-          pip install pytest PyYAML cadquery
+          pip install pytest PyYAML cadquery ifcopenshell
       - name: Selftest gate (no LLM tokens)
         run: python cli.py --selftest
       - name: Eval pass-rate (reference builder)
