@@ -4,6 +4,13 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P0/S6 (--edit minimal-diff — the editability thesis)
+- `agent.loop.edit` + `cli.py --edit <recipe.py> "<change>"`: re-prompt an existing program toward the
+  smallest possible diff, re-verify with the critic, re-export the STEP. References are by program lineage,
+  never a kernel handle ([H2]); `prompts/edit.md` enforces byte-identical untouched lines.
+- Verified live: "change the holes from M8 to M10" produced a 3-line diff (the two hole calls + comment),
+  0 repair rounds — a minimal edit, not a rewrite. 58 tests pass.
+
 ### Added — P0/S5 (STEP backend — the fabrication deliverable)
 - `backends/step.py`: OCCT STEP export + a round-trip helper (re-read through OCCT to prove the file is
   valid, openable geometry). It is a fabrication export, gated by a pre-export critic hook (BRIEF §5).

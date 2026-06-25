@@ -59,3 +59,17 @@ def test_run_with_zero_rounds_does_not_repair(monkeypatch):
     res = loop.run(Brief(prompt="b", named_dims={"length": 80, "width": 40, "height": 6}, holes=0),
                    rounds=0)
     assert res.rounds == 0 and not res.passed
+
+
+def test_edit_produces_a_minimal_diff(monkeypatch):
+    import difflib
+    base = ('element = box("bracket", 80, 40, 6)\n'
+            'clearance_hole(element, "M8", (-25, 0))\n'
+            'clearance_hole(element, "M8", (25, 0))\n')
+    edited = base.replace("M8", "M10")  # a well-behaved model changes only the two hole lines
+    monkeypatch.setattr(inference, "infer", lambda *a, **k: edited)
+    res = loop.edit(base, "make the holes M10")
+    assert res.ir is not None and res.passed
+    changed = [ln for ln in difflib.unified_diff(base.splitlines(), res.program.splitlines())
+               if ln[:1] in "+-" and not ln.startswith(("+++", "---"))]
+    assert len(changed) == 4  # exactly the two hole lines (2 removed + 2 added)

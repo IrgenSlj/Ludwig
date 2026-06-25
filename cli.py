@@ -157,16 +157,59 @@ def compile_prompt(prompt: str, *, rounds: int = 2) -> int:
     return 1
 
 
+def edit_recipe(path: str, instruction: str, *, rounds: int = 1) -> int:
+    """The --edit path: re-prompt an existing recipe into a MINIMAL diff, re-verify, re-export (S6)."""
+    try:
+        import cadquery  # noqa: F401
+    except ImportError:
+        print("cadquery not installed — editing needs the OCCT kernel (`pip install cadquery`).")
+        return 1
+    import difflib
+    from pathlib import Path
+    from agent.loop import edit
+    from backends import step as step_backend
+
+    p = Path(path)
+    if not p.exists():
+        print(f"no such recipe: {p}")
+        return 1
+    original = p.read_text()
+    print(f"› editing {p}: {instruction}\n")
+    res = edit(original, instruction, rounds=rounds)
+    if res.ir is None:
+        print(f"FAILED: {res.error}\n--- attempted program ---\n{res.program}")
+        return 1
+
+    diff = list(difflib.unified_diff(original.splitlines(), res.program.splitlines(), lineterm="", n=1))
+    added = sum(1 for ln in diff if ln.startswith("+") and not ln.startswith("+++"))
+    removed = sum(1 for ln in diff if ln.startswith("-") and not ln.startswith("---"))
+    print("--- diff ---")
+    print("\n".join(diff) if diff else "(no change)")
+    print(f"\nminimal diff: +{added} / -{removed} lines · {res.rounds} repair round(s)")
+
+    p.write_text(res.program if res.program.endswith("\n") else res.program + "\n")
+    if res.passed:
+        sp = step_backend.compile(res.ir, p.parent)
+        print(f"wrote {p} · STEP {sp}")
+        return 0
+    print(f"wrote {p} · STEP withheld — critic not all-pass")
+    return 1
+
+
 def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         return selftest()
     if "--eval" in argv:
         return run_eval(live="--live" in argv, repair="--repair" in argv)
-    prompts = [a for a in argv if not a.startswith("--")]
-    if prompts:
-        return compile_prompt(prompts[0])
+    pos = [a for a in argv if not a.startswith("--")]
+    if "--edit" in argv:
+        if len(pos) < 2:
+            raise SystemExit('Usage: cli.py --edit <recipe.py> "<change>"')
+        return edit_recipe(pos[0], pos[1])
+    if pos:
+        return compile_prompt(pos[0])
     raise SystemExit(
-        'Usage: cli.py "<prompt>"  |  --selftest  |  --eval [--live]  |  --edit (S6). See BRIEF.md.'
+        'Usage: cli.py "<prompt>"  |  --edit <recipe.py> "<change>"  |  --selftest  |  --eval [--live] [--repair].'
     )
 
 
