@@ -11,7 +11,7 @@ PURE_MODULES = [
     "ir", "ir.elements",
     "geometry", "geometry.service",
     "toolkit", "toolkit.elements", "toolkit.standards",
-    "eval", "eval.briefs", "eval.harness", "eval.reference",
+    "eval", "eval.briefs", "eval.harness", "eval.reference", "eval.llm",
     "backends", "backends.base", "backends.step", "backends.drawing", "backends.render",
     "critic", "critic.base", "critic.dimensional", "critic.geometric", "critic.semantic",
     "agent", "agent.inference", "agent.loop",

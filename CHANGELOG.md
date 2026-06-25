@@ -4,6 +4,15 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P0/S3 (the generate→execute→repair loop, live)
+- `agent/loop.py`: the compiler driver on the provider-blind seam — `generate` (codegen) → `execute`
+  (exec the program, force the OCCT build so `StdFail_NotDone` surfaces) → `verify` (provisional;
+  the real critic panel is S4) → `repair`. `Brief`/`LoopResult`, fence-stripping, minimal prompt stack.
+- `cli.py "<prompt>"` compiles live via `claude`; `--eval --live` measures the real first-pass rate.
+- `eval/llm.py`: first-pass LLM builder for the pass-rate harness.
+- **First real first-pass geometric pass-rate: 60% (3/5)** — confirms [H1] empirically (docs/FINDINGS.md).
+- Loop tests run token-free via mocked inference; 49 tests pass.
+
 ### Added — P0/S2 (IR core · geometry service · pass-rate instrument)
 - Real OCCT exact B-rep via **CadQuery** behind the lazy `GeometryService` (box/hole/bbox/validity).
 - Thin element-API (`toolkit`: part/box/hole/clearance_hole) that registers named dims; `standards.yaml`

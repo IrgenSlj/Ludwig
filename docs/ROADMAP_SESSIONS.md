@@ -26,10 +26,14 @@ CadQuery/OCCT service (lazy). The thin `toolkit/` element-API seed (box, hole, r
 `cli.py --eval` reports the pass-rate (100% on the reference oracle over a 5-brief frozen set), standards.yaml
 resolves clearance holes (M8→⌀9.0). The LLM codegen builder replaces the oracle in **S3** — then the number gets real.
 
-### S3 — The loop
-Port the provider-blind inference into a real `agent/loop.py`: codegen → execute → (stub verify) → repair,
+### S3 — The loop  ✅
+Port the provider-blind inference into a real `agent/loop.py`: codegen → execute → (provisional verify) → repair,
 pointed at the IR. `prompts/codegen.md` + `prompts/repair.md`. Cheap-model codegen, seam unchanged.
 **Gate:** prompt → generated CadQuery program → executed IR for the bracket, end to end, headless.
+**Done:** `cli.py "<prompt>"` compiles live via `claude` (bracket → exact 80×40×6 B-rep, 0 repair rounds).
+`cli.py --eval --live` swaps the oracle for real codegen → **first real first-pass geometric pass-rate: 60% (3/5)**
+([H1] confirmed; see `docs/FINDINGS.md`). Loop tests run token-free via mocked inference. Verify is provisional —
+the real critic panel is S4.
 
 ### S4 — Deterministic critic v0
 The verifier panel: `geometric` (manifold/watertight/self-intersection), `dimensional` (named-dim exact, 1e-6),

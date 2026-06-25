@@ -6,6 +6,28 @@ experiment. Numbers are from a frozen 5-brief product-render suite graded by the
 vision critic; unless noted they are single-run (n=5), so treat deltas under ~1.0
 as directional. Re-run with `--eval --eval-repeats 3` to tighten them.
 
+## P0/S3 — First-pass geometric pass-rate: the [H1] baseline
+
+**60% (3/5)** on the frozen brief set — the first time the loop generated real CadQuery against the
+thin element-API (`cli.py --eval --live`, `claude` default model, **first-pass, no repair**).
+
+- Lands almost exactly where the sourced due-diligence predicted (Query2CAD 53.6% geometric-correct;
+  CAD-Coder IoU ~0.52). The ~50%-first-pass reality behind **[H1]** is now **measured, not asserted** —
+  which is precisely why we did *not* mandate "element-API only": every point of reliability matters here.
+- Passed: bracket, spacer, flat_bar. Failed (first-pass): plate, gusset. *Why* is not yet diagnosed —
+  the S4 deterministic critic returns structured per-check failures (wrong extent / axis orientation /
+  unrequested feature), which will name the cause. The repair loop (`rounds>0`) is the mechanism meant
+  to close this gap; a **post-repair** rate is the next measurement.
+- This is the number to watch every phase. Prompt/toolkit/standards changes are judged against it on the
+  held-out set, never fitted to it.
+
+> Method: single run (n=1/brief), `claude` default tier — directional until repeated. Re-measure with
+> `cli.py --eval --live`.
+
+---
+
+## Mesh-era findings (historical — vision critic / Blender substrate, pre-re-foundation)
+
 ## 1. The critic (the moat's instrument) is reliable
 
 Before trusting the self-correcting loop, we measured the grader itself: the same
