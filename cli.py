@@ -76,11 +76,11 @@ def selftest() -> int:
     return 0 if ok else 1
 
 
-def run_eval() -> int:
+def run_eval(*, live: bool = False) -> int:
     """First-pass geometric pass-rate over the frozen held-out brief set ([H6]).
 
-    Uses the deterministic reference builder until the LLM codegen lands (S3); the harness and
-    the number are the point — at S3 we swap the builder and the rate becomes the real signal.
+    Default uses the deterministic reference oracle (no tokens). `--live` swaps in real LLM codegen
+    (`eval.llm.build`) — the actual measurement of how reliably the model writes correct CadQuery.
     """
     try:
         import cadquery  # noqa: F401
@@ -88,25 +88,59 @@ def run_eval() -> int:
         print("cadquery not installed — the eval harness needs the OCCT kernel "
               "(`pip install cadquery`). See BRIEF.md §4.")
         return 1
-    from eval import harness, reference
+    from eval import harness
+    if live:
+        from eval import llm as builder_mod
+        builder, label = builder_mod.build, "LIVE LLM codegen, first-pass"
+    else:
+        from eval import reference
+        builder, label = reference.build, "reference oracle"
 
-    rate, results = harness.run(reference.build)
+    rate, results = harness.run(builder)
     for bid, ok in results:
         print(f"  [{'ok  ' if ok else 'FAIL'}] {bid}")
     passed = sum(o for _, o in results)
-    print(f"first-pass geometric pass-rate (reference builder): "
-          f"{rate * 100:.0f}%  ({passed}/{len(results)})")
+    print(f"first-pass geometric pass-rate ({label}): {rate * 100:.0f}%  ({passed}/{len(results)})")
     return 0 if rate == 1.0 else 1
+
+
+def compile_prompt(prompt: str, *, rounds: int = 2) -> int:
+    """The compile path: prompt → generated program → executed IR (BRIEF §5, S3 gate)."""
+    try:
+        import cadquery  # noqa: F401
+    except ImportError:
+        print("cadquery not installed — compiling needs the OCCT kernel (`pip install cadquery`).")
+        return 1
+    from agent.loop import Brief, run
+    from geometry import GeometryService
+
+    print(f"› compiling: {prompt}\n")
+    res = run(Brief(prompt=prompt), rounds=rounds)
+    print("--- program ---")
+    print(res.program)
+    print("\n--- result ---")
+    if res.ir is None:
+        print(f"FAILED to build an Element: {res.error}")
+        return 1
+    length, width, height = GeometryService().bbox(res.ir.geometry) if res.ir.geometry else (0.0, 0.0, 0.0)
+    print(f"built {res.ir.id!r}: bbox {length:.3f}×{width:.3f}×{height:.3f} mm · "
+          f"{len(res.ir.manifest)} named dims · {res.rounds} repair round(s)")
+    for c in (res.critique.checks if res.critique else []):
+        print(f"  [{c.status.value:4}] {c.check}" + (f" — {c.message}" if c.message else ""))
+    print("OK — compiled to a valid solid")
+    return 0
 
 
 def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         return selftest()
     if "--eval" in argv:
-        return run_eval()
+        return run_eval(live="--live" in argv)
+    prompts = [a for a in argv if not a.startswith("--")]
+    if prompts:
+        return compile_prompt(prompts[0])
     raise SystemExit(
-        "compile/--edit land in P0 (S3 codegen, S6 edit). Run `python3 cli.py --selftest` "
-        "or `--eval`. See BRIEF.md."
+        'Usage: cli.py "<prompt>"  |  --selftest  |  --eval [--live]  |  --edit (S6). See BRIEF.md.'
     )
 
 
