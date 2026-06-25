@@ -4,6 +4,15 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P0/S2 (IR core · geometry service · pass-rate instrument)
+- Real OCCT exact B-rep via **CadQuery** behind the lazy `GeometryService` (box/hole/bbox/validity).
+- Thin element-API (`toolkit`: part/box/hole/clearance_hole) that registers named dims; `standards.yaml`
+  loader resolves domain semantics (M8 clearance → ⌀9.0), never guessed in codegen.
+- The `eval/` **first-pass geometric pass-rate** harness ([H6]) over a frozen 5-brief held-out set, with a
+  deterministic reference oracle (replaced by LLM codegen in S3). `cli.py --eval` reports the number.
+- `cli.py --selftest` now runs the bracket geometry gate (80×40×6 exact, two holes, valid solid) when the
+  kernel is present; stays green without it. CI installs cadquery and runs the gate + eval.
+
 ### Changed — Re-foundation (mesh → precision CAD/BIM compiler)
 - Pivoted from a mesh render tool to an AI-native precision CAD/BIM **compiler**: a typed semantic
   IR (the truth) over OCCT/CadQuery, a deterministic critic, and derived backends (STEP/IFC/drawing/

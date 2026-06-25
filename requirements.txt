@@ -2,9 +2,9 @@
 # LAZILY (never at package import) so `cli.py --selftest` and CI stay green before they land.
 
 PyYAML>=6.0          # standards.yaml loader (P0)
+cadquery>=2.8        # P0/S2 — OCCT exact B-rep geometry service (the locked kernel; imported lazily)
 
 # --- installed per phase, imported lazily inside the modules that use them ---
-# cadquery>=2.4      # P0/S2  — OCCT exact B-rep geometry service (the locked kernel)
 # ezdxf>=1.1         # P0.5/S7 — DXF drawing writer (HLR → DXF/SVG)
 # ifcopenshell       # P1     — IFC backend (IfcOpenShell authoring)
 # (Blender / bpy is BYO, headless, out-of-process — NOT a pip dependency)
