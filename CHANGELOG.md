@@ -4,7 +4,18 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Changed — Re-foundation (mesh → precision CAD/BIM compiler)
+- Pivoted from a mesh render tool to an AI-native precision CAD/BIM **compiler**: a typed semantic
+  IR (the truth) over OCCT/CadQuery, a deterministic critic, and derived backends (STEP/IFC/drawing/
+  render/present). See `BRIEF.md` (founding architecture), `docs/ROADMAP_SESSIONS.md`, `docs/UX_BRIEF.md`.
+- New skeleton: `ir/ geometry/ backends/ critic/ agent/ toolkit/ prompts/ store/ standards.yaml cli.py`.
+- Salvaged: the provider-blind inference seam (`agent/inference.py`) and the `L_*` render toolkit
+  (`backends/render_toolkit.py`, for the P1 render backend).
+- Removed the mesh-substrate / wrong-shell scaffolding (the M0–M4 daemon, Next.js web, Blender adapter,
+  vision-critic-as-primary). The mesh era is preserved at the git tag **`mesh-era-m4`**.
+
 ### Added
+- **Core loop**: prompt → Claude writes Blender Python → headless render →
 - **Core loop**: prompt → Claude writes Blender Python → headless render →
   Claude vision-critiques the render → iterate.
 - **Judge panel**: N diverse candidates per round, scored on a 5-axis rubric

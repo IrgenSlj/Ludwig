@@ -1,199 +1,236 @@
-# Ludwig — Development Brief & Morph Plan
+# LUDWIG — Founding Architecture & Build Roadmap
 
-**From:** a single-CLI Python script that turns a prompt into a Blender render via a generate→render→critique loop.
-**To:** a daemon-centric, BYO-agent, open-core platform that turns a prompt into an *editable, re-promptable* 2D/3D model for designers and architects — starting in product/3D-viz, built to expand into AEC and engineering.
+*Handoff document for Claude Code. Read this first, every session. It fixes the decisions that are expensive to reverse and sequences the whole build.*
 
-This document is written to be handed to Claude Code (or any coding agent) as the working spec. Drive it milestone by milestone, one PR per milestone, with `--selftest` and the eval harness staying green as the gate.
+> **Ludwig** — AI-native precision design. Describe it; Ludwig compiles a precise, parametric model, verifies it is correct and fabricable, and emits drawings, fabrication files, and presentations — all re-promptable.
 
 ---
 
-## 1. Vision in one paragraph
+## 0. What changed, and why this document exists
 
-A design is not a dead file you push vertices into — it is a **prompt plus a generated, editable program**. Ludwig keeps the program as the source of truth (diffable, re-generatable, steerable by language) and wraps it in a self-correcting loop: generate candidate programs, run them through a creative engine, *evaluate the result*, repair, keep the best. The loop is the moat; the engine and the evaluator are both pluggable. Today the engine is Blender and the evaluator is vision; tomorrow the engine is CadQuery or IfcOpenShell and the evaluator is a geometry or IFC-schema validator. The product runs **local-first with bring-your-own inference**, with an optional hosted layer for the things only a server can do.
+Ludwig began as a mesh render tool (Blender + a vision critic). It is now an **AI-native precision CAD/BIM system** targeting fabrication-grade geometry, true vector drawings, and presentation output — the workflow the incumbents (Autodesk, etc.) structurally cannot offer, because their files are opaque and direct-manipulated, while ours is a re-promptable program.
 
-## 2. First principles (carry these into every decision)
+The mesh kernel is the wrong substrate for precision and fabrication (triangles approximate; they have no exact circle, fillet, or analytic surface, and you cannot derive a dimensionally-exact drawing or a fabrication file from them). We swap the substrate and the critic; we keep the harness (the generate→verify→repair loop and provider-blind inference).
 
-1. **The loop is the product; the sensor is swappable.** "Claude views its own render" is the *first* sensor, not the moat. The moat is `generate → run → evaluate → repair`. Design every interface so a new evaluator (watertightness check, IFC validation, clash detection) drops in without touching the loop.
-2. **Design-as-code is the source of truth.** Never persist an opaque artifact as the primary record. Persist the program that produced it. Edits are re-prompts against that program.
-3. **The daemon is the only privileged process.** A web frontend talks to a local daemon; the daemon owns the filesystem, the secrets, the engine subprocesses, and the agent spawn. This is what lets the same codebase be both "local-first" and "deployable web app."
-4. **Don't ship an agent — adapt to whichever one is on `PATH`.** One stdio adapter per CLI, swappable. BYO-inference stays free forever; never sell inference.
-5. **Skills are code; standards are files.** The `L_*` toolkit stays Python. But units, tolerances, drawing conventions, IFC property sets, and material libraries are **markdown files** the agent reads at generation time, so a non-coder can extend them.
-6. **Lock the brief before the model draws (RULE 1).** Every fresh request begins with a discovery question-form, not output. For CAD this is non-negotiable: guessing units, scale, or tolerance is catastrophic, not cosmetic.
-7. **Substrate determines market — expand deliberately.** Blender/mesh = product-viz, ships today. AEC (IFC) and engineering (STEP) need a *second engine*, not more `L_*` functions. They are milestones, not checkboxes.
+This is a multi-session build. Do not treat any single phase as the product.
 
-## 3. Target architecture
+### 0.1 Hardening edits over the first draft (what a CTO review changed, and why)
+
+These seven changes were folded in after a sourced due-diligence pass. They do not alter the spine, the phasing, or the thesis; they harden the three places the first draft was writing checks the research says would bounce. Each is marked **[H#]** where it appears.
+
+1. **[H1] Codegen target = raw CadQuery + a thin semantic side-car — measured, not assumed.** First-pass *geometric* correctness of LLM-written CadQuery is only ~50% (Query2CAD 53.6%; CAD-Coder IoU ~0.52), and the 90%+ numbers in the literature are all *fine-tuned* models, not a stock CLI call. Custom DSLs measurably raise hallucination/syntax-error rates. The original "generated code calls the element API only, never raw CadQuery" pre-committed the answer to the very experiment §8 says to run. Reversed: see §5, §10.
+2. **[H2] References are by program lineage, never persistent kernel handle.** Topological naming (stable refs to faces/edges across regeneration) is the classic CAD rewrite trap — unsolved even in Onshape/Parasolid (PLDI'23). New first principle #8.
+3. **[H3] Crystallization is a critic-strictness scalar through P1.** No loose-geometry *representation* in the IR core until P2+, when its behavior is actually specified. See §3.
+4. **[H4] The moat is the loop, not the IR.** IR-first is the dominant CAD paradigm (IFC, the parametric feature tree, OCCT's own XDE/XCAF) — table stakes, not a differentiator. The defensible edge is the *productized* verifier-driven loop + swappable contracts + BYO inference. (CADSmith, 2025, is essentially this architecture in paper form — validation, and a ship-before-it-commoditizes signal.) See §1.
+5. **[H5] The Anthropic Agent SDK is one adapter behind the thin-CLI seam, not the orchestration foundation.** The SDK is Claude-shaped; "provider-blind via the SDK" means a LiteLLM-style proxy and degraded tool-use on non-Claude models. The existing thin-CLI seam is *less* locked-in. See §4, §5.
+6. **[H6] One tracked number from day one: first-pass geometric pass-rate on a frozen held-out brief set.** It predicts product viability better than anything else and operationalizes "measure, don't assert." See §8, §10.
+7. **[H7] "One engine serves both beachheads" is a hypothesis to validate by P1, not a locked principle.** See §1, §7.
+
+---
+
+## 1. The thesis in one frame: **Ludwig is a compiler**
 
 ```
-┌──────────────────────── Browser (Next.js) ─────────────────────────┐
-│  chat · discovery form · 3D viewer (glTF) · file workspace ·        │
-│  candidate gallery · version diff · settings/BYOK                   │
-└───────────────────────────────┬─────────────────────────────────────┘
-                                 │ /api/* (SSE for streaming)
-                                 ▼
-┌──────────────── Local daemon (Python · FastAPI · SQLite) ───────────┐
-│  agent registry      ← PATH scan + one adapter per CLI               │
-│  skill + standards loader  ← reads markdown/SKILL.md from disk       │
-│  prompt assembler    ← composes the prompt stack                    │
-│  ORCHESTRATOR        ← the generate→run→evaluate→repair loop         │
-│  engine manager      ← spawns + pools engine subprocesses           │
-│  project/artifact store ← SQLite + on-disk project folders          │
-└───────────┬───────────────────────────────────────┬─────────────────┘
-            │ spawn(agent_cli)                       │ spawn(engine)
-            ▼                                        ▼
-   claude · opencode · codex · …          Blender (headless) · [CadQuery] ·
-   write programs in the engine's          [IfcOpenShell] — execute the
-   language, calling its toolkit           program, emit artifacts
-            │                                        │
-            └──────────────► Artifacts ◄─────────────┘
-        scene program (.py/.step/.ifc) · render (.png) · preview (.glb) · logs
+   SOURCE LANGUAGE                 IR (the truth)                 BACKENDS (derived)
+ ┌───────────────────┐        ┌──────────────────────┐        ┌────────────────────┐
+ │ natural language  │        │  typed semantic      │   ───► │ STEP / IGES  (fab) │
+ │   +               │  ───►  │  element model        │   ───► │ IFC          (BIM) │
+ │ hierarchical      │        │  (a graph of typed   │   ───► │ DXF / SVG  (drawing)│
+ │ program           │        │   elements owning    │   ───► │ glTF / Blender (rndr)│
+ └───────────────────┘        │   exact B-rep geom)   │   ───► │ PDF / PPTX  (present)│
+          ▲                   └──────────┬───────────┘        └────────────────────┘
+          │                              │
+          │                        ┌─────▼──────┐
+          └──── repair ◄─────────── │  CRITIC =  │  deterministic geometric/semantic
+                                    │  VERIFIER  │  + compliance + (vision, demoted)
+                                    └─────┬──────┘
+                                          │
+                            generate → verify → repair  (the agentic loop = compiler driver)
 ```
 
-**Key stack decision — keep the daemon in Python.** open-design is Node because its engine is the browser. Ours is not: Blender's `bpy`, IfcOpenShell, CadQuery, and build123d are **all Python**. A Python daemon (FastAPI + `better-sqlite`-equivalent, e.g. plain `sqlite3`/SQLModel) means the orchestrator, the engines, and the toolkits share one runtime and one language. This is a real advantage over the open-design pattern, not a copy of it. The web frontend stays Next.js/React (Vercel-deployable later); the daemon stays Python.
+The **first-class citizen is the IR** — a typed semantic element model — *not* a geometry library (CadQuery) and *not* an export format (IFC). CadQuery/OCCT is the geometry **service** the IR calls; IFC is one **backend** the IR compiles to. Confusing either of those for the truth is the mistake that forces a rewrite later.
 
-| Layer | Stack |
-|---|---|
-| Frontend | Next.js (App Router) + React + TypeScript; SSE for live progress |
-| Daemon | Python 3.11+ · FastAPI · SQLite (SQLModel or `sqlite3`) · SSE streaming |
-| Agent transport | `subprocess` over stdio; one parser per CLI protocol |
-| Engine transport | `subprocess` (headless Blender today); in-process for pure-Python engines (CadQuery) later |
-| Preview | Engine exports `.glb`; web renders via `<model-viewer>` or three.js |
-| Storage | On-disk `projects/<id>/` (programs + outputs) + SQLite (projects, runs, messages, artifacts) |
-| Inference | BYO CLI on `PATH`; OpenAI-compatible BYOK proxy as fallback |
+**[H4] The IR-first architecture is correct but it is not the moat.** It is the dominant paradigm — IFC enforces exactly this semantic/geometry split; the parametric feature tree has been the persistent record since Sketchpad/Pro-E; OCCT ships it as XDE/XCAF. Everyone serious is IR-first. **The defensible edge is the productized self-correcting loop, the swappable contracts (engine ↔ backend ↔ critic), and BYO inference.** Build and message accordingly.
 
-## 4. Core contracts (the highest-value engineering)
+**[H7] Under this frame, "components-up vs building-down" is a *scheduling* question** (which element types and which backends we implement first), *hypothesised* to be a single engine serving both beachheads. A bracket, a precast panel, and a building are all IR trees; they differ in depth and in which types are populated. **This is a hypothesis to validate by the end of P1, not a locked principle** — fab (exact STEP B-rep, tight tolerance) and BIM (IFC semantics, deliberately-Low-LoD geometry, spatial/compliance) have genuinely different critics and fidelity regimes. Prove the spine on ONE beachhead before letting BIM types touch the core IR.
 
-Define these as Python `Protocol`s in `core/contracts.py`. Everything else plugs into them.
+---
 
-**ToolAdapter — one per creative engine (engine-agnostic).**
+## 2. First principles (LOCKED — do not relitigate without explicit sign-off)
+
+1. **Design-as-code.** The source of truth is a program, never an opaque file. Every change is a diff. Editability is the entire competitive reason to exist.
+2. **IR is the first-class citizen.** A typed semantic element model. Geometry, params, type, and relationships live on elements.
+3. **OCCT is the geometry service.** Exact B-rep via **CadQuery** (default; larger codegen corpus → more reliable generation) over OpenCASCADE. The wrapper is swappable (build123d is the alternative); the *kernel* (OCCT) is locked.
+4. **Backends are derived, never authored.** STEP, IFC, DXF/SVG, render, PPTX are all projections of the IR.
+5. **Deterministic-first critic.** Most of "brief adherence" is *computable*, not eyeballed. The vision critic is demoted to soft aesthetic judgments on the render backend only. (This is why precision CAD is a *better* regime for the agentic loop than rendering was — the error signal becomes exact.)
+6. **Local-first, BYO-model, provider-blind.** Keep the existing pluggable inference (thin CLI-on-PATH seam). Trusted toolkit only — **no untrusted third-party skills/plugins** (a tool that emits fabrication files cannot execute untrusted code; cf. 2026 agent-skill supply-chain attacks).
+7. **Grow the IR from real use, never speculatively.** Start the type hierarchy minimal; let the critic's findings tell you the next type/op to add.
+8. **[H2] References are by lineage in the regenerated program, never by persistent kernel handle.** Topological naming breaks even in Onshape/Parasolid; the program is the only stable identity. `provenance` and point-to-navigate resolve a selection to a *program node*, never to a raw OCCT face/edge ID.
+
+---
+
+## 3. The IR — the typed semantic element model
+
+Start minimal. This is the seed, not the finished ontology.
+
 ```python
-class ToolAdapter(Protocol):
-    name: str                       # "blender", "cadquery", "ifc"
-    language: str                   # the language the agent writes in
-    def capabilities(self) -> Caps  # {mesh, brep, ifc, 2d}, output formats
-    def toolkit_reference(self) -> str   # the L_* / helper docs injected into the prompt
-    def run(self, program: str, project_dir: Path) -> RunResult
-        # executes the agent-written program; returns render(s), .glb preview,
-        # exported model (.step/.ifc), stdout/stderr, structured errors
-    def preview(self, result: RunResult) -> Path   # path to web-viewable .glb
-```
-
-**Critic / Sensor — one per evaluation modality (loop-agnostic).**
-```python
-class Sensor(Protocol):
+class Element:
+    id: str
+    type: str                 # "Part", "Wall", "Space", ...
     name: str
-    applies_to: set[str]            # which capabilities it can judge
-    def evaluate(self, result: RunResult, brief: Brief) -> Critique
-        # Critique = { score, axis_scores, issues[], repair_hints[] }
-```
-- `VisionCritic` (today): renders → agent views → 5-axis score. The existing critic, moved behind this interface.
-- `GeometryValidator` (later): manifold/watertight, bounding-box vs declared dimensions.
-- `IfcValidator` (later): schema validity, required property sets, simple clash.
-
-The orchestrator never knows which sensors exist — it asks the registry for sensors whose `applies_to` intersects the active engine's capabilities, runs them, and aggregates.
-
-**Skill — a folder, not a plugin.** `SKILL.md` + `assets/` + `references/`. Frontmatter: `mode`, `engine`, `scenario`, `outputs`, `requires_standards`, `example_prompt`. Loaded pre-flight and injected into the prompt.
-
-**Standards — portable markdown.** `standards/units.md`, `standards/tolerances.md`, `standards/drawing-conventions.md`, `standards/ifc-property-sets.md`, `materials/*.md`. The active set is injected into the prompt stack. Non-coders edit these.
-
-**Discovery form — a JSON schema emitted before generation.** For a modeling brief: units, overall dimensions/scale, tolerance class, target output (render / print / manufacture / drawing / BIM), style or reference, hard constraints. The cost of a wrong direction becomes one form, not one finished model.
-
-**Prompt stack — composable, every layer a file:**
-```
-discovery directives (RULE 1 form, repair directives)
-  + identity + critic charter
-  + active standards (units, tolerances, materials)
-  + active SKILL.md (+ injected toolkit reference)
-  + project metadata (units, target output, candidate history)
-  + adapter toolkit reference (L_* docs)
+    geometry: BRepHandle      # lazy OCCT solid built by the program
+    params: dict[str, Param]  # named, typed, UNIT-CARRYING values
+    relations: list[Relation] # hosts / bounded_by / contains / references
+    manifest: list[NamedDim]  # named dims → feed BOTH the critic and the UI sliders
+    crystallization: float    # 0.0 loose ... 1.0 locked (see [H3] below)
+    provenance: ProgramNode   # link back to the program node that authored it
+                              # (powers point-to-navigate; resolves to a NODE, not a kernel handle [H2])
 ```
 
-## 5. Current → target component map
+**Type hierarchy (grows by phase — DO NOT pre-build):**
 
-| Today (Ludwig as-is) | Becomes | Action |
+```
+Element
+├─ Part              (P0)  generic precise solid
+│   ├─ Panel         (P1)  precast concrete  → IFC4precast
+│   └─ Profile       (P1)  joinery / extrusion
+├─ Assembly          (P1)  composes Elements, preserves relative transforms
+├─ SpatialElement    (P2)
+│   ├─ Wall · Slab · Column · Beam · Roof
+├─ Space             (P2)  program/area-bearing (the thing a brief is graded against)
+├─ Storey            (P2)
+└─ Project           (P2)  root
+```
+
+**Two design commitments worth stating explicitly:**
+
+- **[H3] Crystallization is a property of every element — but through P1 it is *only* a critic-strictness scalar.** A region can be loose (indicative) or locked (precise, fabrication-final). P0/P1 ship it as a float that gates how strict the critic is on that element and nothing else — it must NOT introduce a second geometry representation into the IR core. The rich behavior (the agent holding several interpretations; loose-geometry rendering) is specified and built in P2–P3, alongside the UI that makes it visible. Do not let the seductive part metastasize into the kernel early.
+- **The program is hierarchical, not flat.** "One editable program" does NOT survive at building scale. A `Project` program calls `Storey` programs call `Unit` programs call detail programs. The editability thesis holds **at each node of the tree**. How the agentic loop decomposes over this tree is the single biggest open research question (see §8).
+
+---
+
+## 4. The stack (mostly Python — one language end to end)
+
+| Layer | Tech | Phase |
 |---|---|---|
-| `ludwig.py` orchestrator/loop | `core/orchestrator.py` | **Reuse** the loop logic; wrap behind the daemon API |
-| `ludwig_blender_lib.py` (`L_*`) | `adapters/engines/blender/toolkit.py` | **Reuse** as the Blender adapter's toolkit |
-| provider switch (`claude`/`opencode`) | `adapters/agents/*` registry | **Generalize** to a PATH scan + per-CLI adapter |
-| critic / 5-axis scoring | `sensors/vision_critic.py` | **Refactor** behind the `Sensor` interface |
-| eval harness (`--eval`, `--selftest`) | `eval/` | **Keep**; wire into CI and the daemon's quality gate |
-| CLI entry (`ludwig.py "..."`) | `cli/ludwig.py` | **Thin wrapper** calling `core` — back-compat preserved |
-| — | `daemon/` (FastAPI + SQLite) | **New** |
-| — | `web/` (Next.js) | **New** |
-| — | 3D viewer + `.glb` export | **New** (see §6) |
-| — | discovery form engine | **New** |
-| — | skill + standards loaders | **New** |
+| Geometry kernel | OpenCASCADE via **CadQuery** | P0 |
+| BIM I/O | **IfcOpenShell** | P1–P2 |
+| 2D vector drawings | OCCT **HLR** → **ezdxf** (DXF) + SVG; dims queried from model | P0.5 (parts) → P2 (conventioned) |
+| 3D render | **Blender headless (bpy)** as backend; reuse the salvaged `L_*` toolkit (`backends/render_toolkit.py`) | P1 |
+| Live viewport | three.js / pythreejs (GL, fast) | P3 |
+| Agent orchestration | **thin CLI-on-PATH seam** (provider-blind); Anthropic Agent SDK is **one adapter behind it [H5]**, not the foundation | P0 |
+| Critic / verifier | OCCT checks + IDS/IFC rules + vision (demoted) | P0 → P2 |
+| Presentation assembly | SVG/HTML → PDF/PPTX, composing derived views | P3 |
+| App shell | **Tauri** over the Python backend; local-first, BYO Blender + model | P3 |
+| Persistence | local **SQLite** (metadata, history) + git-diffable recipe files | P0 |
+| Export / fab | STEP, IGES, STL, IFC, DXF, PDF, PPTX, glTF | per backend |
 
-## 6. The preview layer (where the open-design analogy breaks)
+**[H5] Inference seam.** The boundary is the existing thin CLI adapter (`claude`/`opencode` on PATH; `agent/inference.py`). This is *less* locked-in than adopting the Agent SDK as the loop, because the SDK's system prompts/tool schemas/loop are tuned for Claude and degrade on non-Anthropic models behind a proxy. If/when we want the SDK's machinery (subagents, hooks, plan mode), it goes behind the seam as one provider adapter — never replacing it.
 
-open-design's artifact is HTML that renders instantly in an iframe — the browser *is* the engine. Ludwig's artifact is a 3D scene that must be rendered by Blender and then shown in the browser. Two distinct surfaces:
+---
 
-1. **Hero render (raster).** The Cycles `.png` you already produce. Shown as the candidate image. No change.
-2. **Interactive preview (geometry).** The Blender adapter additionally exports a **`.glb`** of the winning (and ideally each) candidate. The web renders it with `<model-viewer>` (simplest) or three.js (more control) — orbit, turntable, relight. This is what makes "look at it from another angle / it's a real object, not a picture" true, and it's the thing image-gen cannot do.
+## 5. The agentic loop (the compiler driver)
 
-`.glb` is the universal interchange that keeps this engine-agnostic: when CadQuery/IfcOpenShell arrive later, they export to `.glb` for preview too (via their own tessellation), while *also* emitting the precision format (`.step`/`.ifc`) as the real deliverable.
+Reuse the existing orchestrator shape; point it at the IR.
 
-## 7. Phased roadmap (solo-developer paced — sizes, not promises)
+```
+prompt ─► codegen (LLM writes a program against CadQuery + the thin element-API; see [H1])
+       ─► execute (build the IR)
+       ─► VERIFY (deterministic critic panel over the IR)
+       ─► if fail: feed critic JSON back ─► repair (fix ONLY failures, keep intent) ─► re-verify
+       ─► if pass: select (pairwise judge among candidates, P1+) ─► compile backends
+```
 
-Order is load-bearing. Each milestone leaves the repo shippable and the eval green. **Strangler-fig principle: wrap the working `ludwig.py`, don't rewrite it.**
+**[H1] Codegen target.** Generated programs target **raw CadQuery with a thin semantic registration side-car** — the program writes ordinary CadQuery (the model's strongest prior) and *registers* which solids are which `Element`s and which values are named dims (`toolkit/`). The thin element-API expands only where P0 measurement proves it does not cost first-pass geometric pass-rate. We do NOT force "element-API only"; that trades away the reliability we cannot spare at ~50% first-pass.
 
-- **M0 — Daemon skeleton (S).** FastAPI app with one endpoint that runs the *existing* loop via a thin import of current `ludwig.py`. SQLite project/run store. CLI still works unchanged. *Deliverable: `POST /api/generate` returns the same result the CLI does, persisted.*
-- **M1 — Web shell (M).** Next.js chat + live progress (SSE: todo/candidate/score stream) + file workspace listing the project folder. Drives M0. *Deliverable: type a prompt in the browser, watch candidates and scores stream, see the hero render.*
-- **M2 — Interactive 3D preview (M).** Blender adapter exports `.glb` per candidate; web viewer with orbit/turntable. *Deliverable: rotate the generated object in the browser.* This is the differentiator made visible.
-- **M3 — Discovery form / RULE 1 (M).** Mandatory pre-generation question-form with the CAD constraint schema (units, scale, tolerance, target output). Locks the brief; feeds the prompt stack. *Deliverable: no generation starts before the brief is locked.*
-- **M4 — Contracts refactor (L).** Extract `ToolAdapter` and `Sensor` protocols. Move Blender behind `ToolAdapter`, the vision critic behind `Sensor`. Stand up the skill + standards file loaders and the composable prompt stack. *Deliverable: the architecture in §3–§4 is real; adding an engine or sensor is now a contained task.*
-- **M5 — BYO-agent registry (L).** PATH scan + per-CLI adapters (start: `claude`, `opencode`, `codex`) swappable from the UI; OpenAI-compatible BYOK proxy fallback with SSRF blocking. *Deliverable: pick your agent in a dropdown.*
-- **M6 — First precision vertical (XL — gate behind all the above).** Pick **one**: (a) add a `GeometryValidator` sensor (watertight/manifold + dimension check) to prove the sensor-pluggability claim end-to-end, or (b) add a second `ToolAdapter` — **CadQuery → STEP** (mechanical) or **IfcOpenShell → IFC** (architecture, your moat). Time-box the research; this is the leap from viz to CAD.
+Borrow wholesale from Claude Code (these become **app-layer** features, surfaced in P3, but design the headless core so they slot in):
 
-## 8. Open-core & monetization line
+- **Plan mode** — investigate → propose plan → human approves → execute.
+- **Tiered autonomy / permissions** — auto-apply cheap geometry edits; **always gate fabrication export (STEP/IFC write) and destructive ops** behind explicit confirmation. Prefer reversible actions.
+- **Project-standards file** (`standards.yaml`, the CLAUDE.md analogue) — units, tolerances, line weights, layer conventions, hole-clearance tables, min-wall thresholds, IFC mappings, code requirements. The single highest-leverage file.
+- **Subagents** — geometry, drawing, render, compliance/critic, presentation; split-and-merge for variants.
+- **Hooks** — a **pre-export validation hook** runs the deterministic critic before any fabrication file leaves the building. Last line of defense.
+- **Model tiering** — cheap model for bulk candidate codegen, strongest model reserved for the critic / hard reasoning. (Note: tiering + prompt-caching economics hold on the Claude path; they largely evaporate behind a non-Anthropic proxy.)
 
-- **Apache-2.0 core (free, local-first, forever):** daemon, orchestrator/loop, all adapters and sensors, the `L_*` toolkit, the viewer, skills, standards. BYO-inference.
-- **Hosted layer (later, separate, paid):** managed **render farm** (Cycles is slow — real, recurring value), team **collaboration + versioning**, curated **asset & standards libraries**, SSO/governance for firms. *Do not sell inference — it contradicts the BYO core.*
+---
 
-## 9. Scope discipline — explicit non-goals for v1
+## 6. The critic / verifier (the moat)
 
-- No 2D dimensioned drafting / constraint solver (it's an Onshape-grade moat; defer).
-- No multi-engine on day one — Blender only until M6.
-- No real-time multiplayer / collaboration (that's the hosted upsell, not the core).
-- No cloud/hosted service until the local product is loved.
-- No marketplace, no plugin store.
+A **panel**, not one judge. Each check returns `pass | fail | n/a` + message, and feeds repair.
 
-## 10. Proposed repo structure
+- **Geometric** (OCCT): manifold, watertight, no self-intersection, min-wall (approx heuristic P0 → real analysis P1; **never a P0 gate** — min-wall is exactly where OCCT booleans throw `StdFail_NotDone`).
+- **Dimensional**: every named dim in the brief is present and exact (tol 1e-6). Low-noise — this is the point.
+- **Semantic**: holes pass through material; hosting valid; no orphan elements; units present.
+- **Compliance** (P2): IDS data-validation (ratified v1.0) **plus a geometry/rule engine** — IDS explicitly excludes geometry, computed values, and clashes, so it is necessary but not sufficient.
+- **Aesthetic** (vision, DEMOTED): proportion/composition only, **pairwise** (lower variance than absolute scoring), render-backend only, soft. Never adjudicates "good architecture" — see §8.
+
+The old vision critic was noise-limited (per-brief swings > the deltas we chased; see `docs/FINDINGS.md`). Moving the bulk of brief-adherence to deterministic checks is the core upgrade; **adopt pairwise for everything that remains a ranking.**
+
+---
+
+## 7. Phased roadmap
+
+Each phase ships something usable to **one** beachhead while extending the **same** IR. Session-level breakdown lives in `docs/ROADMAP_SESSIONS.md`. One PR per session.
+
+### P0 — The spine
+Build: `Element`/`Part`, program-as-source, generate→verify→repair, **STEP** + (P0.5) **HLR→SVG** backends, CLI, `--selftest`, `--edit` (minimal-diff), and **[H6] the first-pass-geometric-pass-rate instrument** over a frozen held-out brief set.
+Test fixture: a steel bracket (`80×40×6mm, two M8 holes`). The bracket is **not the goal** — it's the smallest honest proof the spine closes.
+**Gate:** prompt → exact-dim B-rep (bbox ±1e-3, holes correct) → critic all-pass → STEP opens in FreeCAD → `--edit` produces a minimal diff. (The HLR→SVG elevation is P0.5, deliberately *outside* the spine gate — OCCT HLR is fragile and must not block proving the solid spine.)
+
+### P1 — Components & domain (→ a fabrication shop has a real tool)
+Build: `Assembly`, `Panel`/`Profile` types, **IFC** (IfcOpenShell) + **render** (Blender; wire in `backends/render_toolkit.py`) backends, judge panel + pairwise critic, real min-wall, hole-clearance from `standards.yaml`. **Validate [H7] here:** does the one IR genuinely serve fab + first BIM type without contortion?
+**Gate:** "a precast wall panel, 3000×2000×200, two M16 cast-in anchors, 40mm cover" → IFC4precast + STEP + shop drawing + render, all critic-verified.
+
+### P2 — Buildings (→ an architect does)
+Build: `SpatialElement` types, the **relationship graph**, `Space`/`Storey`/`Project`, the **hierarchical program**, the **compliance critic** (IDS + geometry), the rich **crystallization behavior [H3]**, and the **conventioned drawing engine** (poché on cut elements, door swings, fixtures-as-symbols, dimension strings, room tags, scale-aware representation — NOT free HLR; ~41% of BIM→practice drawing work is manual, IFC barely carries annotation. This is the least-solved, highest-moat surface and may be a wedge in its own right).
+**Gate:** "a 4-storey housing block, 18 units, double-height entrance" → massing → plan/section/elevation (conventioned) → area schedule (computed) → compliance pass/fail.
+
+### P3 — The application (→ no CLI)
+Build: the **Tauri desktop shell** and the **Stage & Director UI** (see `docs/UX_BRIEF.md`), parameter sliders, point-to-navigate, ambient correctness, plan-mode + permissions + hooks surfaced, **presentation auto-assembly** backend.
+**Gate:** a full design produced, edited, verified, and exported without touching a terminal.
+
+### P4 — Scale
+Build: the **hierarchical agentic loop** over a deep IR (subagent decomposition: massing → plates → cores → units → details), **cascade repair**, exploration/branching at scale.
+**Gate:** a real building, re-promptable at any node of the tree, without regenerating the whole.
+
+---
+
+## 8. Open research questions (flagged per phase — do not pretend these are solved)
+
+- **P0:** **[H1/H6]** codegen reliability against raw CadQuery vs the thin element-API — *instrument this first*; it is the central bet of the IR layer, and `first-pass geometric pass-rate` is the number that decides the product. OCCT `StdFail_NotDone` on fillet/boolean is the dominant, opaque failure mode the repair loop must parse.
+- **P1:** true manufacturability / minimum-thickness analysis; IR↔IFC fidelity (export = result geometry, not the recipe; Design Transfer View is one-way) and which MVD.
+- **P2:** the conventioned-drawing problem (IFC→readable drawing is a known, unsolved pain); **the architectural critic's taste boundary — it must verify compliance and program and REFUSE to score aesthetics**, because a tool that grades "good architecture" is either wrong or smuggling an ideology.
+- **P2/P4:** **[H2]** hierarchical decomposition of the agentic loop over a deep IR, and lineage-stable referencing across regeneration — the biggest unknowns in the project.
+- **P3:** round-tripping direct manipulation back into clean program text (select-geometry→code is solved; writing a freehand edit back as *good* code is not); cascade visualization at building scale.
+
+---
+
+## 9. Repo / module structure (seed — see the live tree)
 
 ```
 ludwig/
-  core/
-    orchestrator.py      # the loop (from ludwig.py)
-    contracts.py         # ToolAdapter, Sensor protocols
-    prompt_stack.py
-    models.py            # Brief, RunResult, Critique, Project
-  adapters/
-    engines/
-      blender/{adapter.py, toolkit.py}   # toolkit = ex ludwig_blender_lib
-      cadquery/           # M6 (optional)
-    agents/{claude.py, opencode.py, codex.py, base.py}
-  sensors/
-    vision_critic.py
-    geometry_validator.py # M6 (optional)
-  skills/<skill>/SKILL.md
-  standards/{units.md, tolerances.md, drawing-conventions.md, ...}
-  materials/*.md
-  daemon/{app.py, db.py, sse.py, routes/}
-  web/                    # Next.js
-  eval/                   # existing harness
-  cli/ludwig.py           # thin back-compat wrapper → core
+  ir/                 # Element, Param, Relation, NamedDim, ProgramNode, crystallization
+  geometry/           # CadQuery/OCCT service + BRepHandle (lazy)
+  backends/
+    step.py  drawing.py  ifc.py  render.py  render_toolkit.py(salvaged L_*)  present.py
+  critic/             # geometric.py dimensional.py semantic.py compliance.py aesthetic.py (pairwise judge)
+  agent/              # inference.py (provider-blind seam), loop.py, subagents, plan-mode, permissions, hooks
+  toolkit/            # the thin element-API ops codegen registers against (the new L_*)
+  standards.yaml      # the project-standards file (units, line weights, clearances, min-wall, IFC map)
+  prompts/            # codegen.md, repair.md, critic.md
+  store/              # sqlite + recipe files
+  eval/               # held-out brief set + the pass-rate harness [H6]
+  cli.py
+  tests/
 ```
 
-## 11. How to drive this with Claude Code
+## 10. Conventions Claude Code MUST follow (the `standards.yaml` / CLAUDE.md seed)
 
-1. Commit this file as `BRIEF.md` at the repo root; reference it from `CLAUDE.md`.
-2. Work **one milestone per branch/PR**. Open each session with: *"Read BRIEF.md. We are on M{n}. Implement only M{n}'s deliverable. Keep `--selftest` and the eval harness green. Do not start M{n+1}."*
-3. Keep `cli/ludwig.py` passing its existing selftest at every milestone — it's your regression guard while the daemon grows around it.
-4. After M4, when adding any engine or sensor, the prompt is: *"Implement a new `{ToolAdapter|Sensor}` per `core/contracts.py`; do not modify the orchestrator."* If that constraint can't be met, the contracts are wrong — fix them, not the loop.
-
-## 12. Risks & mitigations
-
-- **Scope creep** → strangler-fig (M0 wraps, doesn't rewrite); one engine, one sensor until M6.
-- **Blender process management** (startup cost, concurrency, crashes) → an engine manager that pools/recycles headless Blender processes; treat each run as isolated and disposable.
-- **glTF fidelity** for preview → preview is for *inspection*, not the deliverable; keep the raster hero render as the quality artifact.
-- **The viz→CAD leap (M6)** is genuinely research-grade → time-box it; treat a working `GeometryValidator` as the cheaper proof before committing to a second kernel.
-- **Solo bandwidth** → milestones are independently shippable; the repo is portfolio-grade at every step, which serves the career goal regardless of whether it becomes a business.
+- **mm everywhere, units explicit and asserted.** The #1 silent CAD bug.
+- **[H1] Generated code targets raw CadQuery + the thin element-API side-car; it registers every named dim into the manifest.** The raw-vs-wrapped first-pass geometric pass-rate is *measured* on a held-out set in P0 before the wrapper is expanded. We do NOT mandate "element-API only."
+- **`--edit` must produce a minimal diff.** If an edit rewrites the file, that's a bug — editability is the whole thesis.
+- **[H2] References are by program lineage, never persistent kernel handle.**
+- **Domain semantics live in `standards.yaml`** (e.g. "M8 clearance hole" = ⌀9.0, not ⌀8.0). Codegen consults it.
+- **Trusted toolkit only.** No untrusted third-party skills.
+- **Provider-blind.** No hard-wiring to one model; cheap model for candidate codegen, best model reserved for the critic/hard reasoning.
+- **[H6] Measure, don't assert.** Track `first-pass geometric pass-rate` on a frozen held-out brief set every phase. Conclusions under the noise floor need averaging/pairwise. Don't tune on the test set.
