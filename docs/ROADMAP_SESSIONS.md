@@ -17,11 +17,14 @@ store/` skeleton as importable stubs. Salvage the provider-blind inference (`age
 
 ## P0 — The spine
 
-### S2 — IR core + geometry service + the pass-rate instrument
+### S2 — IR core + geometry service + the pass-rate instrument  ✅
 `Element/Part`, `Param` (unit-carrying), `Relation`, `NamedDim`, `ProgramNode`. `BRepHandle` + the
 CadQuery/OCCT service (lazy). The thin `toolkit/` element-API seed (box, hole, register-dim).
 **[H6]** Stand up the frozen held-out brief set + the `first-pass geometric pass-rate` harness in `eval/`.
 **Gate:** build the bracket IR in code; bbox 80×40×6 ±1e-3, two ⌀ correct holes; pass-rate harness runs and reports a number.
+**Done:** real OCCT geometry via CadQuery; `cli.py --selftest` runs the bracket gate (kernel-guarded),
+`cli.py --eval` reports the pass-rate (100% on the reference oracle over a 5-brief frozen set), standards.yaml
+resolves clearance holes (M8→⌀9.0). The LLM codegen builder replaces the oracle in **S3** — then the number gets real.
 
 ### S3 — The loop
 Port the provider-blind inference into a real `agent/loop.py`: codegen → execute → (stub verify) → repair,

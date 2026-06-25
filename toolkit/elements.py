@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from geometry.service import GeometryService
 from ir.elements import Element, ProgramNode
+from toolkit.standards import clearance_hole_mm
 
 _geom = GeometryService()
 
@@ -21,10 +22,29 @@ def part(element_id: str, name: str = "", *, node: str | None = None) -> Element
 
 
 def box(element_id: str, length: float, width: float, height: float, *, name: str = "") -> Element:
-    """Convenience seed: a dimensioned box Part with its three extents registered as named dims."""
+    """A dimensioned box Part with its three extents registered as named dims."""
     el = part(element_id, name=name)
     el.geometry = _geom.box(length, width, height)
     el.register_dim("length", length)
     el.register_dim("width", width)
     el.register_dim("height", height)
     return el
+
+
+def hole(el: Element, diameter: float, at: tuple[float, float], *,
+         name: str | None = None, through: bool = True) -> Element:
+    """Drill a vertical hole at (x, y) and register its diameter as a named dim."""
+    el.geometry = _geom.hole(el.geometry, diameter, at, through=through)
+    idx = sum(1 for d in el.manifest if d.name.startswith("hole")) + 1
+    el.register_dim(name or f"hole_{idx}_dia", diameter)
+    return el
+
+
+def clearance_hole(el: Element, thread: str, at: tuple[float, float], *, through: bool = True) -> Element:
+    """Drill a clearance hole sized from standards.yaml — e.g. 'M8' -> ⌀9.0 (BRIEF §10).
+    The thread→diameter mapping is domain knowledge that lives in standards, never in codegen."""
+    return hole(el, clearance_hole_mm(thread), at, name=f"{thread}_clearance_{_n(el)}", through=through)
+
+
+def _n(el: Element) -> int:
+    return sum(1 for d in el.manifest if "clearance" in d.name) + 1

@@ -44,6 +44,30 @@ def selftest() -> int:
     b.provenance = ProgramNode(node_id="bracket", source_span=(1, 12))
     check("provenance is a ProgramNode", isinstance(b.provenance, ProgramNode))
 
+    # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
+    # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
+    try:
+        import cadquery  # noqa: F401
+    except ImportError:
+        print("  [skip] geometry gate — cadquery not installed (pure-Python spine is the gate)")
+    else:
+        from eval import harness, reference
+        from eval.briefs import BRIEFS
+        from geometry import GeometryService
+        from toolkit.standards import bbox_gate
+
+        g = GeometryService()
+        bracket = reference.build(next(x for x in BRIEFS if x["id"] == "bracket"))
+        length, width, height = g.bbox(bracket.geometry)
+        tol = bbox_gate()
+        check("bracket bbox 80×40×6 within gate",
+              abs(length - 80) <= tol and abs(width - 40) <= tol and abs(height - 6) <= tol,
+              f"got {length:.4f}×{width:.4f}×{height:.4f}")
+        check("bracket has two holes", g.cylindrical_face_count(bracket.geometry) == 2)
+        check("bracket solid is valid", g.is_valid(bracket.geometry))
+        rate, _ = harness.run(reference.build)
+        check("eval pass-rate harness reports 100% on the oracle", rate == 1.0, f"got {rate:.2f}")
+
     ok = all(passed for _, passed, _ in checks)
     for label, passed, detail in checks:
         mark = "ok  " if passed else "FAIL"
@@ -52,11 +76,37 @@ def selftest() -> int:
     return 0 if ok else 1
 
 
+def run_eval() -> int:
+    """First-pass geometric pass-rate over the frozen held-out brief set ([H6]).
+
+    Uses the deterministic reference builder until the LLM codegen lands (S3); the harness and
+    the number are the point — at S3 we swap the builder and the rate becomes the real signal.
+    """
+    try:
+        import cadquery  # noqa: F401
+    except ImportError:
+        print("cadquery not installed — the eval harness needs the OCCT kernel "
+              "(`pip install cadquery`). See BRIEF.md §4.")
+        return 1
+    from eval import harness, reference
+
+    rate, results = harness.run(reference.build)
+    for bid, ok in results:
+        print(f"  [{'ok  ' if ok else 'FAIL'}] {bid}")
+    passed = sum(o for _, o in results)
+    print(f"first-pass geometric pass-rate (reference builder): "
+          f"{rate * 100:.0f}%  ({passed}/{len(results)})")
+    return 0 if rate == 1.0 else 1
+
+
 def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         return selftest()
+    if "--eval" in argv:
+        return run_eval()
     raise SystemExit(
-        "compile/--edit land in P0 (S3 codegen, S6 edit). Run `python3 cli.py --selftest`. See BRIEF.md."
+        "compile/--edit land in P0 (S3 codegen, S6 edit). Run `python3 cli.py --selftest` "
+        "or `--eval`. See BRIEF.md."
     )
 
 
