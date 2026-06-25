@@ -90,7 +90,11 @@ salvaged `render_toolkit.py`. Pairwise judge panel. Real min-wall. Clearances/co
 - **S10 — manufacturing critic: anchor cover (done).** `critic/manufacturing.py` checks each cast-in
   anchor's edge clearance ≥ `standards.yaml: manufacturing.cover_mm` (40 mm), registered into the panel.
   `Element` gained a `features` list (anchors carry position/diameter/depth). selftest 13/13, 66 tests.
-- **S11 — pairwise candidate judge + real min-wall.** *next.*
+- **S11 — candidate selection (done).** `loop.run(candidates=N)` generates N first-pass attempts and selects
+  the best by the deterministic critic (fewest failures), then repairs the winner; `cli.py --candidates N`.
+  A true pairwise *aesthetic* judge among passing candidates is deferred — it needs the render backend. 68 tests.
+- **Remaining P1:** real min-wall analysis (research-grade), the **render backend** (needs a Blender binary), and
+  IFC4precast property sets. Render is the only gate item blocked on the environment.
 
 ## P2 — Buildings (architect tool) — multi-session, drawing engine alone is several
 `SpatialElement`, relationship graph, `Space`/`Storey`/`Project`, hierarchical program, IDS+geometry compliance

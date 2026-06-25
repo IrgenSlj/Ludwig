@@ -61,6 +61,22 @@ def test_run_with_zero_rounds_does_not_repair(monkeypatch):
     assert res.rounds == 0 and not res.passed
 
 
+def test_run_selects_the_passing_candidate(monkeypatch):
+    seq = iter([WRONG_HEIGHT, GOOD, WRONG_HEIGHT])
+    monkeypatch.setattr(inference, "infer", lambda *a, **k: next(seq))
+    res = loop.run(Brief(prompt="bracket", named_dims={"length": 80, "width": 40, "height": 6}, holes=2),
+                   candidates=3, rounds=0)
+    assert res.passed and res.rounds == 0
+
+
+def test_run_repairs_when_all_candidates_fail(monkeypatch):
+    seq = iter([WRONG_HEIGHT, WRONG_HEIGHT, GOOD])
+    monkeypatch.setattr(inference, "infer", lambda *a, **k: next(seq))
+    res = loop.run(Brief(prompt="bracket", named_dims={"length": 80, "width": 40, "height": 6}, holes=2),
+                   candidates=2, rounds=1)
+    assert res.passed and res.rounds == 1
+
+
 def test_edit_produces_a_minimal_diff(monkeypatch):
     import difflib
     base = ('element = box("bracket", 80, 40, 6)\n'

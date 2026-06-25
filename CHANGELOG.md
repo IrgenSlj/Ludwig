@@ -4,6 +4,11 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P1/S11 (candidate selection)
+- `loop.run(candidates=N)` generates N first-pass attempts and selects the best by the deterministic critic
+  (fewest failures), then repairs the winner; `cli.py --candidates N`. With `candidates=1` behavior is
+  unchanged. A pairwise *aesthetic* judge among passing candidates is deferred (needs the render backend). 68 tests.
+
 ### Added — P1/S10 (manufacturing critic — anchor cover)
 - `critic/manufacturing.py`: checks each cast-in anchor's edge clearance against `standards.yaml:
   manufacturing.cover_mm` (40 mm); registered into the critic panel (adding it needed no loop change, [H4]).
