@@ -46,5 +46,25 @@ def clearance_hole(el: Element, thread: str, at: tuple[float, float], *, through
     return hole(el, clearance_hole_mm(thread), at, name=f"{thread}_clearance_{_n(el)}", through=through)
 
 
+def panel(element_id: str, length: float, height: float, thickness: float, *, name: str = "") -> Element:
+    """A precast wall panel (P1) — a Part of type 'Panel'. Oriented x=length, y=thickness, z=height,
+    so the large faces are the length×height elevation. Registers length/thickness/height as named dims."""
+    el = part(element_id, name=name)
+    el.type = "Panel"
+    el.geometry = _geom.box(length, thickness, height)
+    el.register_dim("length", length)
+    el.register_dim("thickness", thickness)
+    el.register_dim("height", height)
+    return el
+
+
+def anchor(el: Element, diameter: float, at: tuple[float, float], depth: float, *, name: str | None = None) -> Element:
+    """A cast-in anchor pocket — a blind hole drilled `depth` mm into the top (+z) edge at (x, y)."""
+    el.geometry = _geom.hole(el.geometry, diameter, at, through=False, depth=depth)
+    idx = sum(1 for d in el.manifest if d.name.startswith("anchor")) + 1
+    el.register_dim(name or f"anchor_{idx}_dia", diameter)
+    return el
+
+
 def _n(el: Element) -> int:
     return sum(1 for d in el.manifest if "clearance" in d.name) + 1

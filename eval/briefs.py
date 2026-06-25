@@ -15,4 +15,8 @@ BRIEFS = [
      "dims": {"length": 200.0, "width": 25.0, "height": 8.0}, "holes": 4},
     {"id": "gusset", "prompt": "a gusset plate, 100 × 100 × 5 mm, two M10 clearance holes",
      "dims": {"length": 100.0, "width": 100.0, "height": 5.0}, "holes": 2},
+    {"id": "precast_panel",
+     "prompt": "a precast concrete wall panel, 3000 long × 2000 tall × 200 thick (mm), "
+               "two M16 cast-in lifting anchors in the top edge",
+     "dims": {"length": 3000.0, "width": 200.0, "height": 2000.0}, "holes": 2},
 ]
