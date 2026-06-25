@@ -85,6 +85,7 @@ class Element:
     # second geometry representation into the IR core. Rich loose-geometry behavior is P2–P3.
     crystallization: float = 0.0
     provenance: Optional[ProgramNode] = None
+    features: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.crystallization = _clamp01(self.crystallization)

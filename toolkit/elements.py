@@ -63,6 +63,7 @@ def anchor(el: Element, diameter: float, at: tuple[float, float], depth: float, 
     el.geometry = _geom.hole(el.geometry, diameter, at, through=False, depth=depth)
     idx = sum(1 for d in el.manifest if d.name.startswith("anchor")) + 1
     el.register_dim(name or f"anchor_{idx}_dia", diameter)
+    el.features.append({"kind": "anchor", "at": (float(at[0]), float(at[1])), "diameter": float(diameter), "depth": float(depth)})
     return el
 
 

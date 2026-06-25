@@ -87,7 +87,10 @@ salvaged `render_toolkit.py`. Pairwise judge panel. Real min-wall. Clearances/co
   emits `.ifc` alongside the STEP. selftest 13/13. **[H7] early-positive:** the one IR served fab (STEP) and
   BIM (IFC) without contortion. (Fidelity note: IFC carries the semantic element + a representative massing
   solid; exact holes/pockets stay in the STEP — inherent to IFC. Full IFC4precast property sets: later.)
-- **S10 — pairwise judge + manufacturing critic** (cover, real min-wall). *next.*
+- **S10 — manufacturing critic: anchor cover (done).** `critic/manufacturing.py` checks each cast-in
+  anchor's edge clearance ≥ `standards.yaml: manufacturing.cover_mm` (40 mm), registered into the panel.
+  `Element` gained a `features` list (anchors carry position/diameter/depth). selftest 13/13, 66 tests.
+- **S11 — pairwise candidate judge + real min-wall.** *next.*
 
 ## P2 — Buildings (architect tool) — multi-session, drawing engine alone is several
 `SpatialElement`, relationship graph, `Space`/`Storey`/`Project`, hierarchical program, IDS+geometry compliance
