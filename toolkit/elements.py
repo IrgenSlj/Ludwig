@@ -8,7 +8,7 @@ Do NOT grow it into a mandatory DSL: that trades away the model's strongest prio
 from __future__ import annotations
 
 from geometry.service import GeometryService
-from ir.elements import Element, ProgramNode
+from ir.elements import Element, ProgramNode, Relation
 from toolkit.standards import clearance_hole_mm
 
 _geom = GeometryService()
@@ -64,6 +64,17 @@ def anchor(el: Element, diameter: float, at: tuple[float, float], depth: float, 
     idx = sum(1 for d in el.manifest if d.name.startswith("anchor")) + 1
     el.register_dim(name or f"anchor_{idx}_dia", diameter)
     el.features.append({"kind": "anchor", "at": (float(at[0]), float(at[1])), "diameter": float(diameter), "depth": float(depth)})
+    return el
+
+
+def assembly(element_id: str, *children: Element, name: str = "") -> Element:
+    """Compose several Elements into an Assembly (type 'Assembly') with compound geometry."""
+    el = part(element_id, name=name)
+    el.type = "Assembly"
+    el.children = list(children)
+    el.geometry = _geom.compound([c.geometry for c in children if c.geometry is not None])
+    for c in children:
+        el.relations.append(Relation("contains", c.id))
     return el
 
 

@@ -40,6 +40,23 @@ def test_ifc_exports_and_round_trips(tmp_path):
     assert summary["element_classes"] == ["IfcWall"]  # Panel -> IfcWall via standards.yaml ifc_map
 
 
+def test_assembly_composes_and_exports_all_backends(tmp_path):
+    pytest.importorskip("ifcopenshell")
+    from toolkit import assembly, box
+    from backends import step, ifc, drawing
+    a = box("plate_a", 100, 60, 8)
+    b = box("plate_b", 100, 60, 8)
+    asm = assembly("lap_joint", a, b, name="Lap joint")
+    assert asm.type == "Assembly" and len(asm.children) == 2
+    # compound geometry exports through every backend
+    sp = step.compile(asm, tmp_path); assert sp.exists() and sp.stat().st_size > 0
+    dp = drawing.compile(asm, tmp_path); assert dp.exists() and dp.suffix == ".svg"
+    ip = ifc.compile(asm, tmp_path)
+    summary = ifc.reimport_summary(ip)
+    assert summary["schema"] == "IFC4"
+    assert summary["element_classes"] == ["IfcElementAssembly"]  # via ifc_map
+
+
 def test_drawing_exports_svg_with_dims(tmp_path):
     from backends import drawing
 

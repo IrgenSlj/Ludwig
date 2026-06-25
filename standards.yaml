@@ -51,6 +51,7 @@ ifc_map:
   Slab: IfcSlab
   Column: IfcColumn
   Beam: IfcBeam
+  Assembly: IfcElementAssembly
 
 # Inference policy (provider-blind; never sell inference). Model tiering per BRIEF §5.
 inference:

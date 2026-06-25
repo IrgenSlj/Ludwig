@@ -4,6 +4,11 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P1/S12 (Assembly type — multi-part composition)
+- `toolkit.assembly(id, *children)` composes Elements into an Assembly with OCCT compound geometry
+  (`GeometryService.compound`); flows unchanged through STEP, IFC (`Assembly → IfcElementAssembly`), and the
+  drawing backend. `Element` gained a `children` list. 69 tests. (Per-child IFC decomposition deferred.)
+
 ### Added — P1/S11 (candidate selection)
 - `loop.run(candidates=N)` generates N first-pass attempts and selects the best by the deterministic critic
   (fewest failures), then repairs the winner; `cli.py --candidates N`. With `candidates=1` behavior is
