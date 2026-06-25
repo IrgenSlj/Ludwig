@@ -24,6 +24,22 @@ thin element-API (`cli.py --eval --live`, `claude` default model, **first-pass, 
 > Method: single run (n=1/brief), `claude` default tier — directional until repeated. Re-measure with
 > `cli.py --eval --live`.
 
+## P0/S4 — Post-repair pass-rate: the deterministic loop closes the gap
+
+**100% (5/5) post-repair** vs **60% first-pass** on the same frozen set (`cli.py --eval --live --repair`,
+≤2 repair rounds, claude default).
+
+- This is the thesis, measured: a *deterministic* critic (exact dim/manifold/hole checks) hands repair an
+  unambiguous error signal, and the loop converges where one-shot codegen doesn't. plate and gusset — the two
+  first-pass failures — were both repaired to passing.
+- It's why precision CAD is a *better* regime for the agentic loop than rendering was: the mesh-era vision
+  critic was noise-limited (stdev ~0.2 on a 0–10 scale, below the deltas we chased — see §1 history); the
+  geometric critic's signal is exact, so repair is reliable rather than a gamble.
+- Watch both numbers each phase: **first-pass** (raw codegen reliability, [H1]) and **post-repair** (what the
+  loop ships). The gap between them is the value the loop adds.
+
+> Method: n=1/brief, ≤2 rounds, claude default — directional. Re-measure with `cli.py --eval --live --repair`.
+
 ---
 
 ## Mesh-era findings (historical — vision critic / Blender substrate, pre-re-foundation)

@@ -4,6 +4,15 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P0/S4 (the deterministic critic panel)
+- `critic/`: `geometric` (OCCT manifold/watertight via BRepCheck), `dimensional` (named-dim exact, 1e-6),
+  `semantic` (units present, no orphan geometry, declared hole count), aggregated by a `critic.panel`
+  registry. The loop calls the panel and stays panel-agnostic — adding a critic is `register(...)`, not a
+  loop change ([H4], BRIEF §0 gate).
+- `cli.py --eval --live --repair`: measures the post-repair pass-rate (the full loop + panel).
+- **Headline: live post-repair geometric pass-rate 100% (5/5) vs 60% first-pass** — the deterministic
+  critic's exact signal lets repair close the gap (docs/FINDINGS.md). 55 tests pass.
+
 ### Added — P0/S3 (the generate→execute→repair loop, live)
 - `agent/loop.py`: the compiler driver on the provider-blind seam — `generate` (codegen) → `execute`
   (exec the program, force the OCCT build so `StdFail_NotDone` surfaces) → `verify` (provisional;

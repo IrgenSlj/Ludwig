@@ -13,7 +13,7 @@ PURE_MODULES = [
     "toolkit", "toolkit.elements", "toolkit.standards",
     "eval", "eval.briefs", "eval.harness", "eval.reference", "eval.llm",
     "backends", "backends.base", "backends.step", "backends.drawing", "backends.render",
-    "critic", "critic.base", "critic.dimensional", "critic.geometric", "critic.semantic",
+    "critic", "critic.base", "critic.panel", "critic.dimensional", "critic.geometric", "critic.semantic",
     "agent", "agent.inference", "agent.loop",
     "store", "store.db",
     "cli",

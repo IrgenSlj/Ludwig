@@ -35,10 +35,14 @@ pointed at the IR. `prompts/codegen.md` + `prompts/repair.md`. Cheap-model codeg
 ([H1] confirmed; see `docs/FINDINGS.md`). Loop tests run token-free via mocked inference. Verify is provisional —
 the real critic panel is S4.
 
-### S4 — Deterministic critic v0
-The verifier panel: `geometric` (manifold/watertight/self-intersection), `dimensional` (named-dim exact, 1e-6),
-`semantic` (holes through material, units present, no orphans). Critic JSON feeds repair. `prompts/critic.md`.
+### S4 — Deterministic critic v0  ✅
+The verifier panel: `geometric` (OCCT manifold/watertight via BRepCheck), `dimensional` (named-dim exact, 1e-6),
+`semantic` (units present, no orphan geometry, declared hole count). A `critic.panel` registry aggregates them;
+the loop calls it and stays panel-agnostic — adding a critic is `register(...)`, not a loop change ([H4]).
 **Gate:** a dimensionally-wrong bracket fails the right check; repair fixes it; re-verify passes. Loop closes on the critic.
+**Done:** the panel replaced the provisional verifier without touching the loop. **Headline result:** live post-repair
+geometric pass-rate **100% (5/5)** vs **60% first-pass** — the critic's exact error signal lets repair close the gap
+(`cli.py --eval --live --repair`; see `docs/FINDINGS.md`). 55 tests pass.
 
 ### S5 — STEP backend + rebuilt `--selftest`
 `backends/step.py` (OCCT STEP write, gated as a fabrication export per permissions). Rebuild `cli.py --selftest`
