@@ -10,5 +10,6 @@ ifcopenshell>=0.8    # P1/S9 — IFC (BIM) authoring (imported lazily)
 # ifcopenshell       # P1     — IFC backend (IfcOpenShell authoring)
 # (Blender / bpy is BYO, headless, out-of-process — NOT a pip dependency)
 
-# --- dev/test ---
-# pytest>=8.0        # test runner (CI installs this)
+# --- dev/test (CI installs these) ---
+# pytest>=8.0        # test runner
+# ruff               # dead-code lint gate (`ruff check`; config in ruff.toml)

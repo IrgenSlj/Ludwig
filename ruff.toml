@@ -1,0 +1,7 @@
+# Ludwig lint config. Scope: the dead-code gate (pyflakes F-rules) — unused imports/vars,
+# undefined names, redefinitions. Style/formatting is intentionally NOT enforced (low churn).
+line-length = 120
+extend-exclude = [".venv", "prototype", "out", "renders"]
+
+[lint]
+select = ["F"]

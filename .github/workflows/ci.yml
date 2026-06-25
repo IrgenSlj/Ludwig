@@ -16,7 +16,9 @@ jobs:
       - name: Install (core + kernel + test)
         run: |
           python -m pip install --upgrade pip
-          pip install pytest PyYAML cadquery ifcopenshell
+          pip install pytest PyYAML cadquery ifcopenshell ruff
+      - name: Lint (dead-code gate)
+        run: ruff check
       - name: Selftest gate (no LLM tokens)
         run: python cli.py --selftest
       - name: Eval pass-rate (reference builder)
