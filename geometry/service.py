@@ -37,6 +37,15 @@ class GeometryService:
             return cq.Workplane("XY").box(length, width, height)
         return BRepHandle(build)
 
+    def compound(self, handles) -> BRepHandle:
+        """Combine several solids into one OCCT compound (for Assembly geometry)."""
+        def build():
+            cq = _cq()
+            solids = [h.solid().val() for h in handles]
+            c = cq.Compound.makeCompound(solids)
+            return cq.Workplane().newObject([c])
+        return BRepHandle(build)
+
     def hole(self, handle: BRepHandle, diameter: float, at: tuple[float, float],
              *, through: bool = True, depth: float | None = None) -> BRepHandle:
         """Drill a vertical hole of `diameter` at (x, y) measured from the top face centre.

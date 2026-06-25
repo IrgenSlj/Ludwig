@@ -93,8 +93,12 @@ salvaged `render_toolkit.py`. Pairwise judge panel. Real min-wall. Clearances/co
 - **S11 — candidate selection (done).** `loop.run(candidates=N)` generates N first-pass attempts and selects
   the best by the deterministic critic (fewest failures), then repairs the winner; `cli.py --candidates N`.
   A true pairwise *aesthetic* judge among passing candidates is deferred — it needs the render backend. 68 tests.
-- **Remaining P1:** real min-wall analysis (research-grade), the **render backend** (needs a Blender binary), and
-  IFC4precast property sets. Render is the only gate item blocked on the environment.
+- **S12 — Assembly type (done).** `toolkit.assembly(id, *children)` composes Elements into an Assembly with
+  OCCT **compound** geometry (new `GeometryService.compound`); flows through STEP, IFC (`Assembly → IfcElementAssembly`),
+  and drawing. `Element` gained a `children` list. 69 tests. (Per-child IFC decomposition deferred.)
+- **Remaining P1:** `Profile` type (when a brief needs it), real min-wall analysis (research-grade), the
+  **render backend** (needs a Blender binary), and IFC4precast property sets. Render is the only gate item
+  blocked on the environment; everything else headless-complete.
 
 ## P2 — Buildings (architect tool) — multi-session, drawing engine alone is several
 `SpatialElement`, relationship graph, `Space`/`Storey`/`Project`, hierarchical program, IDS+geometry compliance
