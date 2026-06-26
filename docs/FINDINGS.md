@@ -1,10 +1,11 @@
 # Ludwig — research findings
 
-A log of what we've *measured*, not assumed. Every claim here is backed by a run
-recorded in [`eval/results.jsonl`](../eval/results.jsonl) or a reproducible
-experiment. Numbers are from a frozen 5-brief product-render suite graded by the
-vision critic; unless noted they are single-run (n=5), so treat deltas under ~1.0
-as directional. Re-run with `--eval --eval-repeats 3` to tighten them.
+A log of what we've *measured*, not assumed. The current precision-CAD findings are
+at the top; the mesh-era vision-critic findings below them are kept as historical
+record (clearly marked). The tracked number is the **first-pass geometric pass-rate**
+over the frozen held-out brief set (`eval/briefs.py`) — reproduce any CAD finding with
+`cli.py --eval [--live] [--repair]`. CAD numbers are single-run (n=1/brief) on the
+`claude` default tier unless noted, so treat small deltas as directional.
 
 ## P0/S3 — First-pass geometric pass-rate: the [H1] baseline
 
@@ -127,12 +128,14 @@ still showed the model rendering an asked-for "wooden table" as a white plinth,
 i.e. brief-fidelity is hard and one rule doesn't force obedience. Confirm with
 `--eval --eval-repeats 3` before claiming a gain.
 
-## Reproduce
+## Reproduce (current precision-CAD CLI)
 
 ```bash
-python3 ludwig.py --selftest                      # whole stack, ~2s, no API call
-python3 ludwig.py --eval                           # one-shot baseline
-python3 ludwig.py --eval --agentic --agent-turns 3 # self-correcting, prints A/B
-python3 ludwig.py --eval --assets                  # retrieve-and-arrange
-python3 ludwig.py --eval --eval-repeats 3          # noise-reduced measurement
+python3 cli.py --selftest              # the regression gate — whole spine, no LLM tokens
+python3 cli.py --eval                   # pass-rate on the deterministic reference oracle (100%)
+python3 cli.py --eval --live            # first-pass geometric pass-rate on real LLM codegen ([H1])
+python3 cli.py --eval --live --repair   # post-repair pass-rate — the full loop + critic panel
 ```
+
+The mesh-era commands (`ludwig.py --agentic/--assets/--eval-repeats`) were retired in the
+re-foundation; they remain runnable only at the git tag `mesh-era-m4`.
