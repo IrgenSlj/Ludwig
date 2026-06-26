@@ -18,5 +18,5 @@ BRIEFS = [
     {"id": "precast_panel",
      "prompt": "a precast concrete wall panel, 3000 long × 2000 tall × 200 thick (mm), "
                "two M16 cast-in lifting anchors in the top edge",
-     "dims": {"length": 3000.0, "width": 200.0, "height": 2000.0}, "holes": 2},
+     "dims": {"length": 3000.0, "thickness": 200.0, "height": 2000.0}, "holes": 2},
 ]

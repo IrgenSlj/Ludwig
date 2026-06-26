@@ -20,9 +20,9 @@ from toolkit.standards import bbox_gate
 def geometric_pass(el: Element, brief: dict, geom: GeometryService, tol: float) -> bool:
     d = brief["dims"]
     length, width, height = geom.bbox(el.geometry)
-    bbox_ok = (abs(length - d["length"]) <= tol
-               and abs(width - d["width"]) <= tol
-               and abs(height - d["height"]) <= tol)
+    # The middle (y) extent is declared as "width" for bar stock or "thickness" for a panel.
+    extents = {"length": length, "width": width, "thickness": width, "height": height}
+    bbox_ok = all(k in extents and abs(extents[k] - v) <= tol for k, v in d.items())
     holes_ok = geom.cylindrical_face_count(el.geometry) == brief["holes"]
     valid_ok = geom.is_valid(el.geometry)
     return bool(bbox_ok and holes_ok and valid_ok)
