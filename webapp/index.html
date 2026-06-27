@@ -172,14 +172,37 @@ controls.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x9a948a, 1.05));
 const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(0.6, -1, 1.4); scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(-1, 0.5, 0.4); scene.add(fill);
-let partGroup = null, grid = null, partMat = null;
+let partGroup = null, grid = null, partMat = null, userOrbited = false;
 
-function resize() {
+function syncSize() {
   const r = canvas.parentElement.getBoundingClientRect();
-  renderer.setSize(r.width, r.height, false);
-  camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix();
+  renderer.setSize(r.width, r.height);   // updateStyle=true: canvas CSS size must match the stage,
+  camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix();  // else the 2× DPR buffer leaks into display height
 }
-new ResizeObserver(resize).observe($(".stage"));
+// Fit the camera to whatever is on the Stage, from the ACTUAL rendered bounds (robust to
+// off-origin builds and to the part growing under a slider edit). Re-fits on resize/fullscreen
+// until the user takes manual control; double-click recentres.
+function fitView() {
+  if (!partGroup) return;
+  syncSize();
+  const box = new THREE.Box3().setFromObject(partGroup);
+  if (box.isEmpty()) return;
+  const center = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 1);
+  const fov = THREE.MathUtils.degToRad(camera.fov);
+  let dist = radius / Math.sin(fov / 2);
+  if (camera.aspect < 1) dist /= camera.aspect;   // portrait: fit width too
+  dist *= 1.35;                                    // breathing room
+  camera.position.copy(center).addScaledVector(new THREE.Vector3(0.85, -1, 0.6).normalize(), dist);
+  controls.target.copy(center);
+  camera.near = Math.max(dist / 1000, 0.01); camera.far = dist * 100;
+  camera.updateProjectionMatrix();
+  controls.update();
+  userOrbited = false;
+}
+new ResizeObserver(() => { syncSize(); if (!userOrbited) fitView(); }).observe($(".stage"));
+controls.addEventListener("start", () => { userOrbited = true; });
+canvas.addEventListener("dblclick", fitView);
 
 function setMesh(mesh) {
   if (partGroup) { scene.remove(partGroup); partGroup = null; }
@@ -208,16 +231,11 @@ function setMesh(mesh) {
   gh.position.set(cx, cy, cz - R / 2 - 0.5);
   scene.add(gh); grid = gh;
 
-  // frame the camera (size first so aspect is correct, then centre the part)
-  resize();
-  controls.target.set(cx, cy, cz);
-  const d = Math.max(R, 1) * 1.9;
-  camera.position.set(cx + d * 0.85, cy - d, cz + d * 0.55);
-  camera.near = d / 100; camera.far = d * 50; camera.updateProjectionMatrix();
+  fitView();   // always re-frame from the actual bounds — new geometry, grown part, any size
 }
 
 (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
-resize();
+syncSize();
 
 // ---- representation switching ----
 let rep = "3d";
@@ -235,7 +253,7 @@ function setRep(r) {
     prog.textContent = LAST ? LAST.program : "(nothing compiled)";
     prog.classList.remove("hidden");
   } else if (prog) prog.classList.add("hidden");
-  if (r === "3d") resize();
+  if (r === "3d") { syncSize(); if (!userOrbited) fitView(); }
 }
 
 // ---- compile ----
