@@ -13,7 +13,7 @@ from ir.elements import Element
 def build(brief: dict) -> Element:
     bid, d = brief["id"], brief["dims"]
     if bid == "precast_panel":
-        el = panel(bid, d["length"], d["height"], d["width"])  # length, height, thickness(=width)
+        el = panel(bid, d["length"], d["height"], d["thickness"])  # length, height, thickness
         anchor(el, 17.5, (-750, 0), 150)  # two M16 cast-in lifting anchors (⌀17.5), 150mm deep
         anchor(el, 17.5, (750, 0), 150)
         return el

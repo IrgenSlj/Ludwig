@@ -61,7 +61,8 @@ kernel handle [H2]), print a unified diff, re-verify, and re-export the STEP. Li
 3-line diff (the two hole calls + their comment), 0 repair rounds — a minimal edit, not a rewrite.
 
 ### S7 — Drawing backend (P0.5, outside the spine gate)
-`backends/drawing.py`: OCCT HLR → SVG + ezdxf DXF, dims queried from the manifest. Exact↔polygonal HLR toggle.
+`backends/drawing.py`: OCCT HLR → SVG, dims queried from the manifest (ezdxf DXF deferred to the P2
+conventioned-drawing engine — see the Done note). Exact↔polygonal HLR toggle.
 **Gate:** the bracket yields a readable dimensioned elevation. (Fragile-by-nature; intentionally not gating the spine.)
 **Done:** `backends/drawing.py` exports an OCCT HLR SVG elevation with a named-dimension overlay (best-effort,
 falls back to a default projection if HLR options are rejected; never blocks the compile). The compile path
