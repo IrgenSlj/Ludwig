@@ -69,6 +69,23 @@ def test_fast_edit_does_not_call_the_llm(monkeypatch, tmp_path):
     assert r["diff"]["added"] == 1 and r["diff"]["removed"] == 1
 
 
+def test_dims_deduped_by_name():
+    from ir.elements import NamedDim
+    out = service._dims([NamedDim("length", 80), NamedDim("length", 80), NamedDim("width", 40)])
+    assert [d["name"] for d in out] == ["length", "width"]  # each named dim once, last value wins
+
+
+def test_assembly_children_each_get_their_own_mesh(tmp_path):
+    from toolkit import assembly, box
+    from agent.loop import LoopResult
+    from critic.base import Critique
+    asm = assembly("asm", box("a", 20, 20, 5), box("b", 10, 10, 5))
+    r = service._assemble(LoopResult("element = ...", asm, Critique(), False, 0, None), tmp_path)
+    assert r["type"] == "Assembly" and len(r["children"]) == 2
+    assert {c["id"] for c in r["children"]} == {"a", "b"}
+    assert all(c["mesh"] and c["mesh"]["positions"] for c in r["children"])  # each child selectable
+
+
 def test_failing_build_withholds_fabrication_files(monkeypatch, tmp_path):
     monkeypatch.setattr(inference, "infer", lambda *a, **k: "element = 123  # not an Element")
     r = service.compile_to_result("nonsense", rounds=0, out=tmp_path)

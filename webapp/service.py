@@ -17,6 +17,15 @@ OUT = Path("out")
 
 # extent dims a slider can tweak deterministically, mapped to their bbox axis (x,y,z)
 _EXTENT_AXIS = {"length": 0, "width": 1, "thickness": 1, "height": 2}
+
+
+def _dims(manifest) -> list[dict]:
+    """Serialize a manifest to JSON, deduped by name (last value wins). Live codegen sometimes
+    register_dim's the same extent twice; the UI should show each named dim once."""
+    seen: dict[str, dict] = {}
+    for d in manifest:
+        seen[d.name] = {"name": d.name, "value": d.value, "unit": d.unit}
+    return list(seen.values())
 _NUM = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w.])")  # a standalone number literal (not M6, not 1.5e3)
 
 
@@ -89,7 +98,7 @@ def _assemble(res, out: Path) -> dict:
         "program": res.program, "rounds": res.rounds, "passed": res.passed, "error": res.error,
         "id": res.ir.id if res.ir is not None else None,
         "type": res.ir.type if res.ir is not None else None,
-        "bbox": None, "dims": [], "critic": [], "mesh": None, "artifacts": {},
+        "bbox": None, "dims": [], "critic": [], "mesh": None, "children": [], "artifacts": {},
     }
     if res.ir is None:
         return result
@@ -102,7 +111,17 @@ def _assemble(res, out: Path) -> dict:
             result["mesh"] = g.tessellate(el.geometry)
         except Exception as e:
             result["mesh_error"] = f"{type(e).__name__}: {e}"
-    result["dims"] = [{"name": d.name, "value": d.value, "unit": d.unit} for d in el.manifest]
+    # An Assembly's children, each tessellated separately so the viewport can select/highlight one
+    # solid at a time — "geometry is the index into the program" for multi-part models.
+    for c in getattr(el, "children", []) or []:
+        child = {"id": c.id, "type": c.type, "dims": _dims(c.manifest), "mesh": None}
+        if c.geometry is not None:
+            try:
+                child["mesh"] = g.tessellate(c.geometry)
+            except Exception:
+                child["mesh"] = None
+        result["children"].append(child)
+    result["dims"] = _dims(el.manifest)
     result["critic"] = [
         {"check": c.check, "status": c.status.value, "message": c.message}
         for c in (res.critique.checks if res.critique else [])
