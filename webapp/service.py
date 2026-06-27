@@ -47,8 +47,13 @@ def compile_to_result(prompt: str, *, candidates: int = 1, rounds: int = 2,
 
     el = res.ir
     if el.geometry is not None:
-        length, width, height = GeometryService().bbox(el.geometry)
+        g = GeometryService()
+        length, width, height = g.bbox(el.geometry)
         result["bbox"] = {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)}
+        try:  # the 3D render mesh for the Stage viewport — best-effort, never sinks the compile
+            result["mesh"] = g.tessellate(el.geometry)
+        except Exception as e:
+            result["mesh_error"] = f"{type(e).__name__}: {e}"
     result["dims"] = [{"name": d.name, "value": d.value, "unit": d.unit} for d in el.manifest]
     result["critic"] = [
         {"check": c.check, "status": c.status.value, "message": c.message}

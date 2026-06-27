@@ -67,6 +67,28 @@ class GeometryService:
         bb = handle.solid().val().BoundingBox()
         return (bb.xlen, bb.ylen, bb.zlen)
 
+    def tessellate(self, handle: BRepHandle, tolerance: float = 0.1,
+                   angular_tolerance: float = 0.3) -> dict:
+        """Triangulate the exact B-rep into a render mesh for the web viewport (the 3D Stage).
+
+        Returns flat arrays `{positions:[x,y,z,...], indices:[i,j,k,...], center:[cx,cy,cz], radius}`
+        the browser builds a three.js BufferGeometry from — the *actual* compiled solid, not a
+        primitive. This is a derived projection (like STEP/SVG), never the source of truth.
+        """
+        shape = handle.solid().val()
+        verts, tris = shape.tessellate(tolerance, angular_tolerance)
+        positions: list[float] = []
+        for v in verts:
+            x, y, z = v.toTuple()
+            positions.extend((x, y, z))
+        indices: list[int] = []
+        for t in tris:
+            indices.extend((t[0], t[1], t[2]))
+        bb = shape.BoundingBox()
+        center = [(bb.xmin + bb.xmax) / 2, (bb.ymin + bb.ymax) / 2, (bb.zmin + bb.zmax) / 2]
+        radius = max(bb.xlen, bb.ylen, bb.zlen)
+        return {"positions": positions, "indices": indices, "center": center, "radius": radius}
+
     def is_valid(self, handle: BRepHandle) -> bool:
         """OCCT topological validity (a coarse manifold/watertight proxy; the real panel is S4)."""
         return bool(handle.solid().val().isValid())

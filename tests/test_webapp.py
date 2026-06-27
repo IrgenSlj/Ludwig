@@ -27,6 +27,11 @@ def test_compile_to_result_is_json_safe_and_real(monkeypatch, tmp_path):
     assert (tmp_path / r["artifacts"]["step"]).exists()
     assert (tmp_path / r["artifacts"]["recipe"]).exists()
     assert any(c["check"] == "watertight_manifold" and c["status"] == "pass" for c in r["critic"])
+    # the 3D Stage mesh: real tessellation of the compiled B-rep, JSON-safe flat arrays
+    m = r["mesh"]
+    assert len(m["positions"]) % 3 == 0 and len(m["positions"]) > 0
+    assert len(m["indices"]) % 3 == 0 and len(m["indices"]) > 0
+    assert len(m["center"]) == 3 and m["radius"] > 0
 
 
 def test_failing_build_withholds_fabrication_files(monkeypatch, tmp_path):
