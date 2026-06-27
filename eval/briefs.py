@@ -19,4 +19,8 @@ BRIEFS = [
      "prompt": "a precast concrete wall panel, 3000 long × 2000 tall × 200 thick (mm), "
                "two M16 cast-in lifting anchors in the top edge",
      "dims": {"length": 3000.0, "thickness": 200.0, "height": 2000.0}, "holes": 2},
+    {"id": "stacked_plates",
+     "prompt": "an assembly of two stacked plates: a 60 × 60 × 10 mm base and a "
+               "40 × 40 × 10 mm plate centred on top",
+     "dims": {"length": 60.0, "width": 60.0, "height": 20.0}, "holes": 0},
 ]

@@ -46,6 +46,12 @@ class GeometryService:
             return cq.Workplane().newObject([c])
         return BRepHandle(build)
 
+    def translate(self, handle: BRepHandle, offset: tuple[float, float, float]) -> BRepHandle:
+        """Translate a solid by (dx, dy, dz) mm — the primitive for positioning parts in an assembly."""
+        def build() -> Any:
+            return handle.solid().translate(tuple(float(c) for c in offset))
+        return BRepHandle(build)
+
     def hole(self, handle: BRepHandle, diameter: float, at: tuple[float, float],
              *, through: bool = True, depth: float | None = None) -> BRepHandle:
         """Drill a vertical hole of `diameter` at (x, y) measured from the top face centre.

@@ -73,6 +73,21 @@ def test_assembly_builds_through_the_loop():
     assert el.geometry is not None
 
 
+def test_stack_assembly_builds_through_the_loop():
+    """The model can position parts with stack()/place() instead of hand-rolling a kernel translate —
+    the seam that makes assembly codegen reliable. Seats top on base → union 60×60×20."""
+    from geometry import GeometryService
+    src = ('base = box("base", 60, 60, 10)\n'
+           'top = box("top", 40, 40, 10)\n'
+           'stack(base, top)\n'
+           'element = assembly("stacked_plates", base, top)\n')
+    el, err = execute(src)
+    assert err is None, err
+    assert el.type == "Assembly" and len(el.children) == 2
+    length, width, height = GeometryService().bbox(el.geometry)
+    assert (round(length), round(width), round(height)) == (60, 60, 20)  # top seated on base
+
+
 def test_capabilities_gate_selects_critics():
     el, _ = execute(GOOD)
     # no critic applies to a capability set the panel doesn't cover → empty, vacuously passing
