@@ -8,7 +8,7 @@
 
 ## 0. What changed, and why this document exists
 
-Ludwig began as a mesh render tool (Blender + a vision critic). It is now an **AI-native precision CAD/BIM system** targeting fabrication-grade geometry, true vector drawings, and presentation output — the workflow the incumbents (Autodesk, etc.) structurally cannot offer, because their files are opaque and direct-manipulated, while ours is a re-promptable program.
+Ludwig began as a mesh render tool (Blender + a vision critic). It is now an **AI-native precision CAD/BIM system** targeting fabrication-grade geometry, true vector drawings, and presentation output — the workflow the incumbent CAD/BIM suites structurally cannot offer, because their files are opaque and direct-manipulated, while ours is a re-promptable program.
 
 The mesh kernel is the wrong substrate for precision and fabrication (triangles approximate; they have no exact circle, fillet, or analytic surface, and you cannot derive a dimensionally-exact drawing or a fabrication file from them). We swap the substrate and the critic; we keep the harness (the generate→verify→repair loop and provider-blind inference).
 
