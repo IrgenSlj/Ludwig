@@ -34,6 +34,19 @@ def test_compile_to_result_is_json_safe_and_real(monkeypatch, tmp_path):
     assert len(m["center"]) == 3 and m["radius"] > 0
 
 
+def test_edit_to_result_is_minimal_and_real(monkeypatch, tmp_path):
+    base = ('element = box("bracket", 80, 40, 6)\n'
+            'clearance_hole(element, "M8", (-25, 0))\n'
+            'clearance_hole(element, "M8", (25, 0))\n')
+    edited = base.replace("80, 40, 6", "100, 40, 6")  # a well-behaved model touches one line
+    monkeypatch.setattr(inference, "infer", lambda *a, **k: edited)
+    r = service.edit_to_result(base, "make the length 100 mm", out=tmp_path)
+    assert r["passed"] is True
+    assert r["bbox"]["length"] == 100.0 and r["bbox"]["width"] == 40.0  # only length moved
+    assert r["diff"]["added"] == 1 and r["diff"]["removed"] == 1        # surgical, not a rewrite
+    assert r["mesh"]["positions"]                                       # geometry re-tessellated
+
+
 def test_failing_build_withholds_fabrication_files(monkeypatch, tmp_path):
     monkeypatch.setattr(inference, "infer", lambda *a, **k: "element = 123  # not an Element")
     r = service.compile_to_result("nonsense", rounds=0, out=tmp_path)
