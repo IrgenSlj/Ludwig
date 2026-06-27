@@ -49,18 +49,26 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, b"not found", "text/plain")
 
     def do_POST(self) -> None:
-        if self.path != "/api/compile":
+        if self.path not in ("/api/compile", "/api/edit"):
             self._send(404, b"not found", "text/plain")
             return
         n = int(self.headers.get("Content-Length", 0))
         try:
             req = json.loads(self.rfile.read(n) or b"{}")
-            prompt = (req.get("prompt") or "").strip()
-            if not prompt:
-                raise ValueError("empty prompt")
-            from webapp.service import compile_to_result
-            result = compile_to_result(prompt, candidates=int(req.get("candidates", 1)),
-                                       rounds=int(req.get("rounds", 2)))
+            if self.path == "/api/compile":
+                prompt = (req.get("prompt") or "").strip()
+                if not prompt:
+                    raise ValueError("empty prompt")
+                from webapp.service import compile_to_result
+                result = compile_to_result(prompt, candidates=int(req.get("candidates", 1)),
+                                           rounds=int(req.get("rounds", 2)))
+            else:  # /api/edit — re-prompt an existing program into a minimal diff (S6)
+                program = req.get("program") or ""
+                instruction = (req.get("instruction") or "").strip()
+                if not program or not instruction:
+                    raise ValueError("edit needs both `program` and `instruction`")
+                from webapp.service import edit_to_result
+                result = edit_to_result(program, instruction, rounds=int(req.get("rounds", 1)))
             self._send(200, json.dumps(result).encode(), "application/json")
         except Exception as e:  # never 500 silently — the UI shows the reason
             self._send(200, json.dumps({"fatal": f"{type(e).__name__}: {e}"}).encode(),
