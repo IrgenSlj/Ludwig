@@ -332,23 +332,30 @@ function buildParams(d) {
       + '<input type="range" min="'+lo+'" max="'+hi+'" step="1" value="'+x.value+'">';
     const range = el.querySelector("input"), val = el.querySelector(".val");
     range.addEventListener("input", () => { val.textContent = range.value + " " + x.unit; });
-    range.addEventListener("change", () => applyEdit("make the " + x.name + " " + range.value + " mm"));
+    range.addEventListener("change", () => applyEdit(
+      "make the " + x.name + " " + range.value + " mm",
+      { name: x.name, old: x.value, new: Number(range.value) }));
     box.appendChild(el);
   });
 }
 
-async function applyEdit(instruction) {
+async function applyEdit(instruction, param) {
   if (!LAST || !LAST.program) return;
-  setBusy(true, "› editing — minimal-diff re-prompt → execute → critic … (~10–30s)");
+  // a slider on an extent dim tries the instant deterministic path first; show a light state
+  setBusy(true, param ? "› updating geometry…"
+    : "› editing — minimal-diff re-prompt → execute → critic … (~10–30s)");
   document.querySelectorAll("#params input").forEach(i => i.disabled = true);
   try {
     const r = await fetch("/api/edit", { method:"POST", headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ program: LAST.program, instruction }) });
+      body: JSON.stringify({ program: LAST.program, instruction, param }) });
     const d = await r.json();
     if (d.fatal) { alert("edit failed: " + d.fatal); return; }
     render(d);
-    if (d.diff) $("#prov").textContent = "Edited: “" + instruction + "” — minimal diff +"
-      + d.diff.added + " / −" + d.diff.removed + " lines (" + d.rounds + " repair round(s)).";
+    if (d.diff) $("#prov").textContent = d.fast
+      ? "Adjusted: “" + instruction + "” — instant parametric edit (deterministic, no model call), +"
+        + d.diff.added + " / −" + d.diff.removed + " line."
+      : "Edited: “" + instruction + "” — minimal diff +" + d.diff.added + " / −" + d.diff.removed
+        + " lines (" + d.rounds + " repair round(s)).";
   } catch (e) { alert("edit request failed: " + e); }
   finally { setBusy(false); }
 }

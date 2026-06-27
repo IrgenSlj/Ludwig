@@ -68,7 +68,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not program or not instruction:
                     raise ValueError("edit needs both `program` and `instruction`")
                 from webapp.service import edit_to_result
-                result = edit_to_result(program, instruction, rounds=int(req.get("rounds", 1)))
+                result = edit_to_result(program, instruction, param=req.get("param"),
+                                        rounds=int(req.get("rounds", 1)))
             self._send(200, json.dumps(result).encode(), "application/json")
         except Exception as e:  # never 500 silently — the UI shows the reason
             self._send(200, json.dumps({"fatal": f"{type(e).__name__}: {e}"}).encode(),

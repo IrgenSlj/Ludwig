@@ -9,10 +9,72 @@ server is just another *frontend*, like the CLI — adding it does not touch the
 from __future__ import annotations
 
 import difflib
+import re
 from pathlib import Path
 from typing import Optional
 
 OUT = Path("out")
+
+# extent dims a slider can tweak deterministically, mapped to their bbox axis (x,y,z)
+_EXTENT_AXIS = {"length": 0, "width": 1, "thickness": 1, "height": 2}
+_NUM = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w.])")  # a standalone number literal (not M6, not 1.5e3)
+
+
+def _comment_regions(program: str) -> list[tuple[int, int]]:
+    """Char ranges that are `#` comments, so a literal echoed in a comment (e.g. the codegen's own
+    `# 80 (length) × 40 …`) doesn't defeat the uniqueness check."""
+    regions, off = [], 0
+    for line in program.splitlines(keepends=True):
+        h = line.find("#")
+        if h != -1:
+            regions.append((off + h, off + len(line)))
+        off += len(line)
+    return regions
+
+
+def _substitute_unique_literal(program: str, old: float, new: float) -> Optional[str]:
+    """Replace the program's literal `old` with `new` — but ONLY if `old` occurs exactly once as a
+    number in CODE (comments excluded). Ambiguous (0 or >1 matches, e.g. a 30×30 square) → None, so
+    the caller falls back to the LLM edit. Preserves int/float spelling so the diff is one token."""
+    comments = _comment_regions(program)
+    in_comment = lambda pos: any(a <= pos < b for a, b in comments)  # noqa: E731
+    spans = [m for m in _NUM.finditer(program)
+             if abs(float(m.group()) - old) < 1e-9 and not in_comment(m.start())]
+    if len(spans) != 1:
+        return None
+    m = spans[0]
+    txt = str(float(new)) if "." in m.group() else str(int(new))
+    return program[:m.start()] + txt + program[m.end():]
+
+
+def _try_fast_edit(program: str, name: str, old: float, new: float, out: Path) -> Optional[dict]:
+    """Deterministic, no-LLM parametric tweak for a single extent dim. Substitute the literal,
+    re-execute, and ACCEPT only if the intended axis now measures `new` and the solid is valid/
+    all-pass — otherwise return None and let the caller fall back to the (correct, slower) LLM edit.
+    The LLM stays the backstop; this just makes the common numeric-slider case instant."""
+    axis = _EXTENT_AXIS.get(name)
+    if axis is None:
+        return None
+    new_program = _substitute_unique_literal(program, old, new)
+    if new_program is None:
+        return None
+    from agent.loop import Brief, LoopResult, execute, verify
+    el, err = execute(new_program)
+    if err or el is None:
+        return None
+    from geometry import GeometryService
+    from toolkit.standards import tol_linear
+    if abs(GeometryService().bbox(el.geometry)[axis] - new) > max(tol_linear(), 1e-3):
+        return None  # the literal we changed didn't drive this axis as intended → fall back
+    crit = verify(el, Brief(prompt=""))
+    if not crit.passed:
+        return None
+    res = LoopResult(new_program, el, crit, True, 0, None)
+    result = _assemble(res, out)
+    diff = list(difflib.unified_diff(program.splitlines(), new_program.splitlines(), lineterm="", n=1))
+    result["diff"] = {"added": 1, "removed": 1, "text": "\n".join(diff)}
+    result["fast"] = True
+    return result
 
 
 def _assemble(res, out: Path) -> dict:
@@ -74,18 +136,28 @@ def compile_to_result(prompt: str, *, candidates: int = 1, rounds: int = 2,
     return result
 
 
-def edit_to_result(program: str, instruction: str, *, rounds: int = 1,
-                   out: Optional[Path] = None) -> dict:
+def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = None,
+                   rounds: int = 1, out: Optional[Path] = None) -> dict:
     """Re-prompt an existing program with a change, aiming for a MINIMAL diff (the editability thesis,
     S6). Returns the same shape as compile_to_result plus `diff` (+added/-removed line counts and the
-    unified diff) so the UI can show that an edit is a surgical change, not a rewrite ([H2] lineage)."""
+    unified diff) so the UI can show that an edit is a surgical change, not a rewrite ([H2] lineage).
+
+    When `param={name, old, new}` is supplied (a slider drag on an extent dim), a deterministic
+    no-LLM fast-path is tried first; it falls through to the LLM edit if the change is ambiguous or
+    doesn't verify. `result["fast"]` flags which path ran."""
     from agent.loop import edit
 
     out = Path(out) if out is not None else OUT
     out.mkdir(parents=True, exist_ok=True)
+    if param and {"name", "old", "new"} <= set(param):
+        fast = _try_fast_edit(program, param["name"], float(param["old"]), float(param["new"]), out)
+        if fast is not None:
+            fast["instruction"] = instruction
+            return fast
     res = edit(program, instruction, rounds=rounds)
     result = _assemble(res, out)
     result["instruction"] = instruction
+    result["fast"] = False
     diff = list(difflib.unified_diff(program.splitlines(), res.program.splitlines(), lineterm="", n=1))
     result["diff"] = {
         "added": sum(1 for ln in diff if ln.startswith("+") and not ln.startswith("+++")),

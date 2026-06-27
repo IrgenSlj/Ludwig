@@ -47,6 +47,28 @@ def test_edit_to_result_is_minimal_and_real(monkeypatch, tmp_path):
     assert r["mesh"]["positions"]                                       # geometry re-tessellated
 
 
+def test_substitute_unique_literal_guards_ambiguity():
+    sub = service._substitute_unique_literal
+    assert sub('box("b", 80, 40, 6)', 80, 143).startswith('box("b", 143,')  # unique → substitute
+    assert sub('box("s", 30, 30, 12)', 30, 40) is None                       # 30 twice → ambiguous
+    assert sub('L = 80.0', 80, 143) == "L = 143.0"                           # float spelling preserved
+    assert sub('hole(el, 9, (0,0))  # M6 thread', 6, 8) is None              # the 6 in "M6" isn't a literal
+    # a literal echoed in a comment must NOT defeat uniqueness (real codegen does this)
+    assert sub('# 80 (length) x 40\nbox("b", 80, 40, 6)', 80, 143) == '# 80 (length) x 40\nbox("b", 143, 40, 6)'
+
+
+def test_fast_edit_does_not_call_the_llm(monkeypatch, tmp_path):
+    # the fast parametric path must re-execute deterministically — never touch inference
+    monkeypatch.setattr(inference, "infer",
+                        lambda *a, **k: pytest.fail("LLM called on the deterministic fast path"))
+    prog = 'element = box("bracket", 80, 40, 6)\nclearance_hole(element, "M8", (-25, 0))\n'
+    r = service.edit_to_result(prog, "make the length 143 mm",
+                               param={"name": "length", "old": 80, "new": 143}, out=tmp_path)
+    assert r["fast"] is True and r["passed"] is True
+    assert r["bbox"] == {"length": 143.0, "width": 40.0, "height": 6.0}  # only length moved
+    assert r["diff"]["added"] == 1 and r["diff"]["removed"] == 1
+
+
 def test_failing_build_withholds_fabrication_files(monkeypatch, tmp_path):
     monkeypatch.setattr(inference, "infer", lambda *a, **k: "element = 123  # not an Element")
     r = service.compile_to_result("nonsense", rounds=0, out=tmp_path)
