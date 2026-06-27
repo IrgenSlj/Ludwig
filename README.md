@@ -28,7 +28,7 @@ natural language + program  ──►  typed semantic IR (the truth)  ──► 
 
 ## Why this, and not CAD
 
-Incumbents (Autodesk &c.) keep an opaque, direct-manipulated file. You can't diff it, can't re-prompt it,
+Incumbent CAD/BIM suites keep an opaque, direct-manipulated file. You can't diff it, can't re-prompt it,
 can't derive a guaranteed-correct drawing from it. Ludwig keeps the *program*, verifies geometry
 deterministically, and treats every drawing and fab file as a derived view — the workflow the incumbents
 structurally cannot offer.
