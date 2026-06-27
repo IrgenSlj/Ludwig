@@ -67,7 +67,11 @@ def _api_and_standards() -> str:
         f"- clearance_hole(element, \"M8\", (x, y))       # diameter from standards (M8 -> ⌀{clear['M8']}), never guessed\n"
         "- panel(id, length, height, thickness) -> Element   # a precast wall panel (type 'Panel')\n"
         "- anchor(element, diameter, (x, y), depth)    # a cast-in blind pocket in the top (+z) edge\n"
+        "- place(element, (dx, dy, dz))                # move a part by an offset in mm (for assemblies)\n"
+        "- stack(base, top)                            # seat `top` on the +z face of `base` (both centred)\n"
         "- assembly(id, *children) -> Element          # compose built Elements into a compound Assembly\n"
+        "  e.g. base=box('b',60,60,10); top=box('t',40,40,10); stack(base, top); "
+        "element=assembly('asm', base, top)\n"
         "- raw CadQuery is available as `cq`; assign solids to element.geometry and call "
         "element.register_dim(name, value)\n"
         "All units mm. Do not print; just build `element`.\n\n"
@@ -141,7 +145,7 @@ def execute(program: str) -> tuple[Optional[Element], Optional[str]]:
         "cq": cadquery, "cadquery": cadquery, "standards": standards, "Element": Element,
         "part": toolkit.part, "box": toolkit.box, "hole": toolkit.hole,
         "clearance_hole": toolkit.clearance_hole, "panel": toolkit.panel, "anchor": toolkit.anchor,
-        "assembly": toolkit.assembly,
+        "assembly": toolkit.assembly, "place": toolkit.place, "stack": toolkit.stack,
     }
     try:
         exec(compile(_strip_fences(program), "<ludwig-program>", "exec"), ns)

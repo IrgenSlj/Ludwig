@@ -67,6 +67,22 @@ def anchor(el: Element, diameter: float, at: tuple[float, float], depth: float, 
     return el
 
 
+def place(el: Element, offset: tuple[float, float, float]) -> Element:
+    """Move an element's geometry by (dx, dy, dz) mm. Positioning for assemblies — the model says
+    `place(top, (0, 0, 10))` instead of hand-rolling a kernel translate. Extents are unchanged, so
+    registered dims stay valid. Returns the element for chaining."""
+    el.geometry = _geom.translate(el.geometry, offset)
+    return el
+
+
+def stack(base: Element, top: Element) -> Element:
+    """Seat `top` on the +z face of `base` (both built centred on the origin, as box()/panel() are):
+    lift `top` by (base_height + top_height)/2 so their faces meet. Returns `top` (now placed)."""
+    _, _, bh = _geom.bbox(base.geometry)
+    _, _, th = _geom.bbox(top.geometry)
+    return place(top, (0.0, 0.0, (bh + th) / 2.0))
+
+
 def assembly(element_id: str, *children: Element, name: str = "") -> Element:
     """Compose several Elements into an Assembly (type 'Assembly') with compound geometry."""
     el = part(element_id, name=name)
