@@ -233,6 +233,13 @@ def main(argv: list[str]) -> int:
         return selftest()
     if "--eval" in argv:
         return run_eval(live="--live" in argv, repair="--repair" in argv)
+    if "--serve" in argv:
+        from webapp.server import serve
+        port = 8765
+        for i, a in enumerate(argv):
+            if a == "--serve" and i + 1 < len(argv) and argv[i + 1].isdigit():
+                port = int(argv[i + 1])
+        return serve(port)
 
     # Parse --candidates N or --candidates=N (default 1)
     candidates = 1
@@ -256,7 +263,7 @@ def main(argv: list[str]) -> int:
     if pos:
         return compile_prompt(pos[0], candidates=candidates)
     raise SystemExit(
-        'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  --selftest  |  --eval [--live] [--repair].'
+        'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  --serve [port]  |  --selftest  |  --eval [--live] [--repair].'
     )
 
 

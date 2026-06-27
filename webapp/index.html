@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ludwig</title>
+<style>
+  :root {
+    --paper:#efece7; --ink:#1c1a17; --muted:#8a8478; --line:#d8d3ca; --card:#f7f5f1; --stage:#e7e3dc;
+    --ok:#3f7d62; --warn:#b07d2b; --fail:#b4493f;
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body { background:var(--paper); color:var(--ink); overflow:hidden;
+    font:14px/1.5 ui-sans-serif,-apple-system,"Helvetica Neue",sans-serif;
+    display:grid; grid-template-rows:auto 1fr auto; }
+  .mono { font-family:ui-monospace,"SF Mono",Menlo,monospace; }
+  .lbl { font:600 10px ui-monospace,monospace; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+
+  /* ---- top bar: brand + intent ---- */
+  header { display:flex; align-items:center; gap:16px; padding:11px 18px; border-bottom:1px solid var(--line); background:var(--paper); z-index:5; }
+  header b { letter-spacing:.34em; font-weight:700; font-size:14px; white-space:nowrap; }
+  header .state { color:var(--muted); font:600 11px ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; white-space:nowrap; }
+  .intent { flex:1; display:flex; gap:9px; max-width:760px; }
+  .intent input { flex:1; padding:9px 13px; font-size:14px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink); }
+  .intent input:focus { outline:none; border-color:var(--ink); }
+  button.go { padding:0 18px; font:600 11px ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; border:none; border-radius:9px; background:var(--ink); color:var(--paper); cursor:pointer; }
+  button.go:disabled { opacity:.45; cursor:default; }
+
+  /* ---- the 3-column body: left tools · stage · right tools ---- */
+  .body { display:grid; grid-template-columns:248px 1fr 290px; min-height:0; }
+  .panel { border-right:1px solid var(--line); padding:16px; overflow:auto; background:var(--paper); }
+  .panel.right { border-right:none; border-left:1px solid var(--line); }
+  .panel h2 { margin:0 0 12px; }
+  .panel + .panel { }
+
+  /* ---- the central stage ---- */
+  .stage { position:relative; background:
+      radial-gradient(120% 120% at 50% 18%, #f3efe9 0%, var(--stage) 70%, #ddd8cf 100%); min-height:0; }
+  #view { position:absolute; inset:0; display:block; }
+  #elev { position:absolute; inset:0; display:none; align-items:center; justify-content:center; }
+  #elev img { max-width:78%; max-height:82%; }
+  .empty { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:0 30px; }
+  .empty h1 { font:600 27px/1.2 Georgia,serif; margin:0; }
+  .empty p { color:var(--muted); margin:0; max-width:440px; }
+  .chips { display:flex; flex-wrap:wrap; gap:7px; justify-content:center; max-width:560px; }
+  .chip { font-size:12.5px; padding:5px 11px; border:1px solid var(--line); border-radius:999px; background:var(--card); cursor:pointer; }
+  .chip:hover { border-color:var(--ink); }
+  .verdict { position:absolute; top:14px; left:14px; display:inline-flex; align-items:center; gap:8px; padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:rgba(247,245,241,.86); backdrop-filter:blur(4px); font:600 11px ui-monospace,monospace; letter-spacing:.06em; }
+  .dot { width:9px; height:9px; border-radius:50%; }
+  .hint { position:absolute; bottom:12px; right:14px; color:var(--muted); font:11px ui-monospace,monospace; }
+  .busy { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(231,227,220,.7); }
+  .busy .mono { color:var(--ink); font-size:13px; }
+
+  /* ---- rep switcher (bottom) ---- */
+  footer { display:flex; align-items:center; justify-content:center; gap:5px; padding:9px; border-top:1px solid var(--line); background:var(--paper); }
+  .rep { font:600 11px ui-monospace,monospace; letter-spacing:.14em; padding:7px 16px; border-radius:8px; border:1px solid transparent; color:var(--muted); cursor:pointer; background:none; }
+  .rep.on { background:var(--ink); color:var(--paper); }
+  .rep:not(.on):hover { border-color:var(--line); color:var(--ink); }
+
+  /* ---- shared list rows ---- */
+  .row { display:flex; gap:9px; padding:7px 0; border-top:1px solid var(--line); align-items:baseline; }
+  .row:first-child { border-top:none; }
+  .row .k { font-family:ui-monospace,monospace; font-size:12.5px; }
+  .row .m { color:var(--muted); font-size:12px; margin-left:auto; }
+  .st { font:600 9px ui-monospace,monospace; letter-spacing:.08em; padding:2px 6px; border-radius:5px; color:#fff; }
+  .tree .node { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:7px; cursor:default; }
+  .tree .node .sq { width:8px; height:8px; border-radius:2px; background:var(--muted); }
+  .tree .node.head { font-weight:600; }
+  .tree .node.child { margin-left:14px; color:var(--ink); }
+  .tag { margin-left:auto; font:600 9px ui-monospace,monospace; letter-spacing:.08em; color:var(--muted); }
+  pre { background:#fff; border:1px solid var(--line); border-radius:9px; padding:12px; overflow:auto; font-size:12px; line-height:1.5; margin:10px 0 0; max-height:100%; }
+  .dl { display:flex; gap:8px; flex-wrap:wrap; margin-top:11px; }
+  .dl a { font:600 11px ui-monospace,monospace; letter-spacing:.04em; text-decoration:none; color:var(--ink); border:1px solid var(--line); border-radius:7px; padding:7px 11px; background:#fff; }
+  .dl a:hover { border-color:var(--ink); }
+  .muted { color:var(--muted); }
+  .hidden { display:none !important; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<header>
+  <b>LUDWIG</b>
+  <div class="intent">
+    <input id="prompt" class="mono" placeholder="describe a part…"
+           value="a steel bracket, 80 × 40 × 6 mm, two M8 clearance holes">
+    <button class="go" id="go">Compile</button>
+  </div>
+  <span class="state" id="state">no model</span>
+</header>
+
+<div class="body">
+  <!-- LEFT: program outline (the IR) -->
+  <aside class="panel">
+    <h2 class="lbl">Program · the IR</h2>
+    <div class="tree" id="tree"><span class="muted">— nothing compiled yet</span></div>
+    <h2 class="lbl" style="margin-top:22px">Provenance</h2>
+    <div id="prov" class="muted" style="font-size:12.5px">Shaped by — your prompt → generated program.</div>
+  </aside>
+
+  <!-- CENTER: the stage -->
+  <section class="stage">
+    <canvas id="view"></canvas>
+    <div id="elev"><img id="elev-img" alt="elevation"></div>
+    <div class="empty" id="empty">
+      <div class="lbl">Empty stage</div>
+      <h1>Describe what you want to build.</h1>
+      <p>A prompt compiles to an exact B-rep, a deterministic critic verifies it, and fab/BIM/drawing
+         backends derive. The geometry below is the <em>real</em> compiled solid — not a primitive.</p>
+      <div class="chips" id="chips"></div>
+    </div>
+    <span class="verdict hidden" id="verdict"></span>
+    <span class="hint mono hidden" id="hint">drag to orbit · scroll to zoom</span>
+    <div class="busy" id="busy"><span class="mono">› compiling — codegen → execute → critic → derive … (~10–40s)</span></div>
+  </section>
+
+  <!-- RIGHT: critic + inspector -->
+  <aside class="panel right">
+    <h2 class="lbl">Critic · deterministic verdict</h2>
+    <div id="critic"><span class="muted">—</span></div>
+    <h2 class="lbl" style="margin-top:22px">Named dimensions</h2>
+    <div id="dims"><span class="muted">—</span></div>
+    <h2 class="lbl" style="margin-top:22px">Deliverables</h2>
+    <div class="dl" id="downloads"><span class="muted">—</span></div>
+  </aside>
+</div>
+
+<footer>
+  <button class="rep on" data-rep="3d">3D · SOLID</button>
+  <button class="rep" data-rep="elev">ELEVATION</button>
+  <button class="rep" data-rep="program">PROGRAM</button>
+</footer>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = s => document.querySelector(s);
+const EXAMPLES = [
+  "a steel bracket, 80 × 40 × 6 mm, two M8 clearance holes",
+  "a flat steel plate, 120 × 60 × 10 mm, no holes",
+  "a square spacer, 30 × 30 × 12 mm, with a central ⌀10 bore",
+  "a flat bar, 200 × 25 × 8 mm, four M6 clearance holes in a row",
+];
+const COLOR = { pass:"var(--ok)", fail:"var(--fail)", "n/a":"var(--muted)" };
+let LAST = null;
+
+// ---- three.js stage ----
+const canvas = $("#view");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100000);
+camera.up.set(0, 0, 1);                              // Z-up (CAD convention)
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9a948a, 1.05));
+const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(0.6, -1, 1.4); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(-1, 0.5, 0.4); scene.add(fill);
+let partGroup = null, grid = null;
+
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe($(".stage"));
+
+function setMesh(mesh) {
+  if (partGroup) { scene.remove(partGroup); partGroup = null; }
+  if (grid) { scene.remove(grid); grid = null; }
+  if (!mesh || !mesh.positions || !mesh.positions.length) return;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(mesh.positions, 3));
+  geo.setIndex(mesh.indices);
+  geo.computeVertexNormals();
+
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color:0xb8b2a6, metalness:0.25, roughness:0.62, flatShading:true });
+  g.add(new THREE.Mesh(geo, mat));
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo, 24),
+    new THREE.LineBasicMaterial({ color:0x2b2824 }));
+  g.add(edges);
+  scene.add(g); partGroup = g;
+
+  // ground grid sized to the part, on the z=min plane
+  const [cx, cy, cz] = mesh.center, R = mesh.radius || 50;
+  const gh = new THREE.GridHelper(R * 4, 20, 0xcfc9bf, 0xdedacf);
+  gh.rotation.x = Math.PI / 2;                       // lie in XY for Z-up
+  gh.position.set(cx, cy, cz - R / 2 - 0.5);
+  scene.add(gh); grid = gh;
+
+  // frame the camera (size first so aspect is correct, then centre the part)
+  resize();
+  controls.target.set(cx, cy, cz);
+  const d = Math.max(R, 1) * 1.9;
+  camera.position.set(cx + d * 0.85, cy - d, cz + d * 0.55);
+  camera.near = d / 100; camera.far = d * 50; camera.updateProjectionMatrix();
+}
+
+(function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+resize();
+
+// ---- representation switching ----
+let rep = "3d";
+document.querySelectorAll(".rep").forEach(b => b.onclick = () => setRep(b.dataset.rep));
+function setRep(r) {
+  rep = r;
+  document.querySelectorAll(".rep").forEach(b => b.classList.toggle("on", b.dataset.rep === r));
+  $("#view").style.display  = r === "3d" ? "block" : "none";
+  $("#elev").style.display  = r === "elev" ? "flex" : "none";
+  // program rep: show the program in the stage as an overlay card
+  let prog = $("#prog-overlay");
+  if (r === "program") {
+    if (!prog) { prog = document.createElement("pre"); prog.id = "prog-overlay";
+      prog.style.cssText = "position:absolute;inset:18px;margin:0;background:rgba(247,245,241,.96)"; $(".stage").appendChild(prog); }
+    prog.textContent = LAST ? LAST.program : "(nothing compiled)";
+    prog.classList.remove("hidden");
+  } else if (prog) prog.classList.add("hidden");
+  if (r === "3d") resize();
+}
+
+// ---- compile ----
+const chips = $("#chips");
+EXAMPLES.forEach(p => { const c = document.createElement("span"); c.className = "chip"; c.textContent = p;
+  c.onclick = () => { $("#prompt").value = p; compile(); }; chips.appendChild(c); });
+$("#go").onclick = compile;
+$("#prompt").addEventListener("keydown", e => { if (e.key === "Enter") compile(); });
+
+async function compile() {
+  const prompt = $("#prompt").value.trim(); if (!prompt) return;
+  $("#go").disabled = true; $("#busy").style.display = "flex";
+  $("#state").textContent = "compiling…";
+  try {
+    const r = await fetch("/api/compile", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ prompt }) });
+    render(await r.json());
+  } catch (e) { $("#state").textContent = "request failed"; alert("request failed: " + e); }
+  finally { $("#go").disabled = false; $("#busy").style.display = "none"; }
+}
+
+function render(d) {
+  LAST = d;
+  if (d.fatal) { $("#state").textContent = "error"; alert("compile failed: " + d.fatal); return; }
+  $("#empty").classList.add("hidden");
+  $("#verdict").classList.remove("hidden");
+  $("#hint").classList.remove("hidden");
+  $("#state").textContent = (d.id || "—") + (d.type ? " · " + d.type : "");
+
+  const passed = d.passed, has = !!d.id;
+  const col = passed ? "var(--ok)" : (has ? "var(--warn)" : "var(--fail)");
+  const txt = passed ? "VERIFIED" : (has ? "NEEDS REPAIR" : "BUILD FAILED");
+  $("#verdict").innerHTML = '<span class="dot" style="background:'+col+'"></span>' + txt
+    + (d.bbox ? ' · '+d.bbox.length+'×'+d.bbox.width+'×'+d.bbox.height+' mm' : '')
+    + ' · '+d.rounds+'r';
+
+  setMesh(d.mesh);
+  if (!d.mesh) setRep(d.artifacts && d.artifacts.svg ? "elev" : "program"); else setRep("3d");
+
+  // elevation
+  if (d.artifacts && d.artifacts.svg) $("#elev-img").src = "/out/"+d.artifacts.svg+"?t="+Date.now();
+
+  // left: program outline (IR tree)
+  const tree = $("#tree"); tree.innerHTML = "";
+  if (has) {
+    const head = document.createElement("div"); head.className = "node head";
+    head.innerHTML = '<span class="sq" style="background:'+col+'"></span>'+d.id+'<span class="tag">'+(d.type||"").toUpperCase()+'</span>';
+    tree.appendChild(head);
+    (d.dims || []).forEach(x => { const n = document.createElement("div"); n.className = "node child";
+      n.innerHTML = '<span class="sq"></span>'+x.name+'<span class="tag">'+x.value+' '+x.unit+'</span>'; tree.appendChild(n); });
+  } else tree.innerHTML = '<span class="muted">build failed — see critic</span>';
+  $("#prov").textContent = "Shaped by — your prompt → generated CadQuery program (" + d.rounds + " repair round(s)).";
+
+  // right: critic
+  const cr = $("#critic"); cr.innerHTML = "";
+  (d.critic || []).forEach(c => { const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = '<span class="st" style="background:'+COLOR[c.status]+'">'+c.status.toUpperCase()+'</span>'
+      + '<span class="k">'+c.check+'</span>' + (c.message ? '<span class="m">'+c.message+'</span>' : '');
+    cr.appendChild(row); });
+  if (!(d.critic||[]).length) cr.innerHTML = '<span class="muted">no checks</span>';
+
+  // right: dims
+  const dm = $("#dims"); dm.innerHTML = "";
+  (d.dims || []).forEach(x => { const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = '<span class="k">'+x.name+'</span><span class="m">'+x.value+' '+x.unit+'</span>'; dm.appendChild(row); });
+  if (!(d.dims||[]).length) dm.innerHTML = '<span class="muted">none registered</span>';
+
+  // right: downloads
+  const dl = $("#downloads"); dl.innerHTML = ""; const a = d.artifacts || {};
+  [["step","STEP · fab"],["ifc","IFC · BIM"],["svg","SVG · drawing"],["recipe","recipe .py"]].forEach(([k,lbl]) => {
+    if (a[k]) { const el = document.createElement("a"); el.href = "/out/"+a[k]; el.textContent = "↓ "+lbl; dl.appendChild(el); } });
+  if (!a.step) dl.innerHTML = '<span class="muted" style="font-size:12px">withheld — no fabrication file on a failing critic</span>';
+}
+</script>
+</body>
+</html>
