@@ -116,10 +116,14 @@ def _edit_prompt(program: str, instruction: str) -> str:
 # --------------------------------------------------------------------------- #
 
 def _strip_fences(src: str) -> str:
+    """Extract the program from a model reply. Prefer a fenced ```code``` block wherever it appears
+    (models sometimes wrap the program in prose despite instructions); fall back to the raw text."""
     src = src.strip()
-    if src.startswith("```"):
+    block = re.search(r"```[A-Za-z0-9]*[ \t]*\n(.*?)\n?```", src, re.DOTALL)
+    if block:
+        return block.group(1).strip()
+    if src.startswith("```"):                       # an unterminated fence
         src = re.sub(r"^```[A-Za-z0-9]*[ \t]*\n?", "", src)
-        src = re.sub(r"\n?```$", "", src)
     return src.strip()
 
 

@@ -17,6 +17,8 @@ WRONG_HEIGHT = 'element = box("bracket", 80, 40, 60)'
 def test_strip_fences():
     assert loop._strip_fences("```python\nx = 1\n```") == "x = 1"
     assert loop._strip_fences("x = 1") == "x = 1"
+    # prose wrapped around a fenced block — extract the code, drop the prose (models do this)
+    assert loop._strip_fences("Here is the fix:\n```python\nx = 1\ny = 2\n```\nDone.") == "x = 1\ny = 2"
 
 
 def test_execute_builds_ir_and_forces_geometry():

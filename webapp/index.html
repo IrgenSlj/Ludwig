@@ -155,7 +155,7 @@ const EXAMPLES = [
   "a steel bracket, 80 × 40 × 6 mm, two M8 clearance holes",
   "a flat steel plate, 120 × 60 × 10 mm, no holes",
   "a square spacer, 30 × 30 × 12 mm, with a central ⌀10 bore",
-  "a flat bar, 200 × 25 × 8 mm, four M6 clearance holes in a row",
+  "an assembly of two stacked plates: a 60 × 60 × 10 base and a 40 × 40 × 10 plate centred on top",
 ];
 const COLOR = { pass:"var(--ok)", fail:"var(--fail)", "n/a":"var(--muted)" };
 let LAST = null;
@@ -172,7 +172,7 @@ controls.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xffffff, 0x9a948a, 1.05));
 const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(0.6, -1, 1.4); scene.add(key);
 const fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(-1, 0.5, 0.4); scene.add(fill);
-let partGroup = null, grid = null, partMat = null, userOrbited = false;
+let partGroup = null, grid = null, userOrbited = false;
 
 function syncSize() {
   const r = canvas.parentElement.getBoundingClientRect();
@@ -204,34 +204,63 @@ new ResizeObserver(() => { syncSize(); if (!userOrbited) fitView(); }).observe($
 controls.addEventListener("start", () => { userOrbited = true; });
 canvas.addEventListener("dblclick", fitView);
 
-function setMesh(mesh) {
-  if (partGroup) { scene.remove(partGroup); partGroup = null; }
-  if (grid) { scene.remove(grid); grid = null; }
-  if (!mesh || !mesh.positions || !mesh.positions.length) return;
+let childMats = {};   // element id → its mesh material, for per-child selection on the Stage
 
+function buildSolid(mesh) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(mesh.positions, 3));
   geo.setIndex(mesh.indices);
   geo.computeVertexNormals();
-
   const g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color:0xb8b2a6, metalness:0.25, roughness:0.62, flatShading:true });
-  partMat = mat;
   g.add(new THREE.Mesh(geo, mat));
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geo, 24),
-    new THREE.LineBasicMaterial({ color:0x2b2824 }));
-  g.add(edges);
-  scene.add(g); partGroup = g;
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 24), new THREE.LineBasicMaterial({ color:0x2b2824 })));
+  return { group: g, mat };
+}
 
-  // ground grid sized to the part, on the z=min plane
-  const [cx, cy, cz] = mesh.center, R = mesh.radius || 50;
+// Render the result: an Assembly's children become one selectable solid each; a plain Part is one.
+function showGeometry(d) {
+  if (partGroup) { scene.remove(partGroup); partGroup = null; }
+  if (grid) { scene.remove(grid); grid = null; }
+  childMats = {};
+
+  const has = m => m && m.positions && m.positions.length;
+  const solids = (d.children && d.children.length)
+    ? d.children.filter(c => has(c.mesh)).map(c => ({ id: c.id, mesh: c.mesh }))
+    : (has(d.mesh) ? [{ id: d.id, mesh: d.mesh }] : []);
+  if (!solids.length) return;
+
+  partGroup = new THREE.Group();
+  for (const s of solids) { const b = buildSolid(s.mesh); childMats[s.id] = b.mat; partGroup.add(b.group); }
+  scene.add(partGroup);
+
+  // ground grid sized to the whole assembly, on its z=min plane
+  const box = new THREE.Box3().setFromObject(partGroup);
+  const c = box.getCenter(new THREE.Vector3());
+  const R = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
   const gh = new THREE.GridHelper(R * 4, 20, 0xcfc9bf, 0xdedacf);
   gh.rotation.x = Math.PI / 2;                       // lie in XY for Z-up
-  gh.position.set(cx, cy, cz - R / 2 - 0.5);
+  gh.position.set(c.x, c.y, box.min.z - 0.5);
   scene.add(gh); grid = gh;
 
   fitView();   // always re-frame from the actual bounds — new geometry, grown part, any size
+}
+
+// Select one element: highlight it, fade the rest. id===null clears the selection.
+function setSelection(id) {
+  for (const [cid, mat] of Object.entries(childMats)) {
+    const sel = id !== null && cid === id, other = id !== null && cid !== id;
+    mat.emissive = new THREE.Color(sel ? 0x3f7d62 : 0x000000);
+    mat.emissiveIntensity = sel ? 0.5 : 0.0;
+    mat.transparent = other; mat.opacity = other ? 0.22 : 1.0; mat.depthWrite = !other;
+    mat.needsUpdate = true;
+  }
+  if (rep !== "3d") setRep("3d");
+}
+function pulseAll() {
+  Object.values(childMats).forEach(m => { m.emissive = new THREE.Color(0x3f7d62); m.emissiveIntensity = 0.5; });
+  setTimeout(() => Object.values(childMats).forEach(m => { m.emissiveIntensity = 0.0; }), 700);
+  if (rep !== "3d") setRep("3d");
 }
 
 (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
@@ -290,24 +319,31 @@ function render(d) {
     + (d.bbox ? ' · '+d.bbox.length+'×'+d.bbox.width+'×'+d.bbox.height+' mm' : '')
     + ' · '+d.rounds+'r';
 
-  setMesh(d.mesh);
-  if (!d.mesh) setRep(d.artifacts && d.artifacts.svg ? "elev" : "program"); else setRep("3d");
+  showGeometry(d);
+  const has3d = (d.children && d.children.length) || d.mesh;
+  if (!has3d) setRep(d.artifacts && d.artifacts.svg ? "elev" : "program"); else setRep("3d");
 
   // elevation
   if (d.artifacts && d.artifacts.svg) $("#elev-img").src = "/out/"+d.artifacts.svg+"?t="+Date.now();
 
-  // left: program outline (IR tree)
+  // left: program outline (IR tree). For an Assembly the children are selectable nodes;
+  // for a plain Part the named dims are listed. Clicking a node drives the Stage.
   const tree = $("#tree"); tree.innerHTML = "";
+  const selectNode = (node, fn) => { document.querySelectorAll(".tree .node").forEach(n => n.classList.remove("sel"));
+    node.classList.add("sel"); fn(); };
   if (has) {
     const head = document.createElement("div"); head.className = "node head"; head.style.cursor = "pointer";
     head.innerHTML = '<span class="sq" style="background:'+col+'"></span>'+d.id+'<span class="tag">'+(d.type||"").toUpperCase()+'</span>';
-    head.onclick = () => {
-      document.querySelectorAll(".tree .node").forEach(n => n.classList.remove("sel"));
-      head.classList.add("sel"); highlightMesh();
-    };
+    head.onclick = () => selectNode(head, () => { setSelection(null); pulseAll(); });
     tree.appendChild(head);
-    (d.dims || []).forEach(x => { const n = document.createElement("div"); n.className = "node child";
-      n.innerHTML = '<span class="sq"></span>'+x.name+'<span class="tag">'+x.value+' '+x.unit+'</span>'; tree.appendChild(n); });
+    if (d.children && d.children.length) {
+      d.children.forEach(c => { const n = document.createElement("div"); n.className = "node child"; n.style.cursor = "pointer";
+        n.innerHTML = '<span class="sq"></span>'+c.id+'<span class="tag">'+(c.type||"").toUpperCase()+'</span>';
+        n.onclick = () => selectNode(n, () => setSelection(c.id)); tree.appendChild(n); });
+    } else {
+      (d.dims || []).forEach(x => { const n = document.createElement("div"); n.className = "node child";
+        n.innerHTML = '<span class="sq"></span>'+x.name+'<span class="tag">'+x.value+' '+x.unit+'</span>'; tree.appendChild(n); });
+    }
   } else tree.innerHTML = '<span class="muted">build failed — see critic</span>';
   $("#prov").textContent = "Shaped by — your prompt → generated CadQuery program (" + d.rounds + " repair round(s)).";
 
@@ -382,14 +418,6 @@ function setBusy(on, msg) {
   const b = $("#busy"); b.style.display = on ? "flex" : "none";
   if (msg) b.querySelector(".mono").textContent = msg;
   $("#go").disabled = on;
-}
-
-// element selection → pulse the mesh emissive so the geometry IS the index into the program
-function highlightMesh() {
-  if (!partMat) return;
-  partMat.emissive = new THREE.Color(0x3f7d62); partMat.emissiveIntensity = 0.55;
-  setRep("3d");
-  setTimeout(() => { if (partMat) partMat.emissiveIntensity = 0.0; }, 850);
 }
 </script>
 </body>
