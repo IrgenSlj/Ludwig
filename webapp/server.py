@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent
 OUT = ROOT.parent / "out"
 
 _TYPES = {".html": "text/html", ".svg": "image/svg+xml", ".step": "application/step",
-          ".ifc": "application/x-step", ".py": "text/plain"}
+          ".ifc": "application/x-step", ".py": "text/plain", ".js": "text/javascript"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -46,6 +46,12 @@ class Handler(BaseHTTPRequestHandler):
                 ctype = _TYPES.get(f.suffix, "application/octet-stream")
                 inline = f.suffix == ".svg"
                 self._send(200, f.read_bytes(), ctype, download=None if inline else f.name)
+                return
+        if path.startswith("/vendor/"):  # vendored three.js — local, no CDN (offline + load-reliable)
+            f = (ROOT / "vendor" / path[len("/vendor/"):]).resolve()
+            vendor = (ROOT / "vendor").resolve()
+            if (vendor == f or vendor in f.parents) and f.is_file():
+                self._send(200, f.read_bytes(), _TYPES.get(f.suffix, "application/octet-stream"))
                 return
         self._send(404, b"not found", "text/plain")
 
