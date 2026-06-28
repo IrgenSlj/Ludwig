@@ -122,8 +122,12 @@ def _assemble(res, out: Path) -> dict:
                 child["mesh"] = None
         result["children"].append(child)
     result["dims"] = _dims(el.manifest)
+    # element_id + severity travel with each check so the UI can paint Ambient Correctness onto the
+    # geometry (a WARNING-severity fail is amber/below-spec; an ERROR/CRITICAL fail is red — UX_BRIEF).
     result["critic"] = [
-        {"check": c.check, "status": c.status.value, "message": c.message}
+        {"check": c.check, "status": c.status.value, "message": c.message,
+         "element_id": getattr(c, "element_id", None),
+         "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
         for c in (res.critique.checks if res.critique else [])
     ]
 

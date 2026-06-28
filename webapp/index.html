@@ -129,7 +129,7 @@
       <div class="chips" id="chips"></div>
     </div>
     <span class="verdict hidden" id="verdict"></span>
-    <span class="hint mono hidden" id="hint">drag to orbit · scroll to zoom</span>
+    <span class="hint mono hidden" id="hint">drag to orbit · scroll to zoom · click a part to inspect</span>
     <div class="busy" id="busy"><span class="mono">› compiling — codegen → execute → critic → derive … (~10–40s)</span></div>
   </section>
 
@@ -209,7 +209,65 @@ new ResizeObserver(() => { syncSize(); if (!userOrbited) fitView(); }).observe($
 controls.addEventListener("start", () => { userOrbited = true; });
 canvas.addEventListener("dblclick", fitView);
 
+// Point-to-Navigate: click a solid on the Stage → its program node highlights + params surface.
+// Geometry is the index into the program; selection resolves to a program node, never a kernel
+// handle ([H2]). A drag is an orbit, not a pick (movement threshold separates the two).
+const raycaster = new THREE.Raycaster();
+let _downXY = null;
+canvas.addEventListener("pointerdown", e => { _downXY = [e.clientX, e.clientY]; });
+canvas.addEventListener("pointerup", e => {
+  if (!_downXY) return;
+  const moved = Math.hypot(e.clientX - _downXY[0], e.clientY - _downXY[1]); _downXY = null;
+  if (moved > 5 || rep !== "3d" || !partGroup) return;
+  const r = canvas.getBoundingClientRect();
+  raycaster.setFromCamera(new THREE.Vector2(
+    ((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  const hits = raycaster.intersectObjects(partGroup.children, true);
+  let o = hits.length ? hits[0].object : null;
+  while (o && o.userData.elementId === undefined) o = o.parent;
+  if (o && o.userData.elementId) selectFromStage(o.userData.elementId);
+  else clearStageSelection();
+});
+
 let childMats = {};   // element id → its mesh material, for per-child selection on the Stage
+let AMBIENT = { overall:"ok", byId:{}, colorOf:()=>0x3f7d62 };   // the critic painted onto geometry
+
+// Ambient Correctness: fold the deterministic critic into a per-element status the Stage paints.
+// status ∈ ok (verified) · warn (below-spec) · fail (clash/invalid). A WARNING-severity fail reads
+// amber/below-spec; an ERROR/CRITICAL fail reads red. "Calm, not alarmist." (UX_BRIEF §Ambient)
+const _RANK = { ok:0, warn:1, fail:2 };
+function _statusOf(checks) {
+  let s = "ok";
+  for (const c of checks) if (c.status === "fail") {
+    const cur = c.severity === "warning" ? "warn" : "fail";
+    if (_RANK[cur] > _RANK[s]) s = cur;
+  }
+  return s;
+}
+function ambientStatus(d) {
+  const colorOf = s => s === "fail" ? 0xb4493f : s === "warn" ? 0xb07d2b : 0x3f7d62;
+  const checks = d.critic || [];
+  const byId = {};
+  new Set(checks.map(c => c.element_id).filter(Boolean)).forEach(
+    id => byId[id] = _statusOf(checks.filter(c => c.element_id === id)));
+  return { overall: _statusOf(checks), byId, colorOf };
+}
+// Paint one solid's material: a subtle always-on wash of its critic colour; brighter when selected;
+// faded when another element is the focus.
+function paintMat(mat, { selected=false, faded=false } = {}) {
+  const amb = mat.userData.ambient ?? 0x3f7d62;
+  mat.emissive = new THREE.Color(amb);
+  mat.emissiveIntensity = selected ? 0.55 : 0.15;
+  mat.transparent = faded; mat.opacity = faded ? 0.2 : 1.0; mat.depthWrite = !faded;
+  mat.needsUpdate = true;
+}
+function applyAmbient(d) {
+  AMBIENT = ambientStatus(d);
+  for (const [id, mat] of Object.entries(childMats)) {
+    mat.userData.ambient = AMBIENT.colorOf(AMBIENT.byId[id] || AMBIENT.overall);
+    paintMat(mat, {});
+  }
+}
 
 function buildSolid(mesh) {
   const geo = new THREE.BufferGeometry();
@@ -236,7 +294,8 @@ function showGeometry(d) {
   if (!solids.length) return;
 
   partGroup = new THREE.Group();
-  for (const s of solids) { const b = buildSolid(s.mesh); childMats[s.id] = b.mat; partGroup.add(b.group); }
+  for (const s of solids) { const b = buildSolid(s.mesh); b.group.userData.elementId = s.id;
+    childMats[s.id] = b.mat; partGroup.add(b.group); }
   scene.add(partGroup);
 
   // ground grid sized to the whole assembly, on its z=min plane
@@ -248,24 +307,31 @@ function showGeometry(d) {
   gh.position.set(c.x, c.y, box.min.z - 0.5);
   scene.add(gh); grid = gh;
 
+  applyAmbient(d);   // paint the critic's verdict onto the solid before framing (Ambient Correctness)
   fitView();   // always re-frame from the actual bounds — new geometry, grown part, any size
 }
 
-// Select one element: highlight it, fade the rest. id===null clears the selection.
+// Select one element: brighten it (keeping its critic colour), fade the rest. id===null clears it.
 function setSelection(id) {
-  for (const [cid, mat] of Object.entries(childMats)) {
-    const sel = id !== null && cid === id, other = id !== null && cid !== id;
-    mat.emissive = new THREE.Color(sel ? 0x3f7d62 : 0x000000);
-    mat.emissiveIntensity = sel ? 0.5 : 0.0;
-    mat.transparent = other; mat.opacity = other ? 0.22 : 1.0; mat.depthWrite = !other;
-    mat.needsUpdate = true;
-  }
+  for (const [cid, mat] of Object.entries(childMats))
+    paintMat(mat, { selected: id !== null && cid === id, faded: id !== null && cid !== id });
   if (rep !== "3d") setRep("3d");
 }
 function pulseAll() {
-  Object.values(childMats).forEach(m => { m.emissive = new THREE.Color(0x3f7d62); m.emissiveIntensity = 0.5; });
-  setTimeout(() => Object.values(childMats).forEach(m => { m.emissiveIntensity = 0.0; }), 700);
+  Object.values(childMats).forEach(m => paintMat(m, { selected: true }));
+  setTimeout(() => Object.values(childMats).forEach(m => paintMat(m, {})), 700);
   if (rep !== "3d") setRep("3d");
+}
+// Drive the program outline FROM the Stage — geometry → program node ([H2] lineage, not a handle).
+function selectFromStage(id) {
+  document.querySelectorAll(".tree .node").forEach(n => n.classList.toggle("sel", n.dataset.elid === id));
+  setSelection(id);
+  $("#prov").textContent = "Selected ‘" + id + "’ on the Stage — its program node is highlighted "
+    + "(resolved by lineage, never a kernel handle).";
+}
+function clearStageSelection() {
+  document.querySelectorAll(".tree .node").forEach(n => n.classList.remove("sel"));
+  setSelection(null);
 }
 
 (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
@@ -345,11 +411,13 @@ function render(d) {
     node.classList.add("sel"); fn(); };
   if (has) {
     const head = document.createElement("div"); head.className = "node head"; head.style.cursor = "pointer";
+    head.dataset.elid = d.id;
     head.innerHTML = '<span class="sq" style="background:'+col+'"></span>'+d.id+'<span class="tag">'+(d.type||"").toUpperCase()+'</span>';
     head.onclick = () => selectNode(head, () => { setSelection(null); pulseAll(); });
     tree.appendChild(head);
     if (d.children && d.children.length) {
       d.children.forEach(c => { const n = document.createElement("div"); n.className = "node child"; n.style.cursor = "pointer";
+        n.dataset.elid = c.id;
         n.innerHTML = '<span class="sq"></span>'+c.id+'<span class="tag">'+(c.type||"").toUpperCase()+'</span>';
         n.onclick = () => selectNode(n, () => setSelection(c.id)); tree.appendChild(n); });
     } else {
@@ -433,6 +501,10 @@ function setBusy(on, msg) {
   if (msg) b.querySelector(".mono").textContent = msg;
   $("#go").disabled = on;
 }
+
+// A small automation/debug seam for the local-first app (browser console + headless E2E). It exposes
+// the controller, not a network surface — the loop stays the only source of truth.
+window.LUDWIG = { render, setRep, selectFromStage, clearStageSelection, get state() { return LAST; } };
 </script>
 </body>
 </html>
