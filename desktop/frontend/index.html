@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Ludwig</title>
+<script>
+const TARGET = "http://localhost:8765";
+(function poll(attempts) {
+  fetch(TARGET, {mode:"no-cors", signal:AbortSignal.timeout(1e3)})
+    .then(() => { window.location.href = TARGET; })
+    .catch(() => { if (--attempts) setTimeout(poll, 500, attempts); });
+})(60); // retry for ~30 seconds
+</script>
+</head><body><p>Starting Ludwig…</p></body></html>

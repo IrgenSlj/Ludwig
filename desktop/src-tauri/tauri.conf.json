@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nickel-org/tauri/refs/heads/dev/crates/tauri-config-schema/schema.json",
+  "productName": "Ludwig",
+  "version": "0.1.0",
+  "identifier": "ai.ludwig.desktop",
+  "build": {
+    "frontendDist": "../frontend"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Ludwig — precision design",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
