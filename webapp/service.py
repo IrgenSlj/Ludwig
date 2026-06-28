@@ -133,11 +133,15 @@ def _assemble(res, out: Path) -> dict:
     if res.passed:
         from backends import all as all_backends
         for b in all_backends():
-            label = {"drawing": "svg"}.get(b.name, b.name)
+            label = {"drawing": "svg", "shop_drawing": "dxf"}.get(b.name, b.name)
             try:
                 result["artifacts"][label] = b.compile(el, out).name
             except Exception as e:
                 result["artifacts"][f"{label}_error"] = f"{type(e).__name__}: {e}"
+        # the shop-drawing backend renders a PNG preview alongside the DXF — surface it if present
+        preview = out / f"{el.id}.png"
+        if preview.exists():
+            result["artifacts"]["drawing_preview"] = preview.name
     return result
 
 

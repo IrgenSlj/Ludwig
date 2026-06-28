@@ -41,6 +41,27 @@ thin element-API (`cli.py --eval --live`, `claude` default model, **first-pass, 
 
 > Method: n=1/brief, ≤2 rounds, claude default — directional. Re-measure with `cli.py --eval --live --repair`.
 
+## P2 — Conventioned drawings: OCCT HLR is the wrong substrate; the IR's semantics are the right one
+
+Probing OCCT HLR (`HLRBRep_Algo`) on the bracket before building the drawing engine produced two
+disqualifying measurements:
+
+- **Hidden edges came back empty.** `HCompound()` returned **0 edges** for the bracket's through-holes
+  in the front/side projections — exactly the hidden-line convention a shop drawing needs most. The
+  silhouette "hole wall" lines are view-dependent and aren't B-rep edges at all, so HLR can't emit them.
+- **The view frame is ambiguous.** The projected coordinates land in the projector's local 2D plane, not
+  the model frame; the pre-existing (never-run) `compile_dxf` read `(X, Z)` where the projected `Z` is
+  always 0 — a degenerate, flat result. It had never been exercised by a test or the compile path.
+
+Conclusion, consistent with BRIEF §7's warning that HLR is fragile: **derive the drawing from the IR's
+semantics, not from kernel topology.** Ludwig *knows* a feature is "a ⌀9 hole THRU at (20, 0)", so it
+authors the circle, the dashed hidden walls, the centre-line, and the callout directly — the conventioned
+detail a kernel screenshot structurally cannot reconstruct. This is the same design-as-code thesis as the
+rest of the compiler, applied to drawings; it is also why this surface is a moat (IFC "barely carries
+annotation"). Straight silhouette edges still come from the solid (true outline for prismatic parts);
+true HLR silhouettes for non-prismatic solids are a later refinement. Reproduce: `cli.py --selftest`
+(the shop-drawing gate) or compile any brief and open `out/<id>.dxf` / `out/<id>.png`.
+
 ---
 
 ## Mesh-era findings (historical — vision critic / Blender substrate, pre-re-foundation)

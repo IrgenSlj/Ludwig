@@ -112,6 +112,18 @@ salvaged `render_toolkit.py`. Pairwise judge panel. Real min-wall. Clearances/co
 `SpatialElement`, relationship graph, `Space`/`Storey`/`Project`, hierarchical program, IDS+geometry compliance
 critic, rich crystallization behavior **[H3]**, and the **conventioned drawing engine** (the real moat / hardest part).
 
+- **Conventioned shop-drawing engine v1 (done).** `backends/shopdrawing.py` authors a real third-angle
+  multi-view DXF sheet (front/plan/side) — scale-aware (best-fill; enlarges small parts, reduces large),
+  conventioned layers (visible/hidden/centre/dimension/border), dimensions with witness lines + arrows whose
+  text reads TRUE mm via `DIMLFAC`, a hole/anchor feature overlay (plan circle + centre-cross; dashed hidden
+  walls + centre-line in elevation), grouped callouts, a notes block, and a title block — plus a best-effort
+  PNG preview. **Derived from IR SEMANTICS, not OCCT HLR** (HLR's hidden edges measured empty / frame
+  ambiguous — see FINDINGS): authoring features from what the IR knows is the moat HLR can't reach. Grew the
+  IR — `toolkit.hole` now records hole POSITION as a feature. Conventions live in `standards.yaml: drawing`.
+  Wired into the compile path + webapp, gated in `--selftest` (14/14), 85 tests. This also closes the P1
+  **shop-drawing** gate item. Next P2: section/poché on cut elements (needs SpatialElement), true silhouette
+  HLR for non-prismatic solids, per-child assembly views, and hole tables for dense patterns.
+
 ## P3 — The application (Tauri shell, the Stage & Director UI — see docs/UX_BRIEF.md)
 Desktop shell, representation switcher, point-to-navigate, ambient correctness, plan-mode/permissions/hooks,
 parameter sliders, exploration contact-sheet, presentation auto-assembly backend.

@@ -21,7 +21,9 @@ ROOT = Path(__file__).resolve().parent
 OUT = ROOT.parent / "out"
 
 _TYPES = {".html": "text/html", ".svg": "image/svg+xml", ".step": "application/step",
-          ".ifc": "application/x-step", ".py": "text/plain", ".js": "text/javascript"}
+          ".ifc": "application/x-step", ".py": "text/plain", ".js": "text/javascript",
+          ".dxf": "image/vnd.dxf", ".png": "image/png"}
+_INLINE = {".svg", ".png"}   # shown in-browser (drawing preview); other artifacts download
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -44,7 +46,7 @@ class Handler(BaseHTTPRequestHandler):
             f = (OUT / path[len("/out/"):]).resolve()
             if OUT.resolve() in f.parents and f.exists():  # no path traversal outside out/
                 ctype = _TYPES.get(f.suffix, "application/octet-stream")
-                inline = f.suffix == ".svg"
+                inline = f.suffix in _INLINE
                 self._send(200, f.read_bytes(), ctype, download=None if inline else f.name)
                 return
         if path.startswith("/vendor/"):  # vendored three.js — local, no CDN (offline + load-reliable)

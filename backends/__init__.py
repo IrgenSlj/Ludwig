@@ -6,6 +6,7 @@ from backends.registry import all, by_name, compile, fabrication, register
 import backends.step  # noqa: F401
 import backends.ifc  # noqa: F401
 import backends.drawing  # noqa: F401
+import backends.shopdrawing  # noqa: F401
 import backends.render  # noqa: F401
 
 __all__ = ["Backend", "all", "by_name", "compile", "fabrication", "register"]

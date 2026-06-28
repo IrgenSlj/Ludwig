@@ -87,6 +87,26 @@ def selftest() -> int:
                   f"{dp.name}, {len(txt)} bytes")
 
         try:
+            import ezdxf  # noqa: F401
+            from backends import shopdrawing as shop_backend
+            with tempfile.TemporaryDirectory() as td:
+                dxf = shop_backend.compile(bracket, td)
+                doc = ezdxf.readfile(str(dxf))
+                msp = doc.modelspace()
+                layers = {e.dxf.layer for e in msp}
+                dimlfac = doc.dimstyles.get("LUDWIG").dxf.dimlfac
+                true_vals = {round(d.get_measurement() * dimlfac) for d in msp.query("DIMENSION")}
+                circles = len(msp.query("CIRCLE"))
+                check("shop drawing: conventioned multi-view DXF, dims read true mm",
+                      dxf.suffix == ".dxf"
+                      and {"VISIBLE", "HIDDEN", "CENTRE", "DIMENSION"} <= layers
+                      and circles == 2                       # two holes drawn as circles in the plan
+                      and {80, 40, 6} <= true_vals,          # overall L/W/H recovered exactly through DIMLFAC
+                      f"layers={sorted(layers)} circles={circles} dims={sorted(true_vals)}")
+        except ImportError:
+            print("  [skip] shop-drawing check — ezdxf not installed")
+
+        try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend
             with tempfile.TemporaryDirectory() as td:
@@ -173,7 +193,8 @@ def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2) -> int:
     if res.passed:  # pre-export validation hook (BRIEF §5): no fabrication file leaves on a failing critic
         artifacts = compile_all(res.ir, out)
         parts = [f"wrote recipe {recipe}"]
-        _LABELS = {"step": "STEP", "ifc": "IFC", "drawing": "drawing", "render": "render"}
+        _LABELS = {"step": "STEP", "ifc": "IFC", "drawing": "SVG preview",
+                   "shop_drawing": "shop drawing", "render": "render"}
         for name, value in artifacts.items():
             if name.endswith("_error"):
                 label = _LABELS.get(name.removesuffix("_error"), name)

@@ -43,3 +43,9 @@ def cover_mm() -> float:
 def min_wall_mm() -> float:
     """Minimum wall thickness heuristic (mm)."""
     return float(load()["manufacturing"]["min_wall_mm"])
+
+
+def drawing() -> dict:
+    """The conventioned drawing conventions (sheet, scales, line weights, title block).
+    Returns {} if the section is absent so the engine can fall back to built-in defaults."""
+    return dict(load().get("drawing", {}) or {})

@@ -4,6 +4,26 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — P2 (conventioned shop-drawing engine — the moat) · closes the P1 shop-drawing gate
+- `backends/shopdrawing.py`: a real conventioned shop drawing — a **third-angle multi-view** sheet
+  (front elevation / plan / side), scale-aware (picks the scale that best fills the sheet; enlarges
+  small parts, reduces large ones), with the conventioned layer hierarchy (visible / hidden / centre-
+  line / dimension / border), **dimensions with witness lines + arrows** whose text reads TRUE mm via
+  `DIMLFAC` regardless of plot scale, hole/anchor **feature overlay** (circle + centre-cross in plan,
+  dashed hidden walls + centre-line in the elevations), grouped **callouts** (`2× ⌀9 (M8) THRU`), a
+  general-notes block, and a **title block** (part, type, material, scale, size, dwg id). Emits a
+  rendered **PNG preview** beside the DXF (best-effort, via ezdxf+matplotlib) so the sheet is viewable.
+- **Design choice — semantics, not topology.** The drawing is derived from the IR's SEMANTICS, not
+  from OCCT HLR: HLR's hidden edges came back *empty* and its view frame is ambiguous (measured — see
+  FINDINGS). Authoring holes from what the IR *knows* is exactly what lets Ludwig draw conventioned
+  detail a kernel screenshot cannot — the surface BRIEF §7 calls a wedge in its own right.
+- **Grew the IR from real use (principle #7):** `toolkit.hole`/`clearance_hole` now record each hole's
+  POSITION as a feature (diameter alone was kept before) — design intent the drawing engine and a
+  future "move the hole" edit both need. The semantic critic (geometry-based) is unaffected.
+- All conventions (sheet, scale ladder, line weights, title block, projection angle) live in
+  `standards.yaml: drawing`. Wired into the compile path + webapp; gated in `--selftest` (14/14). 85 tests.
+- Removed the orphaned, never-validated `drawing.compile_dxf` (it read a degenerate HLR axis — broken).
+
 ### Added — P1/S12 (Assembly type — multi-part composition)
 - `toolkit.assembly(id, *children)` composes Elements into an Assembly with OCCT compound geometry
   (`GeometryService.compound`); flows unchanged through STEP, IFC (`Assembly → IfcElementAssembly`), and the

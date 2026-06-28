@@ -32,18 +32,30 @@ def box(element_id: str, length: float, width: float, height: float, *, name: st
 
 
 def hole(el: Element, diameter: float, at: tuple[float, float], *,
-         name: str | None = None, through: bool = True) -> Element:
-    """Drill a vertical hole at (x, y) and register its diameter as a named dim."""
-    el.geometry = _geom.hole(el.geometry, diameter, at, through=through)
+         name: str | None = None, through: bool = True, depth: float | None = None,
+         thread: str | None = None) -> Element:
+    """Drill a vertical hole at (x, y), register its diameter, and record it as a feature.
+
+    The (x, y) POSITION is recorded on `el.features` — it is design intent the conventioned
+    drawing backend and a future "move the hole" edit both need, and which `register_dim`
+    (diameter only) used to discard. Grow the IR from real use (principle #7): the drawing
+    engine is the real use that demands the position be first-class, not lost in the kernel.
+    """
+    el.geometry = _geom.hole(el.geometry, diameter, at, through=through, depth=depth)
     idx = sum(1 for d in el.manifest if d.name.startswith("hole")) + 1
     el.register_dim(name or f"hole_{idx}_dia", diameter)
+    el.features.append({
+        "kind": "hole", "at": (float(at[0]), float(at[1])), "diameter": float(diameter),
+        "through": bool(through), "depth": (None if through else depth), "thread": thread,
+    })
     return el
 
 
 def clearance_hole(el: Element, thread: str, at: tuple[float, float], *, through: bool = True) -> Element:
     """Drill a clearance hole sized from standards.yaml — e.g. 'M8' -> ⌀9.0 (BRIEF §10).
     The thread→diameter mapping is domain knowledge that lives in standards, never in codegen."""
-    return hole(el, clearance_hole_mm(thread), at, name=f"{thread}_clearance_{_n(el)}", through=through)
+    return hole(el, clearance_hole_mm(thread), at,
+                name=f"{thread}_clearance_{_n(el)}", through=through, thread=thread)
 
 
 def profile(element_id: str, length: float, width: float, height: float, *, name: str = "") -> Element:
@@ -76,7 +88,9 @@ def anchor(el: Element, diameter: float, at: tuple[float, float], depth: float, 
     el.geometry = _geom.hole(el.geometry, diameter, at, through=False, depth=depth)
     idx = sum(1 for d in el.manifest if d.name.startswith("anchor")) + 1
     el.register_dim(name or f"anchor_{idx}_dia", diameter)
-    el.features.append({"kind": "anchor", "at": (float(at[0]), float(at[1])), "diameter": float(diameter), "depth": float(depth)})
+    el.features.append({"kind": "anchor", "at": (float(at[0]), float(at[1])),
+                        "diameter": float(diameter), "depth": float(depth),
+                        "through": False, "thread": None})
     return el
 
 

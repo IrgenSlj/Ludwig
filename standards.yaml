@@ -61,14 +61,45 @@ manufacturing:
   default_material: steel
   cover_mm: 40
 
-# Drawing conventions — line-weight hierarchy for the drawing backend (P0.5 → conventioned P2).
+# Drawing conventions — the conventioned shop-drawing engine reads ALL of this (BRIEF §7, the moat).
+# These are practice conventions, not code: line weights, the sheet, the title block, the standard
+# scale ladder, projection angle. A non-coder retunes the house drafting style here.
 drawing:
   line_weights_mm:
     cut: 0.50
     visible: 0.35
     hidden: 0.18
+    centre: 0.13
     dimension: 0.13
+    border: 0.50
   hlr_algorithm: exact       # exact | polygonal — toggle; polygonal is faster/more robust, faceted curves
+  projection: third_angle    # third_angle (US/CAD default) | first_angle (EU): plan above vs below front
+  # Sheet (mm). A3 landscape is the shop default; the engine fits the views and picks the scale.
+  sheet:
+    width_mm: 420
+    height_mm: 297
+    margin_mm: 12
+  # The conventioned scale ladder as denominators: <1 enlarges (0.5 = 2:1), >1 reduces (20 = 1:20).
+  # The engine picks the scale that best FILLS the sheet without overflowing (small parts get enlarged).
+  scale_ladder: [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
+  # Annotation sizes in PAPER mm (independent of the part's drawing scale).
+  text:
+    dim_height_mm: 3.0
+    arrow_size_mm: 2.5
+    title_height_mm: 4.0
+    note_height_mm: 2.5
+  title_block:
+    width_mm: 180
+    height_mm: 64
+    org: "LUDWIG — generated"
+  # Element.type -> the material/finish string printed in the title block. Falls back to the
+  # ifc_material_map material name when a type is absent here.
+  finish_map:
+    Part: "Steel S355"
+    Profile: "Steel S355"
+    Assembly: "Steel S355 (assembly)"
+    Panel: "Precast concrete C30/37"
+    Wall: "Precast concrete C30/37"
 
 # IR -> IFC type mapping seed (P1+). Grows as SpatialElement types arrive.
 ifc_map:
