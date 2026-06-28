@@ -8,3 +8,8 @@ projects/
 *.db
 .pytest_cache/
 out/
+# Tauri desktop shell — native build artifacts (huge; produced by `npm run tauri build`)
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+*.app
+*.dmg
