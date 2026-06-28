@@ -26,8 +26,9 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
 
     if ir.geometry is None:
         raise ValueError(f"element {ir.id!r} has no geometry to export")
-    ifc_class = load().get("ifc_map", {}).get(ir.type, "IfcBuildingElementProxy")
-    length, width, height = GeometryService().bbox(ir.geometry)
+    geom = GeometryService()
+    ifc_map = load().get("ifc_map", {})
+    ifc_class = ifc_map.get(ir.type, "IfcBuildingElementProxy")
 
     f = ifcopenshell.file(schema="IFC4")
 
@@ -69,20 +70,36 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
     f.create_entity("IfcRelAggregates", GlobalId=gid(), RelatingObject=site, RelatedObjects=[building])
     f.create_entity("IfcRelAggregates", GlobalId=gid(), RelatingObject=building, RelatedObjects=[storey])
 
-    # body: a rectangle (length × width) extruded by height
-    profile = f.create_entity("IfcRectangleProfileDef", ProfileType="AREA",
-                              Position=f.create_entity("IfcAxis2Placement2D", Location=point((0, 0))),
-                              XDim=length, YDim=width)
-    solid = f.create_entity("IfcExtrudedAreaSolid", SweptArea=profile,
-                            Position=f.create_entity("IfcAxis2Placement3D", Location=point((0, 0, 0))),
-                            ExtrudedDirection=f.create_entity("IfcDirection", DirectionRatios=(0., 0., 1.)),
-                            Depth=height)
-    shape = f.create_entity("IfcShapeRepresentation", ContextOfItems=body_ctx,
-                            RepresentationIdentifier="Body", RepresentationType="SweptSolid", Items=[solid])
-    product_shape = f.create_entity("IfcProductDefinitionShape", Representations=[shape])
+    def massing(el):
+        """A representative bbox solid for one element, centred on its actual bbox centre (so it
+        co-registers with the centred STEP/CadQuery solid — not offset to z=0)."""
+        length, width, height = geom.bbox(el.geometry)
+        cx, cy, cz = geom.bbox_center(el.geometry)
+        profile = f.create_entity("IfcRectangleProfileDef", ProfileType="AREA",
+                                  Position=f.create_entity("IfcAxis2Placement2D", Location=point((0, 0))),
+                                  XDim=length, YDim=width)
+        solid = f.create_entity("IfcExtrudedAreaSolid", SweptArea=profile,
+                                Position=f.create_entity("IfcAxis2Placement3D", Location=point((cx, cy, cz - height / 2))),
+                                ExtrudedDirection=f.create_entity("IfcDirection", DirectionRatios=(0., 0., 1.)),
+                                Depth=height)
+        shape = f.create_entity("IfcShapeRepresentation", ContextOfItems=body_ctx,
+                                RepresentationIdentifier="Body", RepresentationType="SweptSolid", Items=[solid])
+        return f.create_entity("IfcProductDefinitionShape", Representations=[shape])
 
-    element = f.create_entity(ifc_class, GlobalId=gid(), Name=ir.name or ir.id,
-                              ObjectPlacement=placement(storey_pl), Representation=product_shape)
+    def make_element(el, ifc_cls, *, body=True):
+        return f.create_entity(ifc_cls, GlobalId=gid(), Name=el.name or el.id,
+                               ObjectPlacement=placement(storey_pl),
+                               Representation=massing(el) if body else None)
+
+    # An Assembly decomposes into its children (IfcRelAggregates); each child is its own IfcElement
+    # with geometry, so the BIM model mirrors the IR tree. A plain Part is a single element.
+    children = getattr(ir, "children", None) or []
+    if children:
+        element = make_element(ir, ifc_class, body=False)  # the assembly itself carries no massing
+        kids = [make_element(c, ifc_map.get(c.type, "IfcBuildingElementProxy")) for c in children]
+        f.create_entity("IfcRelAggregates", GlobalId=gid(), RelatingObject=element, RelatedObjects=kids)
+    else:
+        element = make_element(ir, ifc_class)
     f.create_entity("IfcRelContainedInSpatialStructure", GlobalId=gid(),
                     RelatingStructure=storey, RelatedElements=[element])
 
@@ -100,4 +117,8 @@ def reimport_summary(path) -> dict:
     m = ifcopenshell.open(str(path))
     elements = m.by_type("IfcElement")
     units = [u.Name for u in (m.by_type("IfcSIUnit") or [])]
-    return {"schema": m.schema, "element_classes": [e.is_a() for e in elements], "units": units}
+    # children aggregated under an IfcElementAssembly (decomposition), if any
+    decomposed = sum(len(r.RelatedObjects) for r in m.by_type("IfcRelAggregates")
+                     if r.RelatingObject.is_a("IfcElementAssembly"))
+    return {"schema": m.schema, "element_classes": [e.is_a() for e in elements],
+            "units": units, "assembly_children": decomposed}

@@ -54,7 +54,10 @@ def test_assembly_composes_and_exports_all_backends(tmp_path):
     ip = ifc.compile(asm, tmp_path)
     summary = ifc.reimport_summary(ip)
     assert summary["schema"] == "IFC4"
-    assert summary["element_classes"] == ["IfcElementAssembly"]  # via ifc_map
+    # the assembly decomposes into its two children (IfcElementAssembly + IfcRelAggregates)
+    assert "IfcElementAssembly" in summary["element_classes"]
+    assert summary["element_classes"].count("IfcBuildingElementProxy") == 2
+    assert summary["assembly_children"] == 2
 
 
 def test_drawing_exports_svg_with_dims(tmp_path):
