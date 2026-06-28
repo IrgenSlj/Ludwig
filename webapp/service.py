@@ -86,13 +86,21 @@ def _try_fast_edit(program: str, name: str, old: float, new: float, out: Path) -
     return result
 
 
-def _assemble(res, out: Path) -> dict:
+def _assemble(res, out: Path, on_event=None) -> dict:
     """Turn a LoopResult into a JSON-safe dict: IR stats, critic, render mesh, persisted artifacts.
 
     The fabrication gate holds — STEP/IFC are written only when the critic is all-pass (no fab file
     on a failing critic, BRIEF §5). The SVG drawing and the viewer mesh are best-effort, never block.
+    `on_event` (optional) fires per derived backend so a live Activity Rail can show the derive stage.
     """
     from geometry import GeometryService
+
+    def emit(**ev):
+        if on_event:
+            try:
+                on_event(ev)
+            except Exception:
+                pass
 
     result: dict = {
         "program": res.program, "rounds": res.rounds, "passed": res.passed, "error": res.error,
@@ -138,10 +146,13 @@ def _assemble(res, out: Path) -> dict:
         from backends import all as all_backends
         for b in all_backends():
             label = {"drawing": "svg", "shop_drawing": "dxf"}.get(b.name, b.name)
+            emit(stage="derive", status="running", backend=label)
             try:
                 result["artifacts"][label] = b.compile(el, out).name
+                emit(stage="derive", status="done", backend=label)
             except Exception as e:
                 result["artifacts"][f"{label}_error"] = f"{type(e).__name__}: {e}"
+                emit(stage="derive", status="failed", backend=label, message=str(e))
         # the shop-drawing backend renders a PNG preview alongside the DXF — surface it if present
         preview = out / f"{el.id}.png"
         if preview.exists():
@@ -150,14 +161,17 @@ def _assemble(res, out: Path) -> dict:
 
 
 def compile_to_result(prompt: str, *, candidates: int = 1, rounds: int = 2,
-                      out: Optional[Path] = None) -> dict:
-    """Compile a prompt to real artifacts and return a JSON-safe result."""
+                      out: Optional[Path] = None, on_event=None) -> dict:
+    """Compile a prompt to real artifacts and return a JSON-safe result.
+
+    `on_event(dict)` (optional) streams the loop + derive stages for a live Activity Rail; the
+    return value is identical whether or not it is supplied (the loop stays the source of truth)."""
     from agent.loop import Brief, run
 
     out = Path(out) if out is not None else OUT
     out.mkdir(parents=True, exist_ok=True)
-    res = run(Brief(prompt=prompt), candidates=candidates, rounds=rounds)
-    result = _assemble(res, out)
+    res = run(Brief(prompt=prompt), candidates=candidates, rounds=rounds, on_event=on_event)
+    result = _assemble(res, out, on_event=on_event)
     result["prompt"] = prompt
     return result
 

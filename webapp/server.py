@@ -42,6 +42,9 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             self._send(200, (ROOT / "index.html").read_bytes(), "text/html")
             return
+        if path == "/api/compile_stream":   # live Activity Rail (Server-Sent Events)
+            self._compile_stream()
+            return
         if path.startswith("/out/"):
             f = (OUT / path[len("/out/"):]).resolve()
             if OUT.resolve() in f.parents and f.exists():  # no path traversal outside out/
@@ -56,6 +59,38 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), _TYPES.get(f.suffix, "application/octet-stream"))
                 return
         self._send(404, b"not found", "text/plain")
+
+    def _compile_stream(self) -> None:
+        """Stream the compile as Server-Sent Events so the UI paints a live Activity Rail. The loop's
+        on_event fires in THIS handler thread (ThreadingHTTPServer), so writing each event here is safe.
+        Ends with a single `result` event carrying the full payload — identical to /api/compile."""
+        from urllib.parse import parse_qs, urlparse
+        q = parse_qs(urlparse(self.path).query)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        def event(obj) -> None:
+            try:
+                self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
+                self.wfile.flush()
+            except Exception:
+                pass
+
+        try:
+            prompt = (q.get("prompt", [""])[0] or "").strip()
+            if not prompt:
+                raise ValueError("empty prompt")
+            from webapp.service import compile_to_result
+            result = compile_to_result(
+                prompt, candidates=int(q.get("candidates", ["1"])[0]),
+                rounds=int(q.get("rounds", ["2"])[0]),
+                on_event=lambda ev: event({"event": "stage", **ev}))
+            event({"event": "result", "result": result})
+        except Exception as e:
+            event({"event": "error", "fatal": f"{type(e).__name__}: {e}"})
 
     def do_POST(self) -> None:
         if self.path not in ("/api/compile", "/api/edit"):

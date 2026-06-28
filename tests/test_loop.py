@@ -79,6 +79,40 @@ def test_run_repairs_when_all_candidates_fail(monkeypatch):
     assert res.passed and res.rounds == 1
 
 
+def test_run_emits_stage_events_for_the_activity_rail(monkeypatch):
+    monkeypatch.setattr(inference, "infer", lambda *a, **k: GOOD)
+    events = []
+    res = loop.run(Brief(prompt="bracket", named_dims={"length": 80, "width": 40, "height": 6}, holes=2),
+                   rounds=0, on_event=events.append)
+    assert res.passed
+    stages = [e["stage"] for e in events]
+    assert "codegen" in stages and "execute" in stages and "critic" in stages
+    assert {e["status"] for e in events if e["stage"] == "codegen"} == {"running", "done"}
+    critic_done = next(e for e in events if e["stage"] == "critic" and e["status"] == "done")
+    assert critic_done["checks"] > 0 and critic_done["passed"] is True
+
+
+def test_run_emits_repair_events(monkeypatch):
+    seq = iter([WRONG_HEIGHT, GOOD])
+    monkeypatch.setattr(inference, "infer", lambda *a, **k: next(seq))
+    events = []
+    res = loop.run(Brief(prompt="bracket", named_dims={"length": 80, "width": 40, "height": 6}, holes=2),
+                   rounds=2, on_event=events.append)
+    assert res.passed and res.rounds == 1
+    repairs = [e for e in events if e["stage"] == "repair"]
+    assert any(e["status"] == "running" for e in repairs)
+    assert any(e["status"] == "done" and e.get("passed") for e in repairs)
+
+
+def test_on_event_failure_never_breaks_the_loop(monkeypatch):
+    monkeypatch.setattr(inference, "infer", lambda *a, **k: GOOD)
+    def boom(_ev):
+        raise RuntimeError("rail consumer blew up")
+    res = loop.run(Brief(prompt="bracket", named_dims={"length": 80, "width": 40, "height": 6}, holes=2),
+                   rounds=0, on_event=boom)
+    assert res.passed  # a throwing event sink is swallowed; the compile is unaffected
+
+
 def test_edit_produces_a_minimal_diff(monkeypatch):
     import difflib
     base = ('element = box("bracket", 80, 40, 6)\n'

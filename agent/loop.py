@@ -286,31 +286,59 @@ def _weighted_failures(crit: Optional[Critique]) -> tuple:
     return (0, score)
 
 
-def run(brief: Brief, *, candidates: int = 1, rounds: int = 2, model: Optional[str] = None) -> LoopResult:
+def run(brief: Brief, *, candidates: int = 1, rounds: int = 2, model: Optional[str] = None,
+        on_event=None) -> LoopResult:
     """Generate → execute → verify → repair until pass or rounds exhausted.
 
     Codegen uses the CHEAP model tier; repair uses the BEST model tier (BRIEF §5).
     When `candidates` > 1, generates that many first-pass attempts and selects the best by
     severity-weighted deterministic critic. A true pairwise aesthetic judge among passing
     candidates is deferred — it needs the render backend.
+
+    `on_event(dict)` is an optional progress callback the compiler driver fires at each stage
+    (codegen / execute / critic / select / repair) so a frontend can paint a live Activity Rail
+    (UX_BRIEF §Activity Rail). It never changes behavior — when None, this is the original loop.
     """
+    def emit(**ev):
+        if on_event:
+            try:
+                on_event(ev)
+            except Exception:
+                pass
+
     codegen_model = model or _tier_model("codegen")
     critic_model = model or _tier_model("critic")
 
     attempts = []
-    for _ in range(candidates):
+    for i in range(candidates):
+        emit(stage="codegen", status="running", candidate=i + 1, candidates=candidates)
         program = generate(brief, model=codegen_model)
+        emit(stage="codegen", status="done", candidate=i + 1, candidates=candidates)
+        emit(stage="execute", status="running", candidate=i + 1, candidates=candidates)
         el, err = execute(program)
-        crit = verify(el, brief) if el is not None else None
+        emit(stage="execute", status="failed" if err else "done", candidate=i + 1,
+             candidates=candidates, message=err)
+        crit = None
+        if el is not None:
+            emit(stage="critic", status="running", candidate=i + 1, candidates=candidates)
+            crit = verify(el, brief)
+            emit(stage="critic", status="done", candidate=i + 1, candidates=candidates,
+                 checks=len(crit.checks), passed=crit.passed)
         attempts.append((program, el, crit, err))
 
     program, el, crit, err = min(attempts, key=lambda a: _weighted_failures(a[2]))
+    if candidates > 1:
+        emit(stage="select", status="done", candidates=candidates,
+             passed=(crit.passed if crit else False))
 
     rnd = 0
     while rnd < rounds and (el is None or not crit.passed):
+        emit(stage="repair", status="running", round=rnd + 1)
         program = _strip_fences(inference.infer(_repair_prompt(program, brief, crit, err), model=critic_model))
         el, err = execute(program)
         crit = verify(el, brief) if el is not None else None
+        emit(stage="repair", status="done", round=rnd + 1,
+             passed=(crit.passed if crit else False), message=err)
         rnd += 1
     passed = el is not None and crit is not None and crit.passed
     return LoopResult(program, el, crit, passed, rnd, err)

@@ -52,8 +52,22 @@
   .verdict { position:absolute; top:14px; left:14px; display:inline-flex; align-items:center; gap:8px; padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:rgba(247,245,241,.86); backdrop-filter:blur(4px); font:600 11px ui-monospace,monospace; letter-spacing:.06em; }
   .dot { width:9px; height:9px; border-radius:50%; }
   .hint { position:absolute; bottom:12px; right:14px; color:var(--muted); font:11px ui-monospace,monospace; }
-  .busy { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(231,227,220,.7); }
+  .busy { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(231,227,220,.55); backdrop-filter:blur(2px); }
   .busy .mono { color:var(--ink); font-size:13px; }
+  /* ---- Activity Rail (live agent work stream) ---- */
+  .rail { width:min(430px,80%); background:rgba(247,245,241,.97); border:1px solid var(--line); border-radius:13px; padding:15px 17px 13px; box-shadow:0 10px 44px rgba(28,26,23,.14); }
+  .rail-head { display:flex; align-items:center; justify-content:space-between; margin:0 0 9px; }
+  .rail-cancel { font:600 9px ui-monospace,monospace; letter-spacing:.1em; text-transform:uppercase; border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 9px; cursor:pointer; color:var(--muted); }
+  .rail-cancel:hover { color:var(--ink); border-color:var(--ink); }
+  .rail-rows { display:flex; flex-direction:column; }
+  .rail-row { display:flex; align-items:center; gap:10px; padding:5px 1px; font-size:12.5px; }
+  .rail-row .g { width:9px; height:9px; border-radius:50%; background:var(--line); flex:none; }
+  .rail-row[data-status=running] .g { background:var(--warn); animation:pulse 1s ease-in-out infinite; }
+  .rail-row[data-status=done] .g { background:var(--ok); }
+  .rail-row[data-status=failed] .g { background:var(--fail); }
+  .rail-row .t { color:var(--ink); }
+  .rail-row .d { margin-left:auto; color:var(--muted); font:11px ui-monospace,monospace; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
   /* ---- rep switcher (bottom) ---- */
   footer { display:flex; align-items:center; justify-content:center; gap:5px; padding:9px; border-top:1px solid var(--line); background:var(--paper); }
@@ -130,7 +144,13 @@
     </div>
     <span class="verdict hidden" id="verdict"></span>
     <span class="hint mono hidden" id="hint">drag to orbit · scroll to zoom · click a part to inspect</span>
-    <div class="busy" id="busy"><span class="mono">› compiling — codegen → execute → critic → derive … (~10–40s)</span></div>
+    <div class="busy" id="busy">
+      <div class="rail" id="rail" hidden>
+        <div class="rail-head"><span class="lbl">Activity</span><button class="rail-cancel" id="rail-cancel">Cancel</button></div>
+        <div class="rail-rows" id="rail-rows"></div>
+      </div>
+      <span class="mono" id="busy-msg" hidden></span>
+    </div>
   </section>
 
   <!-- RIGHT: critic + inspector -->
@@ -364,10 +384,65 @@ EXAMPLES.forEach(p => { const c = document.createElement("span"); c.className = 
 $("#go").onclick = compile;
 $("#prompt").addEventListener("keydown", e => { if (e.key === "Enter") compile(); });
 
-async function compile() {
+// ---- Activity Rail: the agent's work, streamed live (codegen → execute → critic → repair → derive) ----
+const RAIL_LABELS = { codegen:"Codegen · writing the program", execute:"Execute · building the B-rep",
+  critic:"Verify · deterministic critic", select:"Select · best candidate",
+  repair:"Repair · feeding the critic back", derive:"Derive" };
+let railRows = {}, ES = null, gotResult = false;
+function railReset() { railRows = {}; $("#rail-rows").innerHTML = ""; }
+function railKey(ev) {
+  if (ev.stage === "derive") return "derive:" + ev.backend;
+  if (ev.stage === "repair") return "repair:" + ev.round;
+  if (ev.candidates > 1 && ["codegen","execute","critic"].includes(ev.stage)) return ev.stage + ":" + ev.candidate;
+  return ev.stage;
+}
+function railLabel(ev) {
+  if (ev.stage === "derive") return "Derive · " + String(ev.backend||"").toUpperCase();
+  if (ev.stage === "repair") return "Repair · round " + ev.round;
+  let base = RAIL_LABELS[ev.stage] || ev.stage;
+  if (ev.candidates > 1 && ["codegen","execute","critic"].includes(ev.stage)) base += " · candidate " + ev.candidate + "/" + ev.candidates;
+  return base;
+}
+function railDetail(ev) {
+  if (ev.stage === "critic" && ev.status === "done") return (ev.passed ? "all pass" : "needs repair") + " · " + ev.checks + " checks";
+  if (ev.stage === "execute" && ev.status === "failed") return "build failed";
+  if (ev.stage === "repair" && ev.status === "done") return ev.passed ? "passed" : "still failing";
+  return "";
+}
+function railEvent(ev) {
+  const key = railKey(ev);
+  let row = railRows[key];
+  if (!row) { row = document.createElement("div"); row.className = "rail-row";
+    row.innerHTML = '<span class="g"></span><span class="t"></span><span class="d"></span>';
+    $("#rail-rows").appendChild(row); railRows[key] = row; }
+  row.dataset.status = ev.status;
+  row.querySelector(".t").textContent = railLabel(ev);
+  const det = railDetail(ev); if (det) row.querySelector(".d").textContent = det;
+}
+
+function compile() {
   const prompt = $("#prompt").value.trim(); if (!prompt) return;
-  setBusy(true, "› compiling — codegen → execute → critic → derive … (~10–40s)");
+  if (ES) { ES.close(); ES = null; }
+  gotResult = false; railReset(); setBusy(true);
   $("#state").textContent = "compiling…";
+  try {
+    ES = new EventSource("/api/compile_stream?prompt=" + encodeURIComponent(prompt));
+  } catch (e) { compileFallback(prompt); return; }
+  ES.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.event === "stage") railEvent(m);
+    else if (m.event === "result") { gotResult = true; ES.close(); ES = null; setBusy(false); render(m.result); }
+    else if (m.event === "error") { gotResult = true; ES.close(); ES = null; setBusy(false);
+      $("#state").textContent = "error"; alert("compile failed: " + m.fatal); }
+  };
+  ES.onerror = () => {                       // connection dropped before a result → fall back to POST
+    if (!ES) return; ES.close(); ES = null;
+    if (!gotResult) compileFallback(prompt);
+  };
+}
+// Non-streaming fallback (also what the CLI/tests use) — keeps the app working if SSE is unavailable.
+async function compileFallback(prompt) {
+  setBusy(true, "› compiling — codegen → execute → critic → derive … (~10–40s)");
   try {
     const r = await fetch("/api/compile", { method:"POST", headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ prompt }) });
@@ -375,6 +450,8 @@ async function compile() {
   } catch (e) { $("#state").textContent = "request failed"; alert("request failed: " + e); }
   finally { setBusy(false); }
 }
+$("#rail-cancel").onclick = () => { if (ES) { ES.close(); ES = null; } setBusy(false);
+  $("#state").textContent = "cancelled"; };
 
 function render(d) {
   LAST = d;
@@ -497,9 +574,11 @@ async function applyEdit(instruction, param) {
 }
 
 function setBusy(on, msg) {
-  const b = $("#busy"); b.style.display = on ? "flex" : "none";
-  if (msg) b.querySelector(".mono").textContent = msg;
+  $("#busy").style.display = on ? "flex" : "none";
   $("#go").disabled = on;
+  const rail = $("#rail"), bm = $("#busy-msg");
+  if (msg) { bm.hidden = false; bm.textContent = msg; rail.hidden = true; }   // edit: a message line
+  else { bm.hidden = true; rail.hidden = false; }                            // compile: the live rail
 }
 
 // A small automation/debug seam for the local-first app (browser console + headless E2E). It exposes
