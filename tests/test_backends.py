@@ -38,6 +38,9 @@ def test_ifc_exports_and_round_trips(tmp_path):
     summary = ifc.reimport_summary(path)
     assert summary["schema"] == "IFC4"
     assert summary["element_classes"] == ["IfcWall"]  # Panel -> IfcWall via standards.yaml ifc_map
+    # IFC4precast property sets
+    assert "PrecastConcrete" in summary["materials"]
+    assert "Pset_PrecastConcrete" in summary["property_sets"]
 
 
 def test_assembly_composes_and_exports_all_backends(tmp_path):

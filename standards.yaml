@@ -28,6 +28,34 @@ clearance_holes_mm:          # ISO 273 "medium" fit: nominal -> drilled diameter
   M16: 17.5
   M20: 22.0
 
+# Material definitions — used by the IFC backend for material assignments + property sets.
+# Keys are material ids; `ifc_material` is the IFC Material name; `ifc_property_set` triggers
+# IFC property-set assignment for the element type. Grows from real use, not speculatively.
+materials:
+  precast_concrete:
+    ifc_material: "PrecastConcrete"
+    ifc_property_set: "Pset_PrecastConcrete"
+    load_bearing: true
+    concrete_strength_class: "C30/37"
+    exposure_class: "XC4"
+    fire_rating: "R60"
+    cover_to_reinforcement_mm: 40
+    reinforcement_class: "B500B"
+  steel:
+    ifc_material: "Steel"
+    grade: "S355"
+
+# Maps Element.type -> material key (from materials: above). The IFC backend consults this.
+ifc_material_map:
+  Panel: precast_concrete
+  Part: steel
+  Assembly: steel
+  Profile: steel
+  Wall: precast_concrete
+  Slab: precast_concrete
+  Column: precast_concrete
+  Beam: precast_concrete
+
 manufacturing:
   min_wall_mm: 1.5           # P0 heuristic only — NEVER a P0 gate (OCCT booleans fail here); real analysis P1
   default_material: steel

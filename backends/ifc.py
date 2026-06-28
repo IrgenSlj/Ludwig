@@ -100,6 +100,10 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
         f.create_entity("IfcRelAggregates", GlobalId=gid(), RelatingObject=element, RelatedObjects=kids)
     else:
         element = make_element(ir, ifc_class)
+    # --- material assignment + property sets ---
+    _add_material(f, ir, element, ifc_class, load())
+    _add_property_sets(f, ir, element)
+
     f.create_entity("IfcRelContainedInSpatialStructure", GlobalId=gid(),
                     RelatingStructure=storey, RelatedElements=[element])
 
@@ -108,6 +112,80 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
     path = out_dir / f"{ir.id}.ifc"
     f.write(str(path))
     return path
+
+
+# --- module-level helpers: material + property-set authoring (called from compile) ---
+
+
+def _material_for(el, ifc_map, std):
+    """Resolve the material key for an element from standards.yaml ifc_material_map."""
+    mat_map = std.get("ifc_material_map", {})
+    return mat_map.get(el.type)
+
+
+def _add_material(f, el, ifc_element, ifc_cls, std):
+    """Create an IfcMaterial + IfcRelAssociatesMaterial for the element, if a material is
+    defined in standards.yaml. Uses `ifc_material_map` to resolve Element.type -> material id."""
+    key = _material_for(el, None, std)
+    if not key:
+        return
+    mat_def = std.get("materials", {}).get(key)
+    if not mat_def:
+        return
+    mat_name = mat_def.get("ifc_material", key.title())
+    material = f.create_entity("IfcMaterial", Name=mat_name)
+    f.create_entity("IfcRelAssociatesMaterial", GlobalId=_gid(f),
+                    RelatedObjects=[ifc_element],
+                    RelatingMaterial=material)
+
+
+def _add_property_sets(f, el, ifc_element):
+    """Create IFC property sets for the element based on its material definition in standards.yaml.
+    Currently adds Pset_PrecastConcrete for precast concrete elements; extensible to other property
+    sets as new materials are defined."""
+    from toolkit.standards import load as _load
+    std = _load()
+    key = _material_for(el, None, std)
+    if not key:
+        return
+    mat_def = std.get("materials", {}).get(key)
+    if not mat_def:
+        return
+    pset_name = mat_def.get("ifc_property_set")
+    if not pset_name:
+        return
+
+    # Skip non-material-specific props
+    skip_keys = {"ifc_material", "ifc_property_set"}
+    props = []
+    for k, v in mat_def.items():
+        if k in skip_keys:
+            continue
+        # Map Python type to IFC type
+        if isinstance(v, bool):
+            ifc_type = "IfcBoolean"
+        elif isinstance(v, (int, float)):
+            ifc_type = "IfcReal"
+            v = float(v)
+        else:
+            ifc_type = "IfcLabel"
+        prop = f.create_entity("IfcPropertySingleValue", Name=k.replace("_", " ").title(),
+                               NominalValue=f.create_entity(ifc_type, v))
+        props.append(prop)
+
+    if not props:
+        return
+    pset = f.create_entity("IfcPropertySet", GlobalId=_gid(f), Name=pset_name,
+                           HasProperties=props)
+    f.create_entity("IfcRelDefinesByProperties", GlobalId=_gid(f),
+                    RelatedObjects=[ifc_element],
+                    RelatingPropertyDefinition=pset)
+
+
+def _gid(f):
+    """Short-lived GUID factory — wraps ifcopenshell.guid.new()."""
+    import ifcopenshell.guid as _guid
+    return _guid.new()
 
 
 # Module-level self-registration
@@ -126,5 +204,9 @@ def reimport_summary(path) -> dict:
     # children aggregated under an IfcElementAssembly (decomposition), if any
     decomposed = sum(len(r.RelatedObjects) for r in m.by_type("IfcRelAggregates")
                      if r.RelatingObject.is_a("IfcElementAssembly"))
+    # material + property-set evidence
+    materials = [m.Name for m in m.by_type("IfcMaterial")]
+    property_sets = [p.Name for p in m.by_type("IfcPropertySet")]
     return {"schema": m.schema, "element_classes": [e.is_a() for e in elements],
-            "units": units, "assembly_children": decomposed}
+            "units": units, "assembly_children": decomposed,
+            "materials": materials, "property_sets": property_sets}
