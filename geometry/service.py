@@ -109,6 +109,32 @@ class GeometryService:
         """OCCT topological validity (a coarse manifold/watertight proxy; the real panel is S4)."""
         return bool(handle.solid().val().isValid())
 
+    def min_wall_thickness(self, handle: BRepHandle) -> float:
+        """Estimate minimum wall thickness via face-pair distance (research-grade, P1).
+
+        Computes the minimum distance between all non-adjacent face pairs using OCCT's
+        BRepExtrema_DistShapeShape. Adjacent faces (distance < 1 μm) are excluded.
+        This is a proxy for true min-wall analysis (medial surface / offset-based) which
+        is deferred to P2 when a brief demands it.
+
+        Returns 0.0 for degenerate or single-face shapes.
+        """
+        from cadquery.occ_impl.shapes import BRepExtrema_DistShapeShape  # noqa: PLC0415
+
+        shape = handle.solid().val()
+        faces = list(shape.Faces())
+        if len(faces) < 2:
+            return 0.0
+        min_d = float("inf")
+        for i, f1 in enumerate(faces):
+            for f2 in faces[i + 1:]:
+                extrema = BRepExtrema_DistShapeShape(f1.wrapped, f2.wrapped)
+                if extrema.IsDone():
+                    d = extrema.Value()
+                    if 1e-3 < d < min_d:  # skip adjacent faces (distance ≈ 0)
+                        min_d = d
+        return min_d if min_d != float("inf") else 0.0
+
     def cylindrical_face_count(self, handle: BRepHandle) -> int:
         """Count cylindrical faces — for the fillet-free frozen brief set this equals hole count.
         (A full hole-topology check is S4 critic work; this is the cheap S2 gate signal.)"""
