@@ -4,6 +4,14 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Fixed — bare-prompt critic coverage: dims + hole-count extraction
+- A live/inline compile (`cli.py "<prompt>"`, webapp) auto-extracts named dims and the hole count from
+  the prompt so the deterministic critic verifies them. Three latent bugs left that coverage empty:
+  the dim regex captured only 2 of 3 extents (`A × B × C` → `{}`); the hole regex read the thread size
+  as the count (`two M8 holes` → 8); and the word-count path used a non-capturing group with `group(1)`
+  (dead, masked by the M8 bug). Now `80 × 40 × 6 … two M8 clearance holes` → dims {80,40,6}, holes 2 —
+  the headline dimensional check actually runs on live compiles. Frozen-set eval unchanged (100%).
+
 ### Fixed — live model tiering (codegen/critic) was passing tier LABELS as model names
 - `agent.loop._tier_model` resolved `standards.yaml: inference.codegen_tier` ("cheap") / `critic_tier`
   ("best") to the literal label and passed it to `--model`, which the `claude` CLI rejects ("model

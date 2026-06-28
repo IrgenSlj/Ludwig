@@ -30,10 +30,16 @@ _PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 
 # Regex patterns for extracting declared dims and hole counts from a free-text prompt.
 # These are lightweight heuristics — they don't need to be perfect, just good enough to
-# give the inline compile path non-vacuum critic coverage.
-_DIM_RE = re.compile(r"(\d+)\s*(?:×|x|mm|\.0)?\s*(?:×|x|mm|\.0)?\s*(\d+)")
-_HOLES_RE = re.compile(r"(?:two|three|four|five|six|seven|eight|nine|ten)\s+(?:M\d+\s+)?holes?", re.IGNORECASE)
-_HOLES_DIGIT_RE = re.compile(r"(\d+)\s+(?:M\d+\s+)?holes?", re.IGNORECASE)
+# give the inline compile path non-vacuum critic coverage. The dim pattern captures the common
+# "A × B × C" extent triple (× or x separators, ints or decimals) so a bare-prompt live compile
+# is dimensionally verified, not just geometrically — the headline critic promise (BRIEF §6).
+_DIM_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(?:×|x)\s*(\d+(?:\.\d+)?)\s*(?:×|x)\s*(\d+(?:\.\d+)?)", re.IGNORECASE)
+_HOLES_RE = re.compile(
+    r"(two|three|four|five|six|seven|eight|nine|ten)\s+(?:\S+\s+){0,2}?holes?", re.IGNORECASE)
+# The count digit must NOT be a thread size: a letter before it (the M in "M8") disqualifies it,
+# so "two M8 holes" reads 2 (via the word pattern), never 8.
+_HOLES_DIGIT_RE = re.compile(r"(?<![A-Za-z])(\d+)\s+(?:M\d+\s+)?holes?", re.IGNORECASE)
 _WORD_NUM = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
              "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 
@@ -46,9 +52,8 @@ def _extract_dims(prompt: str) -> dict[str, float]:
     """
     m = _DIM_RE.search(prompt)
     if m:
-        groups = [float(x) for x in m.groups() if x.strip()]
-        if len(groups) >= 3:
-            return {"length": groups[0], "width": groups[1], "height": groups[2]}
+        a, b, c = (float(x) for x in m.groups())
+        return {"length": a, "width": b, "height": c}
     return {}
 
 

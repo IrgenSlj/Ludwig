@@ -14,6 +14,24 @@ clearance_hole(element, "M8", (25, 0))
 WRONG_HEIGHT = 'element = box("bracket", 80, 40, 60)'
 
 
+def test_extract_dims_captures_the_extent_triple():
+    # a bare prompt must yield all three extents so the live compile is DIMENSIONALLY verified,
+    # not just geometrically (the headline critic promise) — both × and x, ints and decimals.
+    assert loop._extract_dims("a steel bracket, 80 × 40 × 6 mm, two M8 holes") == {
+        "length": 80.0, "width": 40.0, "height": 6.0}
+    assert loop._extract_dims("a flat plate, 120 x 60 x 10 mm") == {
+        "length": 120.0, "width": 60.0, "height": 10.0}
+    assert loop._extract_dims("a square spacer, 30 × 30 × 12.5 mm") == {
+        "length": 30.0, "width": 30.0, "height": 12.5}
+    assert loop._extract_dims("a thing with no dimensions") == {}
+
+
+def test_brief_auto_extracts_dims_for_the_critic():
+    b = Brief(prompt="a steel bracket, 80 × 40 × 6 mm, two M8 holes")
+    assert b.named_dims == {"length": 80.0, "width": 40.0, "height": 6.0}
+    assert b.holes == 2
+
+
 def test_strip_fences():
     assert loop._strip_fences("```python\nx = 1\n```") == "x = 1"
     assert loop._strip_fences("x = 1") == "x = 1"
