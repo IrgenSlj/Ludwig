@@ -8,7 +8,10 @@ Providers:
   - "claude"   (default): the locally-authenticated `claude` CLI — BYO Claude, no API key.
   - "opencode": provider-neutral — bring ANY model (Anthropic/OpenAI/Gemini/OpenRouter) or a
                 FREE local model via Ollama. Selected with $LUDWIG_PROVIDER.
-Model tiering ([H5], BRIEF §5): pass `model=` (e.g. cheap for codegen, best for the critic).
+Model tiering ([H5], BRIEF §5): the LOOP reads `standards.yaml: inference.codegen_tier`
+and `critic_tier` and passes `model=` accordingly. You can also pass `model=` directly
+to override tier selection. Tier names are provider-specific (e.g. "sonnet" for claude,
+"anthropic/claude-sonnet-4-6" for opencode).
 """
 from __future__ import annotations
 
@@ -67,7 +70,14 @@ def provider_name() -> str:
 
 def infer(prompt: str, *, allow_read: bool = False, image: str | None = None,
           timeout: int = 240, retries: int = 2, model: str | None = None) -> str:
-    """Provider-agnostic inference call. Dispatches to the selected backend."""
+    """Provider-agnostic inference call. Dispatches to the selected backend.
+
+    Args:
+        prompt: The prompt text to send.
+        model: Optional model name override. The LOOP sets this from standards.yaml tier
+               config; you can also pass it directly to force a specific model.
+               If None, the provider's default model is used.
+    """
     name = provider_name()
     fn = _PROVIDERS.get(name)
     if fn is None:

@@ -6,10 +6,13 @@
            → if fail: feed failures back → repair (fix only failures, keep intent) → re-verify
            → if pass: (select / compile backends — S5+)
 
-S3 wires generate + execute + repair on the live provider-blind inference seam. The `verify` here is
-PROVISIONAL — a minimal geometric/dimensional check so the loop closes and repair has a signal; the
-real deterministic critic PANEL (semantic checks, registry, aggregation) is S4 and will replace it
-without touching this loop (BRIEF §0 gate). Heavy kernel use stays inside execute() (lazy).
+Model tiering (BRIEF §5): codegen uses the CHEAP model tier; repair uses the BEST model tier.
+Tier names are read from standards.yaml: inference.codegen_tier / inference.critic_tier.
+Override with `model=` to pass a specific model name.
+
+Brief extraction: when a Brief has no named_dims or holes set explicitly, the loop attempts
+to parse them from the prompt text so the inline compile path (`cli.py "<prompt>"`) gets
+proper critic coverage instead of vacuum-passing.
 """
 from __future__ import annotations
 
@@ -19,10 +22,72 @@ from pathlib import Path
 from typing import Optional
 
 from agent import inference
-from critic.base import Critique
+from agent.errors import GeometryBuildError, MissingElementError, SyntaxError_
+from critic.base import Critique, Severity
 from ir.elements import Element
 
 _PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
+
+# Regex patterns for extracting declared dims and hole counts from a free-text prompt.
+# These are lightweight heuristics — they don't need to be perfect, just good enough to
+# give the inline compile path non-vacuum critic coverage.
+_DIM_RE = re.compile(r"(\d+)\s*(?:×|x|mm|\.0)?\s*(?:×|x|mm|\.0)?\s*(\d+)")
+_HOLES_RE = re.compile(r"(?:two|three|four|five|six|seven|eight|nine|ten)\s+(?:M\d+\s+)?holes?", re.IGNORECASE)
+_HOLES_DIGIT_RE = re.compile(r"(\d+)\s+(?:M\d+\s+)?holes?", re.IGNORECASE)
+_WORD_NUM = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+             "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+
+
+def _extract_dims(prompt: str) -> dict[str, float]:
+    """Try to extract approximate named dims from a free-text prompt.
+
+    Matches patterns like "80 × 40 × 6 mm" and returns {length, width, height}.
+    This is intentionally imprecise — the critic will catch wrong values.
+    """
+    m = _DIM_RE.search(prompt)
+    if m:
+        groups = [float(x) for x in m.groups() if x.strip()]
+        if len(groups) >= 3:
+            return {"length": groups[0], "width": groups[1], "height": groups[2]}
+    return {}
+
+
+def _extract_holes(prompt: str) -> Optional[int]:
+    """Try to extract a hole count from a free-text prompt.
+
+    Matches "two M8 holes", "4 holes", "no holes" etc.
+    Returns None if uncertain.
+    """
+    if "no holes" in prompt.lower():
+        return 0
+    m = _HOLES_DIGIT_RE.search(prompt)
+    if m:
+        try:
+            return int(m.group(1))
+        except ValueError:
+            pass
+    m = _HOLES_RE.search(prompt)
+    if m:
+        word = m.group(1).lower()
+        return _WORD_NUM.get(word)
+    return None
+
+
+def _tier_model(tier: str) -> Optional[str]:
+    """Read a model name from standards.yaml for the given tier ('codegen' or 'critic').
+
+    Returns None if the tier isn't configured (let the inference provider decide).
+    """
+    try:
+        from toolkit.standards import load
+        cfg = load().get("inference", {})
+        key = f"{tier}_tier"
+        val = cfg.get(key, "default")
+        if val == "default":
+            return None
+        return val
+    except Exception:
+        return None
 
 
 @dataclass
@@ -32,6 +97,18 @@ class Brief:
     named_dims: dict[str, float] = field(default_factory=dict)   # declared dims the critic enforces
     holes: Optional[int] = None                                  # None = unknown (bare prompt); skip the check
     units: str = "mm"
+
+    def __post_init__(self) -> None:
+        # Auto-extract dims and holes from the prompt if not explicitly provided.
+        # This gives the inline compile path proper critic coverage.
+        if not self.named_dims:
+            extracted = _extract_dims(self.prompt)
+            if extracted:
+                self.named_dims = extracted
+        if self.holes is None:
+            extracted = _extract_holes(self.prompt)
+            if extracted is not None:
+                self.holes = extracted
 
     @classmethod
     def from_dict(cls, d: dict) -> "Brief":
@@ -149,16 +226,19 @@ def execute(program: str) -> tuple[Optional[Element], Optional[str]]:
     }
     try:
         exec(compile(_strip_fences(program), "<ludwig-program>", "exec"), ns)
+    except SyntaxError as e:
+        return None, f"{SyntaxError_.__name__}: {e}"
     except Exception as e:
         return None, f"{type(e).__name__}: {e}"
     el = ns.get("element")
     if not isinstance(el, Element):
-        return None, "program did not assign an Element to `element`"
+        return None, f"{MissingElementError.__name__}: program did not assign an Element to `element`"
     try:
         if el.geometry is not None:
             el.geometry.solid()        # force the build now → surface kernel errors
     except Exception as e:
-        return None, f"geometry build failed: {type(e).__name__}: {e}"
+        op = "hole" if "hole" in str(e).lower() else "fillet" if "fillet" in str(e).lower() else "unknown"
+        return None, f"{GeometryBuildError.__name__}: {type(e).__name__}: {e} (op={op})"
     return el, None
 
 
@@ -174,8 +254,8 @@ def verify(el: Element, brief: Brief) -> Critique:
 # --------------------------------------------------------------------------- #
 
 def generate(brief: Brief, *, model: Optional[str] = None) -> str:
-    """One codegen call (cheap tier). The provider is whatever CLI is on PATH (seam-blind)."""
-    return _strip_fences(inference.infer(_codegen_prompt(brief), model=model))
+    """One codegen call (CHEAP tier by default). The provider is whatever CLI is on PATH."""
+    return _strip_fences(inference.infer(_codegen_prompt(brief), model=model or _tier_model("codegen")))
 
 
 def first_pass(brief: Brief, *, model: Optional[str] = None):
@@ -185,30 +265,50 @@ def first_pass(brief: Brief, *, model: Optional[str] = None):
     return program, el, err
 
 
+def _weighted_failures(crit: Optional[Critique]) -> tuple:
+    """Rank candidates by severity-weighted failure count.
+
+    Returns a tuple (is_build_failure, weighted_score) where lower is better.
+    CRITICAL failures count as 100 each, ERROR as 10, WARNING as 1.
+    A build failure (el is None) is always worst: (1, 0).
+    """
+    if crit is None:
+        return (1, 0)
+    score = 0
+    for c in crit.failures:
+        sev = getattr(c, "severity", Severity.ERROR)
+        if sev == Severity.CRITICAL:
+            score += 100
+        elif sev == Severity.WARNING:
+            score += 1
+        else:
+            score += 10
+    return (0, score)
+
+
 def run(brief: Brief, *, candidates: int = 1, rounds: int = 2, model: Optional[str] = None) -> LoopResult:
     """Generate → execute → verify → repair until pass or rounds exhausted.
 
-    When `candidates` > 1, generates that many first-pass attempts and selects the best by the
-    deterministic critic (fewest failures). A true pairwise aesthetic judge among passing candidates
-    is deferred — it needs the render backend; selection here is by the deterministic critic only.
-    With `candidates=1` (the default) behaviour is identical to before: one generation, then repair.
+    Codegen uses the CHEAP model tier; repair uses the BEST model tier (BRIEF §5).
+    When `candidates` > 1, generates that many first-pass attempts and selects the best by
+    severity-weighted deterministic critic. A true pairwise aesthetic judge among passing
+    candidates is deferred — it needs the render backend.
     """
-    def _rank(a):
-        _program, _el, _crit, _err = a
-        return (1, 0) if _el is None else (0, len(_crit.failures))
+    codegen_model = model or _tier_model("codegen")
+    critic_model = model or _tier_model("critic")
 
     attempts = []
     for _ in range(candidates):
-        program = generate(brief, model=model)
+        program = generate(brief, model=codegen_model)
         el, err = execute(program)
         crit = verify(el, brief) if el is not None else None
         attempts.append((program, el, crit, err))
 
-    program, el, crit, err = min(attempts, key=_rank)
+    program, el, crit, err = min(attempts, key=lambda a: _weighted_failures(a[2]))
 
     rnd = 0
     while rnd < rounds and (el is None or not crit.passed):
-        program = _strip_fences(inference.infer(_repair_prompt(program, brief, crit, err), model=model))
+        program = _strip_fences(inference.infer(_repair_prompt(program, brief, crit, err), model=critic_model))
         el, err = execute(program)
         crit = verify(el, brief) if el is not None else None
         rnd += 1
@@ -222,14 +322,16 @@ def edit(program: str, instruction: str, *, brief: Optional[Brief] = None,
 
     References are by program lineage, not kernel handle ([H2]): the edit rewrites the *program text*
     and re-executes; nothing points into a stale B-rep.
+    Repair uses the BEST model tier.
     """
     b = brief or Brief(prompt=instruction)
+    critic_model = model or _tier_model("critic")
     new = _strip_fences(inference.infer(_edit_prompt(program, instruction), model=model))
     el, err = execute(new)
     crit = verify(el, b) if el is not None else None
     rnd = 0
     while rnd < rounds and (el is None or not crit.passed):
-        new = _strip_fences(inference.infer(_repair_prompt(new, b, crit, err), model=model))
+        new = _strip_fences(inference.infer(_repair_prompt(new, b, crit, err), model=critic_model))
         el, err = execute(new)
         crit = verify(el, b) if el is not None else None
         rnd += 1

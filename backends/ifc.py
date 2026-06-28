@@ -110,6 +110,12 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
     return path
 
 
+# Module-level self-registration
+from backends.registry import register as _register
+import sys as _sys
+_register(_sys.modules[__name__])
+
+
 def reimport_summary(path) -> dict:
     """Re-open the IFC and report what's in it — proves it's a valid, parseable model."""
     import ifcopenshell

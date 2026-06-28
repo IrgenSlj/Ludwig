@@ -18,7 +18,14 @@ applies_to = {"brep"}
 
 def evaluate(el, brief) -> Critique:
     from geometry import GeometryService
-    from toolkit.standards import tol_linear
+    from toolkit.standards import tol_linear, bbox_gate
+
+    # [H3] Crystallization gates dimensional strictness.
+    # Loose elements (crystallization explicitly set > 0 and < 0.5) use the wider
+    # bbox_gate tolerance and only check extent dims. Default crystallization (0.0)
+    # means "not set" — full strict checks. Locked elements (>= 0.5) also get full strictness.
+    loose = 0.0 < el.crystallization < 0.5
+    tol = bbox_gate() if loose else tol_linear()
 
     declared = dict(getattr(brief, "named_dims", {}) or {})
     if not declared:
@@ -27,13 +34,15 @@ def evaluate(el, brief) -> Critique:
     g = GeometryService()
     length, width, height = g.bbox(el.geometry)
     extents = {"length": length, "width": width, "height": height}
-    tol = tol_linear()
     checks: list[CheckResult] = []
     for dim_name, want in declared.items():
         # Ground truth first (measured extent), then the registered manifest value.
         have = extents.get(dim_name)
         if have is None:
             have = el.dim(dim_name)
+            if loose and have is None:
+                # Loose element: skip non-extent dims that aren't registered
+                continue
         ok = have is not None and abs(have - want) <= tol
         checks.append(CheckResult(
             f"dim:{dim_name}", Status.PASS if ok else Status.FAIL,

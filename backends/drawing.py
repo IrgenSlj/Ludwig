@@ -41,6 +41,12 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
     return path
 
 
+# Module-level self-registration
+from backends.registry import register as _register
+import sys as _sys
+_register(_sys.modules[__name__])
+
+
 def _annotate_dims(path: Path, ir) -> None:
     """Overlay a drafting-mono dimension block from the manifest. Real dimension strings with
     arrows/witness lines are the conventioned-drawing problem (P2); this is the P0.5 honest version."""

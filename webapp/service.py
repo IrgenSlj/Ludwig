@@ -131,13 +131,12 @@ def _assemble(res, out: Path) -> dict:
     recipe.write_text(res.program + "\n")
     result["artifacts"]["recipe"] = recipe.name
     if res.passed:
-        from importlib import import_module
-        from backends import step as step_backend
-        result["artifacts"]["step"] = step_backend.compile(el, out).name
-        for label, mod in (("ifc", "ifc"), ("svg", "drawing")):
+        from backends import all as all_backends
+        for b in all_backends():
+            label = {"drawing": "svg"}.get(b.name, b.name)
             try:
-                result["artifacts"][label] = import_module(f"backends.{mod}").compile(el, out).name
-            except Exception as e:  # IFC/drawing are best-effort; never sink the compile
+                result["artifacts"][label] = b.compile(el, out).name
+            except Exception as e:
                 result["artifacts"][f"{label}_error"] = f"{type(e).__name__}: {e}"
     return result
 

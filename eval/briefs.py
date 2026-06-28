@@ -23,4 +23,21 @@ BRIEFS = [
      "prompt": "an assembly of two stacked plates: a 60 × 60 × 10 mm base and a "
                "40 × 40 × 10 mm plate centred on top",
      "dims": {"length": 60.0, "width": 60.0, "height": 20.0}, "holes": 0},
+    # ---- P0/S3 expansion: harder cases that challenge codegen ----
+    {"id": "filtered_bracket",
+     "prompt": "a steel bracket, 80 × 40 × 6 mm, with 5 mm fillet on all top edges, two M8 clearance holes",
+     "dims": {"length": 80.0, "width": 40.0, "height": 6.0}, "holes": 6},
+    {"id": "slotted_plate",
+     "prompt": "a flat steel plate, 120 × 60 × 10 mm, with a central slot 10 mm wide × 40 mm long",
+     "dims": {"length": 120.0, "width": 60.0, "height": 10.0}, "holes": 0},
+    {"id": "chamfered_spacer",
+     "prompt": "a square spacer, 30 × 30 × 12 mm, with a central ⌀10 bore and 2 mm chamfer on both bore edges",
+     "dims": {"length": 30.0, "width": 30.0, "height": 12.0}, "holes": 1},
+    {"id": "asymmetric_gusset",
+     "prompt": "a gusset plate, 100 × 100 × 5 mm, two M10 clearance holes at (20, 15) and (-30, 25)",
+     "dims": {"length": 100.0, "width": 100.0, "height": 5.0}, "holes": 2},
+    {"id": "counterbored_plate",
+     "prompt": "a flat steel plate, 80 × 50 × 10 mm, with two M6 counterbored holes "
+               "(⌀6 through, ⌀11 counterbore 5 mm deep)",
+     "dims": {"length": 80.0, "width": 50.0, "height": 10.0}, "holes": 4},
 ]

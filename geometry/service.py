@@ -56,6 +56,11 @@ class GeometryService:
              *, through: bool = True, depth: float | None = None) -> BRepHandle:
         """Drill a vertical hole of `diameter` at (x, y) measured from the top face centre.
 
+        Returns a NEW BRepHandle that chains on the previous handle's build result. The
+        previous handle is captured in the closure, so calling hole() twice on the same
+        original handle creates two independent chains — each materializes the full
+        history when .solid() is called. This avoids mutation of shared intermediate handles.
+
         NB OCCT throws the opaque `StdFail_NotDone` on bad boolean/fillet geometry — the
         repair loop must parse that (BRIEF §8). For a clean through-hole in a plate it's robust.
         """

@@ -163,27 +163,25 @@ def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2) -> int:
     for c in (res.critique.checks if res.critique else []):
         print(f"  [{c.status.value:4}] {c.check}" + (f" — {c.message}" if c.message else ""))
 
-    # Persist the recipe (the source of truth) and, if the critic passed, the STEP deliverable.
+    # Persist the recipe (the source of truth) and, if the critic passed, compile through all backends.
     from pathlib import Path
-    from backends import step as step_backend
+    from backends import compile as compile_all
     out = Path("out")
     out.mkdir(exist_ok=True)
     recipe = out / f"{res.ir.id}.py"
     recipe.write_text(res.program + "\n")
     if res.passed:  # pre-export validation hook (BRIEF §5): no fabrication file leaves on a failing critic
-        step_path = step_backend.compile(res.ir, out)
-        line = f"\nwrote recipe {recipe} · STEP {step_path}"
-        try:  # IFC (BIM) deliverable — best-effort
-            from backends import ifc
-            line += f" · IFC {ifc.compile(res.ir, out)}"
-        except Exception as e:
-            line += f" · IFC skipped ({type(e).__name__})"
-        try:  # P0.5 drawing — best-effort, HLR is fragile and never blocks the spine
-            from backends import drawing
-            line += f" · drawing {drawing.compile(res.ir, out)}"
-        except Exception as e:
-            line += f" · drawing skipped ({type(e).__name__})"
-        print(line)
+        artifacts = compile_all(res.ir, out)
+        parts = [f"wrote recipe {recipe}"]
+        _LABELS = {"step": "STEP", "ifc": "IFC", "drawing": "drawing", "render": "render"}
+        for name, value in artifacts.items():
+            if name.endswith("_error"):
+                label = _LABELS.get(name.removesuffix("_error"), name)
+                parts.append(f"{label} skipped ({value})")
+            else:
+                label = _LABELS.get(name, name)
+                parts.append(f"{label} {value}")
+        print(" · ".join(parts))
         return 0
     print(f"\nwrote recipe {recipe} · STEP withheld — critic not all-pass (fabrication gate)")
     return 1

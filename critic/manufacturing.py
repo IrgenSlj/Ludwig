@@ -5,7 +5,7 @@ the anchor bore and the nearest panel face. Heavy imports (geometry kernel, stan
 """
 from __future__ import annotations
 
-from critic.base import CheckResult, Critique, Status
+from critic.base import CheckResult, Critique, Severity, Status
 
 name = "manufacturing"
 applies_to = {"brep"}
@@ -33,5 +33,5 @@ def evaluate(el, brief) -> Critique:  # noqa: ARG001 - brief unused for manufact
             f"cover:anchor_{i}",
             Status.PASS if ok else Status.FAIL,
             "" if ok else f"edge clearance {edge:.1f} mm < cover {cov:.0f} mm",
-            el.id))
+            el.id, severity=Severity.WARNING))
     return Critique(checks=checks)

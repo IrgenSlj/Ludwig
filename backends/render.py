@@ -13,6 +13,12 @@ fmt = "png"
 fabrication = False
 
 
+# Module-level self-registration
+from backends.registry import register as _register
+import sys as _sys
+_register(_sys.modules[__name__])
+
+
 def compile(ir: object, out_dir: Path) -> Path:  # noqa: A001, ARG001
     # P1: tessellate IR solids → bpy mesh, then `from backends import render_toolkit as L`
     # for L_pbr / L_lighting / L_autocam / L_quality. Lazy import keeps the skeleton clean.

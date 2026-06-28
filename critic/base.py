@@ -8,7 +8,7 @@ it asks for those whose `applies_to` intersects the active capabilities and aggr
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, auto
 from typing import Protocol, runtime_checkable
 
 
@@ -18,12 +18,21 @@ class Status(str, Enum):
     NA = "n/a"
 
 
+class Severity(Enum):
+    """How serious a failure is — drives candidate ranking and repair urgency."""
+    CRITICAL = auto()   # build failure, no geometry
+    ERROR = auto()      # wrong dimension, invalid solid
+    WARNING = auto()    # style, minor breach
+    INFO = auto()       # informational only
+
+
 @dataclass
 class CheckResult:
     check: str            # e.g. "manifold", "dim:width", "hole_through_material"
     status: Status
     message: str = ""
     element_id: str | None = None    # which element — drives Ambient Correctness in the UI
+    severity: Severity = Severity.ERROR  # default ERROR; geometric/critical failures override
 
 
 @dataclass

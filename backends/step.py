@@ -26,6 +26,12 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
     return path
 
 
+# Module-level self-registration
+from backends.registry import register as _register
+import sys as _sys
+_register(_sys.modules[__name__])
+
+
 def reimport_bbox(path) -> tuple[float, float, float]:
     """Round-trip helper: re-read a STEP through OCCT (the kernel FreeCAD/CAD tools use) and
     return its bbox — proves the written file is valid, openable geometry, not just bytes."""
