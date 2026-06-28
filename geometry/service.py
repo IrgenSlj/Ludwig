@@ -95,6 +95,11 @@ class GeometryService:
         radius = max(bb.xlen, bb.ylen, bb.zlen)
         return {"positions": positions, "indices": indices, "center": center, "radius": radius}
 
+    def bbox_center(self, handle: BRepHandle) -> tuple[float, float, float]:
+        """Centre of the bounding box (x, y, z) — where a backend places a representative massing."""
+        bb = handle.solid().val().BoundingBox()
+        return ((bb.xmin + bb.xmax) / 2, (bb.ymin + bb.ymax) / 2, (bb.zmin + bb.zmax) / 2)
+
     def is_valid(self, handle: BRepHandle) -> bool:
         """OCCT topological validity (a coarse manifold/watertight proxy; the real panel is S4)."""
         return bool(handle.solid().val().isValid())
