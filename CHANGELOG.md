@@ -26,7 +26,10 @@ All notable changes to Ludwig are documented here.
   codegen → execute → critic → repair stages, `service` adds a per-backend derive stage, `server` exposes
   `/api/compile_stream`; the Stage paints a running/done/failed rail with a Cancel control. Falls back to
   the non-streaming POST. on_event never changes loop behavior (a throwing sink is swallowed).
-- Verified live in-browser end to end. selftest 14/14, 90 tests, ruff clean.
+- **Exploration contact-sheet** — "branches are cheap": Explore generates N first-pass variants
+  (`/api/explore`), ranks them by the deterministic critic, and fans the Stage into a contact sheet of 3D
+  thumbnails (one offscreen renderer); adopting one re-executes it token-free and derives (`/api/adopt`).
+- Verified live in-browser end to end (haiku codegen). selftest 14/14, 92 tests, ruff clean.
 
 ### Added — P2 (conventioned shop-drawing engine — the moat) · closes the P1 shop-drawing gate
 - `backends/shopdrawing.py`: a real conventioned shop drawing — a **third-angle multi-view** sheet
