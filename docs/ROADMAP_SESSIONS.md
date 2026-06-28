@@ -139,8 +139,20 @@ Launch: `cli.py --serve [port]` → http://localhost:8765. What works today:
 - **Parameter sliders** bound to the manifest → re-edit through the loop; a **deterministic no-LLM fast-path**
   for pure numeric extent tweaks (~2 s, no tokens), falling back to the real `--edit` for anything else.
 - **Per-element selection**: clicking an Assembly child in the IR tree isolates that solid on the Stage.
-Still P3-proper (not yet done): the packaged Tauri desktop shell, point-to-navigate picking, ambient-
-correctness overlays, the exploration contact-sheet, and the presentation auto-assembly backend.
+- **DRAWING representation**: the rep-switcher shows the real conventioned shop-drawing sheet (the P2
+  engine's PNG) alongside 3D / elevation / program; DXF + the presentation sheet are downloads.
+- **Ambient Correctness**: the deterministic critic is painted onto the geometry — each solid carries a
+  subtle wash of its critic colour (teal-green verified / amber below-spec / red fail), brighter on select.
+- **Point-to-Navigate**: click a solid on the Stage → its program node highlights, params surface,
+  provenance updates; the pick resolves to a program node by lineage, never a kernel handle ([H2]).
+- **Activity Rail**: the agent's work streamed live via Server-Sent Events (`loop.run(on_event=…)` →
+  `/api/compile_stream`) — codegen → execute → critic → repair → derive, running/done/failed, with Cancel.
+- **Exploration contact-sheet**: branch into N critic-ranked variants (`/api/explore`) shown as 3D
+  thumbnails; adopting one re-executes it token-free and derives (`/api/adopt`). "Branches are cheap."
+- **`backends/present.py`**: presentation auto-assembly — a client-ready HTML sheet composing the views.
+Still P3-proper (not yet done): the packaged **Tauri desktop shell** (scaffolded in `desktop/`, redirects to
+the webapp), graceful-crystallization visuals + cascade-preview (need P2 IR behavior), plan-mode/permissions
+surfaced. The five Director surfaces (Stage · Intent · Activity · Point-to-Navigate · Ambient) are all real.
 
 ## P4 — Scale
 Hierarchical agentic loop over a deep IR (massing → plates → cores → units → details), cascade repair, branching.

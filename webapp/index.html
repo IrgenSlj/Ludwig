@@ -68,6 +68,20 @@
   .rail-row .t { color:var(--ink); }
   .rail-row .d { margin-left:auto; color:var(--muted); font:11px ui-monospace,monospace; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  /* ---- Exploration contact-sheet (critic-ranked variants) ---- */
+  button.go.ghost { background:none; color:var(--ink); border:1px solid var(--line); }
+  button.go.ghost:hover:not(:disabled) { border-color:var(--ink); }
+  .sheetgrid { position:absolute; inset:0; z-index:6; display:flex; flex-direction:column; padding:16px 20px; background:rgba(231,227,220,.93); backdrop-filter:blur(3px); }
+  .sheetgrid-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:13px; }
+  .sheetgrid-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:15px; overflow:auto; align-content:start; padding-bottom:8px; width:100%; min-width:0; }
+  .vcard { border:1px solid var(--line); border-radius:11px; background:#fff; overflow:hidden; cursor:pointer; transition:border-color .12s, transform .12s; }
+  .vcard:hover { border-color:var(--ink); transform:translateY(-1px); }
+  .vcard.win { border-color:var(--ok); box-shadow:0 0 0 1px var(--ok) inset; }
+  .vcard .thumb { width:100%; aspect-ratio:4/3; display:block; background:radial-gradient(120% 120% at 50% 20%, #f3efe9, var(--stage)); }
+  .vcard .meta { display:flex; align-items:center; gap:8px; padding:9px 11px; border-top:1px solid var(--line); }
+  .vcard .rank { font:700 11px ui-monospace,monospace; color:var(--muted); }
+  .vcard .vd { width:9px; height:9px; border-radius:50%; flex:none; }
+  .vcard .vinfo { margin-left:auto; font:10.5px ui-monospace,monospace; color:var(--muted); text-align:right; line-height:1.35; }
 
   /* ---- rep switcher (bottom) ---- */
   footer { display:flex; align-items:center; justify-content:center; gap:5px; padding:9px; border-top:1px solid var(--line); background:var(--paper); }
@@ -115,6 +129,7 @@
     <input id="prompt" class="mono" placeholder="describe a part…"
            value="a steel bracket, 80 × 40 × 6 mm, two M8 clearance holes">
     <button class="go" id="go">Compile</button>
+    <button class="go ghost" id="explore" title="branch into 3 critic-ranked variants">Explore</button>
   </div>
   <span class="state" id="state">no model</span>
 </header>
@@ -150,6 +165,13 @@
         <div class="rail-rows" id="rail-rows"></div>
       </div>
       <span class="mono" id="busy-msg" hidden></span>
+    </div>
+    <div class="sheetgrid" id="sheetgrid" hidden>
+      <div class="sheetgrid-head">
+        <span class="lbl">Exploration · critic-ranked variants</span>
+        <button class="rail-cancel" id="sheetgrid-close">Close</button>
+      </div>
+      <div class="sheetgrid-cards" id="sheetgrid-cards"></div>
     </div>
   </section>
 
@@ -453,6 +475,92 @@ async function compileFallback(prompt) {
 $("#rail-cancel").onclick = () => { if (ES) { ES.close(); ES = null; } setBusy(false);
   $("#state").textContent = "cancelled"; };
 
+// ---- Exploration as a surface: branch into N critic-ranked variants (contact sheet) ----
+// A single offscreen renderer snapshots each variant's solid to a thumbnail (cheap — one GL context).
+let thumbR = null, thumbScene = null, thumbCam = null;
+function ensureThumb() {
+  if (thumbR) return;
+  const c = document.createElement("canvas"); c.width = 320; c.height = 240;
+  thumbR = new THREE.WebGLRenderer({ canvas:c, antialias:true, alpha:true, preserveDrawingBuffer:true });
+  thumbR.setSize(320, 240, false);
+  thumbScene = new THREE.Scene();
+  thumbScene.add(new THREE.HemisphereLight(0xffffff, 0x9a948a, 1.05));
+  const k = new THREE.DirectionalLight(0xffffff, 1.3); k.position.set(0.6, -1, 1.4); thumbScene.add(k);
+  thumbCam = new THREE.PerspectiveCamera(38, 320/240, 0.1, 100000); thumbCam.up.set(0, 0, 1);
+}
+function renderThumb(mesh, col) {
+  ensureThumb();
+  for (let i = thumbScene.children.length - 1; i >= 0; i--) {
+    const o = thumbScene.children[i]; if (o.isGroup) thumbScene.remove(o);
+  }
+  if (mesh && mesh.positions && mesh.positions.length) {
+    const b = buildSolid(mesh);
+    b.mat.emissive = new THREE.Color(col); b.mat.emissiveIntensity = 0.16;
+    thumbScene.add(b.group);
+    const box = new THREE.Box3().setFromObject(b.group), ctr = box.getCenter(new THREE.Vector3());
+    const rad = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 1);
+    const dist = rad / Math.sin(THREE.MathUtils.degToRad(thumbCam.fov)/2) * 1.42;
+    thumbCam.position.copy(ctr).addScaledVector(new THREE.Vector3(0.85, -1, 0.6).normalize(), dist);
+    thumbCam.near = dist/1000; thumbCam.far = dist*100; thumbCam.lookAt(ctr); thumbCam.updateProjectionMatrix();
+  }
+  thumbR.render(thumbScene, thumbCam);
+  return thumbR.domElement.toDataURL("image/png");
+}
+
+async function explore() {
+  const prompt = $("#prompt").value.trim(); if (!prompt) return;
+  if (ES) { ES.close(); ES = null; }
+  setBusy(true, "› exploring — generating 3 candidate branches, ranking by the critic… (~20–60s)");
+  $("#state").textContent = "exploring…";
+  try {
+    const r = await fetch("/api/explore", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ prompt, n: 3 }) });
+    const d = await r.json();
+    if (d.fatal) { $("#state").textContent = "error"; alert("explore failed: " + d.fatal); return; }
+    showContactSheet(d);
+  } catch (e) { $("#state").textContent = "request failed"; alert("explore request failed: " + e); }
+  finally { setBusy(false); }
+}
+
+function showContactSheet(d) {
+  const cards = $("#sheetgrid-cards"); cards.innerHTML = "";
+  const variants = d.variants || [];
+  $("#state").textContent = (variants.length || 0) + " variants · pick one";
+  variants.forEach(v => {
+    const A = ambientStatus(v), st = A.overall, col = A.colorOf(st);
+    const hex = "#" + col.toString(16).padStart(6, "0");
+    const card = document.createElement("div"); card.className = "vcard" + (v.rank === 1 ? " win" : "");
+    const dim = v.bbox ? (v.bbox.length + "×" + v.bbox.width + "×" + v.bbox.height + " mm") : "build failed";
+    const verdict = v.passed ? "verified" : (v.id ? "needs repair" : "build failed");
+    let thumb; try { thumb = renderThumb(v.mesh, col); } catch (e) { thumb = ""; }
+    card.innerHTML = '<img class="thumb" src="' + thumb + '" alt="variant ' + v.rank + '">'
+      + '<div class="meta"><span class="rank">#' + v.rank + '</span>'
+      + '<span class="vd" style="background:' + hex + '"></span>'
+      + '<span class="vinfo">' + verdict + '<br>' + dim + '</span></div>';
+    card.onclick = () => adopt(v.program);
+    cards.appendChild(card);
+  });
+  $("#sheetgrid").hidden = false;
+}
+$("#sheetgrid-close").onclick = () => { $("#sheetgrid").hidden = true; $("#state").textContent = LAST ? (LAST.id || "—") : "no model"; };
+
+async function adopt(program) {
+  $("#sheetgrid").hidden = true;
+  setBusy(true, "› adopting variant — executing its program + deriving (no new generation)…");
+  $("#state").textContent = "adopting…";
+  try {
+    const r = await fetch("/api/adopt", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ program }) });
+    const d = await r.json();
+    if (d.fatal) { $("#state").textContent = "error"; alert("adopt failed: " + d.fatal); return; }
+    render(d);
+    $("#prov").textContent = "Adopted an explored variant — re-executed its program and derived the "
+      + "backends (no new generation). Lineage preserved.";
+  } catch (e) { $("#state").textContent = "request failed"; alert("adopt request failed: " + e); }
+  finally { setBusy(false); }
+}
+$("#explore").onclick = explore;
+
 function render(d) {
   LAST = d;
   if (d.fatal) { $("#state").textContent = "error"; alert("compile failed: " + d.fatal); return; }
@@ -583,7 +691,8 @@ function setBusy(on, msg) {
 
 // A small automation/debug seam for the local-first app (browser console + headless E2E). It exposes
 // the controller, not a network surface — the loop stays the only source of truth.
-window.LUDWIG = { render, setRep, selectFromStage, clearStageSelection, get state() { return LAST; } };
+window.LUDWIG = { render, setRep, selectFromStage, clearStageSelection, showContactSheet, adopt,
+  get state() { return LAST; } };
 </script>
 </body>
 </html>

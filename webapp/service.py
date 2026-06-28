@@ -160,6 +160,95 @@ def _assemble(res, out: Path, on_event=None) -> dict:
     return result
 
 
+def _variant_payload(program, el, crit) -> dict:
+    """A lightweight, FILE-FREE snapshot of one exploration variant — NO backend artifacts written.
+
+    The contact sheet ranks many first-pass candidates token-free; only the *adopted* one pays the
+    backend (fab-gate) cost. So this mirrors `_assemble`'s IR/critic/mesh serialization (same critic
+    shape: element_id + severity; same tessellation) but persists nothing and stays cheap to compute.
+    bbox/mesh are best-effort — a half-built solid must not sink the whole sheet."""
+    from geometry import GeometryService
+
+    passed = el is not None and crit is not None and crit.passed
+    payload: dict = {
+        "program": program, "passed": passed,
+        "id": el.id if el is not None else None,
+        "type": el.type if el is not None else None,
+        "bbox": None, "dims": [], "critic": [], "mesh": None, "error": None,
+    }
+    if el is not None:
+        g = GeometryService()
+        payload["dims"] = _dims(el.manifest)
+        if el.geometry is not None:
+            try:
+                length, width, height = g.bbox(el.geometry)
+                payload["bbox"] = {"length": round(length, 4), "width": round(width, 4),
+                                   "height": round(height, 4)}
+            except Exception:
+                payload["bbox"] = None
+            try:
+                payload["mesh"] = g.tessellate(el.geometry)
+            except Exception:
+                payload["mesh"] = None
+    # SAME critic serialization as _assemble — element_id + severity travel with each check so the
+    # contact sheet can paint Ambient Correctness on every thumbnail.
+    payload["critic"] = [
+        {"check": c.check, "status": c.status.value, "message": c.message,
+         "element_id": getattr(c, "element_id", None),
+         "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
+        for c in (crit.checks if crit else [])
+    ]
+    return payload
+
+
+def explore_to_result(prompt: str, n: int = 3, *, out: Optional[Path] = None) -> dict:
+    """Generate `n` INDEPENDENT first-pass variants of a prompt and rank them by the deterministic
+    critic — the exploration contact sheet (token-free to adopt; only generation costs tokens).
+
+    Each variant is a single codegen call → execute → verify (rounds=0, NO repair). They are ranked
+    by `loop._weighted_failures` ascending (fewer/lighter critic failures first; build-failures last)
+    and assigned `rank` 1..n. No artifacts are written here — adoption (`adopt_to_result`) pays that
+    cost for the one variant the user picks. `out` is accepted for API symmetry but unused."""
+    from agent.loop import Brief, execute, generate, verify
+    from agent.loop import _weighted_failures
+
+    count = max(1, min(6, int(n)))
+    brief = Brief(prompt=prompt)
+    variants = []
+    for _ in range(count):
+        program = generate(brief)
+        el, err = execute(program)
+        crit = verify(el, brief) if el is not None else None
+        payload = _variant_payload(program, el, crit)
+        if err:
+            payload["error"] = err
+        variants.append((payload, crit))
+
+    variants.sort(key=lambda v: _weighted_failures(v[1]))
+    ranked = []
+    for rank, (payload, _crit) in enumerate(variants, start=1):
+        payload["rank"] = rank
+        ranked.append(payload)
+    return {"prompt": prompt, "variants": ranked}
+
+
+def adopt_to_result(program: str, *, out: Optional[Path] = None) -> dict:
+    """Adopt an explored variant: re-execute its program and run the FULL `_assemble` (artifacts + the
+    fab gate). NO generation happens — adoption is token-free; the program text already exists from the
+    contact sheet. References are by program lineage, never a stale kernel handle ([H2])."""
+    from agent.loop import Brief, LoopResult, execute, verify
+
+    out = Path(out) if out is not None else OUT
+    out.mkdir(parents=True, exist_ok=True)
+    el, err = execute(program)
+    crit = verify(el, Brief(prompt="")) if el is not None else None
+    passed = el is not None and crit is not None and crit.passed
+    res = LoopResult(program, el, crit, passed, 0, err)
+    result = _assemble(res, out)
+    result["adopted"] = True
+    return result
+
+
 def compile_to_result(prompt: str, *, candidates: int = 1, rounds: int = 2,
                       out: Optional[Path] = None, on_event=None) -> dict:
     """Compile a prompt to real artifacts and return a JSON-safe result.
@@ -207,4 +296,5 @@ def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = No
     return result
 
 
-__all__ = ["compile_to_result", "edit_to_result", "OUT"]
+__all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
+           "_variant_payload", "OUT"]

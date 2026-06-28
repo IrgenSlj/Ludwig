@@ -93,6 +93,32 @@ def test_failing_build_withholds_fabrication_files(monkeypatch, tmp_path):
     assert "step" not in r["artifacts"]  # no fab file on a failing critic (BRIEF §5 gate)
 
 
+def test_explore_to_result_ranks_variants(monkeypatch, tmp_path):
+    # token-free: a mocked codegen yields the same good program for every variant
+    monkeypatch.setattr(inference, "infer", lambda *a, **k: GOOD)
+    r = service.explore_to_result("a bracket", n=2, out=tmp_path)
+    assert r["prompt"] == "a bracket"
+    variants = r["variants"]
+    assert len(variants) == 2
+    assert [v["rank"] for v in variants] == [1, 2]  # ranked 1..n, lower is better
+    for v in variants:
+        assert v["passed"] is True
+        assert v["mesh"] is not None and v["mesh"]["positions"]
+        assert v["error"] is None
+    json.dumps(r)  # JSON-safe end to end
+    # the contact sheet writes NO artifacts — it is purely a ranking snapshot
+    assert not any(tmp_path.iterdir())
+
+
+def test_adopt_to_result_writes_artifacts_token_free(tmp_path):
+    # NO monkeypatch: adoption re-executes an existing program, never generates
+    r = service.adopt_to_result(GOOD, out=tmp_path)
+    assert r["adopted"] is True and r["passed"] is True
+    assert r["bbox"]["length"] == pytest.approx(80.0)
+    assert "step" in r["artifacts"]  # the fab gate let the real backend write
+    assert (tmp_path / r["artifacts"]["step"]).exists()
+
+
 def test_server_blocks_path_traversal():
     # the /out/ guard resolves and rejects anything escaping out/ — assert the resolution logic
     from webapp.server import OUT

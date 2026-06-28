@@ -93,7 +93,7 @@ class Handler(BaseHTTPRequestHandler):
             event({"event": "error", "fatal": f"{type(e).__name__}: {e}"})
 
     def do_POST(self) -> None:
-        if self.path not in ("/api/compile", "/api/edit"):
+        if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt"):
             self._send(404, b"not found", "text/plain")
             return
         n = int(self.headers.get("Content-Length", 0))
@@ -106,6 +106,18 @@ class Handler(BaseHTTPRequestHandler):
                 from webapp.service import compile_to_result
                 result = compile_to_result(prompt, candidates=int(req.get("candidates", 1)),
                                            rounds=int(req.get("rounds", 2)))
+            elif self.path == "/api/explore":  # contact sheet — N ranked first-pass variants
+                prompt = (req.get("prompt") or "").strip()
+                if not prompt:
+                    raise ValueError("empty prompt")
+                from webapp.service import explore_to_result
+                result = explore_to_result(prompt, n=int(req.get("n") or 3))
+            elif self.path == "/api/adopt":  # token-free: re-execute a chosen variant's program
+                program = req.get("program") or ""
+                if not program:
+                    raise ValueError("adopt needs a `program`")
+                from webapp.service import adopt_to_result
+                result = adopt_to_result(program)
             else:  # /api/edit — re-prompt an existing program into a minimal diff (S6)
                 program = req.get("program") or ""
                 instruction = (req.get("instruction") or "").strip()
