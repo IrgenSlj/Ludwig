@@ -40,6 +40,9 @@
   #view { position:absolute; inset:0; display:block; }
   #elev { position:absolute; inset:0; display:none; align-items:center; justify-content:center; }
   #elev img { max-width:78%; max-height:82%; }
+  #sheet { position:absolute; inset:0; display:none; align-items:center; justify-content:center; padding:22px; }
+  #sheet img { max-width:100%; max-height:100%; background:#fff; box-shadow:0 1px 22px rgba(28,26,23,.13); border:1px solid var(--line); }
+  #sheet .none { color:var(--muted); font:12px ui-monospace,monospace; }
   .empty { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:0 30px; }
   .empty h1 { font:600 27px/1.2 Georgia,serif; margin:0; }
   .empty p { color:var(--muted); margin:0; max-width:440px; }
@@ -117,6 +120,7 @@
   <section class="stage">
     <canvas id="view"></canvas>
     <div id="elev"><img id="elev-img" alt="elevation"></div>
+    <div id="sheet"><img id="sheet-img" alt="conventioned shop drawing"></div>
     <div class="empty" id="empty">
       <div class="lbl">Empty stage</div>
       <h1>Describe what you want to build.</h1>
@@ -142,6 +146,7 @@
 
 <footer>
   <button class="rep on" data-rep="3d">3D · SOLID</button>
+  <button class="rep" data-rep="drawing">DRAWING</button>
   <button class="rep" data-rep="elev">ELEVATION</button>
   <button class="rep" data-rep="program">PROGRAM</button>
 </footer>
@@ -274,6 +279,7 @@ function setRep(r) {
   document.querySelectorAll(".rep").forEach(b => b.classList.toggle("on", b.dataset.rep === r));
   $("#view").style.display  = r === "3d" ? "block" : "none";
   $("#elev").style.display  = r === "elev" ? "flex" : "none";
+  $("#sheet").style.display = r === "drawing" ? "flex" : "none";
   // program rep: show the program in the stage as an overlay card
   let prog = $("#prog-overlay");
   if (r === "program") {
@@ -320,11 +326,17 @@ function render(d) {
     + ' · '+d.rounds+'r';
 
   showGeometry(d);
+  const a0 = d.artifacts || {};
   const has3d = (d.children && d.children.length) || d.mesh;
-  if (!has3d) setRep(d.artifacts && d.artifacts.svg ? "elev" : "program"); else setRep("3d");
+  if (has3d) setRep("3d");
+  else setRep(a0.drawing_preview ? "drawing" : (a0.svg ? "elev" : "program"));
 
-  // elevation
-  if (d.artifacts && d.artifacts.svg) $("#elev-img").src = "/out/"+d.artifacts.svg+"?t="+Date.now();
+  // the conventioned shop-drawing sheet (the real derived drawing) + the SVG elevation preview
+  const sheetImg = $("#sheet-img"), sheet = $("#sheet");
+  if (a0.drawing_preview) { sheetImg.src = "/out/"+a0.drawing_preview+"?t="+Date.now(); sheetImg.style.display=""; sheet.querySelector(".none")?.remove(); }
+  else { sheetImg.removeAttribute("src"); sheetImg.style.display="none";
+    if (!sheet.querySelector(".none")) { const n=document.createElement("span"); n.className="none"; n.textContent="— no drawing rendered for this part"; sheet.appendChild(n); } }
+  if (a0.svg) $("#elev-img").src = "/out/"+a0.svg+"?t="+Date.now();
 
   // left: program outline (IR tree). For an Assembly the children are selectable nodes;
   // for a plain Part the named dims are listed. Clicking a node drives the Stage.
@@ -363,8 +375,10 @@ function render(d) {
 
   // right: downloads
   const dl = $("#downloads"); dl.innerHTML = ""; const a = d.artifacts || {};
-  [["step","STEP · fab"],["ifc","IFC · BIM"],["svg","SVG · drawing"],["recipe","recipe .py"]].forEach(([k,lbl]) => {
-    if (a[k]) { const el = document.createElement("a"); el.href = "/out/"+a[k]; el.textContent = "↓ "+lbl; dl.appendChild(el); } });
+  [["step","STEP · fab"],["ifc","IFC · BIM"],["dxf","DXF · shop drawing"],["svg","SVG · elevation"],
+   ["present","sheet · html"],["recipe","recipe .py"]].forEach(([k,lbl]) => {
+    if (a[k]) { const el = document.createElement("a"); el.href = "/out/"+a[k]; el.textContent = "↓ "+lbl;
+      if (k === "present") el.target = "_blank"; dl.appendChild(el); } });
   if (!a.step) dl.innerHTML = '<span class="muted" style="font-size:12px">withheld — no fabrication file on a failing critic</span>';
 
   buildParams(d);
