@@ -40,4 +40,7 @@ BRIEFS = [
      "prompt": "a flat steel plate, 80 × 50 × 10 mm, with two M6 counterbored holes "
                "(⌀6 through, ⌀11 counterbore 5 mm deep)",
      "dims": {"length": 80.0, "width": 50.0, "height": 10.0}, "holes": 4},
+    {"id": "steel_beam",
+     "prompt": "a steel beam profile, 2000 mm long, 100 × 50 mm cross-section (width × height), no holes",
+     "dims": {"length": 2000.0, "width": 100.0, "height": 50.0}, "holes": 0},
 ]

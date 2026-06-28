@@ -46,6 +46,19 @@ def clearance_hole(el: Element, thread: str, at: tuple[float, float], *, through
     return hole(el, clearance_hole_mm(thread), at, name=f"{thread}_clearance_{_n(el)}", through=through)
 
 
+def profile(element_id: str, length: float, width: float, height: float, *, name: str = "") -> Element:
+    """A member/profile element (beam, rail, trim) extruded along a path. Geometry is a box
+    extrusion oriented length along x, width along y, height along z. Type is 'Profile',
+    mapping to IfcMember in IFC. Registers length/width/height as named dims."""
+    el = part(element_id, name=name)
+    el.type = "Profile"
+    el.geometry = _geom.box(length, width, height)
+    el.register_dim("length", length)
+    el.register_dim("width", width)
+    el.register_dim("height", height)
+    return el
+
+
 def panel(element_id: str, length: float, height: float, thickness: float, *, name: str = "") -> Element:
     """A precast wall panel (P1) — a Part of type 'Panel'. Oriented x=length, y=thickness, z=height,
     so the large faces are the length×height elevation. Registers length/thickness/height as named dims."""

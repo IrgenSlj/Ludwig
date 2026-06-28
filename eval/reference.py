@@ -6,7 +6,7 @@ real `first-pass geometric pass-rate` ([H6]) instead of the trivial 100% a corre
 """
 from __future__ import annotations
 
-from toolkit import anchor, assembly, box, clearance_hole, hole, panel, part, stack
+from toolkit import anchor, assembly, box, clearance_hole, hole, panel, part, profile, stack
 from ir.elements import BRepHandle, Element
 
 
@@ -33,6 +33,8 @@ def build(brief: dict) -> Element:
         return _asymmetric_gusset(brief)
     if bid == "counterbored_plate":
         return _counterbored_plate(brief)
+    if bid == "steel_beam":
+        return _steel_beam(brief)
     # ---- original simple builders ----
     el = box(bid, d["length"], d["width"], d["height"])
     if bid == "bracket":
@@ -118,6 +120,12 @@ def _asymmetric_gusset(brief):
     clearance_hole(el, "M10", (20, 15))
     clearance_hole(el, "M10", (-30, 25))
     return el
+
+
+def _steel_beam(brief):
+    """2000 mm long, 100 × 50 mm cross-section — a Profile element."""
+    d = brief["dims"]
+    return profile(brief["id"], d["length"], d["width"], d["height"])
 
 
 def _counterbored_plate(brief):
