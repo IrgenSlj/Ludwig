@@ -40,8 +40,21 @@ See **[BRIEF.md](BRIEF.md)** for the founding architecture, first principles, an
 **[docs/UX_BRIEF.md](docs/UX_BRIEF.md)** for the desktop UI/UX direction (Phase 3).
 
 ```
-ir/ geometry/ backends/ critic/ agent/ toolkit/ prompts/ store/ standards.yaml cli.py
+ir/ geometry/ backends/ critic/ agent/ toolkit/ prompts/ store/ standards.yaml cli.py webapp/
 ```
+
+## Run it
+
+```
+python3 cli.py "a steel bracket, 80 x 40 x 6 mm, two M8 clearance holes"   # compile → out/<id>.{py,step,ifc,svg}
+python3 cli.py --serve                                                      # web UI on http://localhost:8765
+python3 cli.py --selftest                                                   # the regression gate (no LLM tokens)
+python3 cli.py --eval [--live] [--repair]                                   # geometric pass-rate
+```
+
+Compiling needs the OCCT kernel (`cadquery`, `ifcopenshell`) and a `claude`-like CLI on PATH; run through
+the project venv (`./run.sh` knows it). `webapp/` is the real UI ↔ engine seam (the [Stage](webapp/README.md),
+sliders, per-element selection); `prototype/` is the art-directed mock, not wired to the engine.
 
 ## License
 

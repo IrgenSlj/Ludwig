@@ -97,6 +97,13 @@ salvaged `render_toolkit.py`. Pairwise judge panel. Real min-wall. Clearances/co
 - **S12 — Assembly type (done).** `toolkit.assembly(id, *children)` composes Elements into an Assembly with
   OCCT **compound** geometry (new `GeometryService.compound`); flows through STEP, IFC (`Assembly → IfcElementAssembly`),
   and drawing. `Element` gained a `children` list. 69 tests. (Per-child IFC decomposition deferred.)
+- **S13 — reliable assembly codegen (done).** `toolkit.place(el, offset)` + `toolkit.stack(base, top)`
+  (over `GeometryService.translate`) let codegen position parts instead of hand-rolling kernel translates.
+  Added a `stacked_plates` assembly brief to the frozen eval set + oracle (oracle 7/7); **live codegen now
+  builds the assembly first-pass (0 repair rounds)** — it failed (BUILD FAILED, 2 rounds) before the primitives.
+- **S14 — IFC per-child decomposition (done).** `backends/ifc.py` authors an `IfcElementAssembly`
+  decomposed into its children via `IfcRelAggregates` (each child its own `IfcElement`); each massing is now
+  centred on the element's actual bbox centre (co-registers with the STEP solid). The BIM tree mirrors the IR.
 - **Remaining P1:** `Profile` type (when a brief needs it), real min-wall analysis (research-grade), the
   **render backend** (needs a Blender binary), and IFC4precast property sets. Render is the only gate item
   blocked on the environment; everything else headless-complete.
@@ -108,6 +115,20 @@ critic, rich crystallization behavior **[H3]**, and the **conventioned drawing e
 ## P3 — The application (Tauri shell, the Stage & Director UI — see docs/UX_BRIEF.md)
 Desktop shell, representation switcher, point-to-navigate, ambient correctness, plan-mode/permissions/hooks,
 parameter sliders, exploration contact-sheet, presentation auto-assembly backend.
+
+**Early seam shipped (`webapp/`) — the real UI ↔ engine wiring, ahead of the formal P3 schedule.**
+A thin local web frontend (stdlib server, vendored three.js — offline, no CDN) onto the *real* compiler.
+It is just another *frontend* on the loop, like the CLI ([H4]) — `webapp/service.compile_to_result`/
+`edit_to_result` run the genuine `agent.loop`; nothing is faked (vs `prototype/`, the disconnected mock).
+Launch: `cli.py --serve [port]` → http://localhost:8765. What works today:
+- The **Stage** layout: real compiled B-rep tessellated into a three.js viewport (centre), the IR tree
+  (left), the deterministic critic + named dims + STEP/IFC/SVG downloads (right), a representation switcher
+  (3D / elevation / program), the intent bar (top).
+- **Parameter sliders** bound to the manifest → re-edit through the loop; a **deterministic no-LLM fast-path**
+  for pure numeric extent tweaks (~2 s, no tokens), falling back to the real `--edit` for anything else.
+- **Per-element selection**: clicking an Assembly child in the IR tree isolates that solid on the Stage.
+Still P3-proper (not yet done): the packaged Tauri desktop shell, point-to-navigate picking, ambient-
+correctness overlays, the exploration contact-sheet, and the presentation auto-assembly backend.
 
 ## P4 — Scale
 Hierarchical agentic loop over a deep IR (massing → plates → cores → units → details), cascade repair, branching.
