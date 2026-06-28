@@ -4,6 +4,30 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Fixed — live model tiering (codegen/critic) was passing tier LABELS as model names
+- `agent.loop._tier_model` resolved `standards.yaml: inference.codegen_tier` ("cheap") / `critic_tier`
+  ("best") to the literal label and passed it to `--model`, which the `claude` CLI rejects ("model
+  'cheap' may not exist") — so every live compile failed/retried for minutes. Labels now resolve
+  through a new `inference.tiers` map (cheap→haiku, best→opus); an unmapped label falls back to the
+  provider default, never a literal. Live compile works again (haiku codegen, opus repair).
+
+### Added — P3 application (the Stage & Director — webapp)
+- **DRAWING representation** on the Stage: the rep-switcher now shows the real conventioned shop-drawing
+  sheet (PNG) alongside 3D / elevation / program; DXF + the presentation sheet added to deliverables.
+- **`backends/present.py`** — presentation auto-assembly: a self-contained HTML one-pager composing the
+  derived views (title block, embedded drawing, dimension schedule, deliverables) in the house style.
+- **Ambient Correctness** — the deterministic critic painted onto the geometry: each solid carries a
+  subtle wash of its critic colour (teal-green verified / amber below-spec / red fail), brighter on
+  selection. `service` now carries `element_id` + `severity` per check. "The moat made visible."
+- **Point-to-Navigate** — click a solid on the Stage → its program node highlights, params surface,
+  provenance updates; a raycast resolves the pick to a program node by lineage, never a kernel handle
+  ([H2]). Completes the bidirectional Stage↔program link.
+- **Activity Rail** — the agent's work streamed live (Server-Sent Events): `loop.run(on_event=…)` emits
+  codegen → execute → critic → repair stages, `service` adds a per-backend derive stage, `server` exposes
+  `/api/compile_stream`; the Stage paints a running/done/failed rail with a Cancel control. Falls back to
+  the non-streaming POST. on_event never changes loop behavior (a throwing sink is swallowed).
+- Verified live in-browser end to end. selftest 14/14, 90 tests, ruff clean.
+
 ### Added — P2 (conventioned shop-drawing engine — the moat) · closes the P1 shop-drawing gate
 - `backends/shopdrawing.py`: a real conventioned shop drawing — a **third-angle multi-view** sheet
   (front elevation / plan / side), scale-aware (picks the scale that best fills the sheet; enlarges

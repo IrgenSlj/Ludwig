@@ -74,18 +74,21 @@ def _extract_holes(prompt: str) -> Optional[int]:
 
 
 def _tier_model(tier: str) -> Optional[str]:
-    """Read a model name from standards.yaml for the given tier ('codegen' or 'critic').
+    """Resolve a tier ('codegen' or 'critic') to a concrete model name via standards.yaml.
 
-    Returns None if the tier isn't configured (let the inference provider decide).
+    `inference.{codegen,critic}_tier` names a tier LABEL ('cheap' / 'best'); `inference.tiers` maps
+    that label to a real model the provider accepts (e.g. cheap -> haiku). An unmapped label — or
+    'default' — resolves to None (the provider's default model), NEVER the literal label, which the
+    CLI rejects ("model 'cheap' may not exist"). This is the seam BRIEF §5 model-tiering rides on.
     """
     try:
         from toolkit.standards import load
         cfg = load().get("inference", {})
-        key = f"{tier}_tier"
-        val = cfg.get(key, "default")
-        if val == "default":
+        label = cfg.get(f"{tier}_tier", "default")
+        if not label or label == "default":
             return None
-        return val
+        model = (cfg.get("tiers", {}) or {}).get(label)   # label MUST be defined in tiers: else default
+        return model or None
     except Exception:
         return None
 

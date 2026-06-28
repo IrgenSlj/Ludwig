@@ -116,3 +116,9 @@ ifc_map:
 inference:
   codegen_tier: cheap        # bulk candidate generation
   critic_tier: best          # the verifier / hard reasoning gets the strongest model
+  # A tier LABEL -> a model name the provider accepts. The loop passes the resolved model to
+  # `--model`; an UNMAPPED label falls back to the provider default (never the literal label,
+  # which the CLI rejects). cheap = fast/inexpensive for bulk codegen; best = strongest for repair.
+  tiers:
+    cheap: haiku
+    best: opus
