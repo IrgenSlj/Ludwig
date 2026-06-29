@@ -42,6 +42,9 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             self._send(200, (ROOT / "index.html").read_bytes(), "text/html")
             return
+        if path in ("/studio", "/studio.html"):   # the rebuilt app shell (instant agentic CAD direction)
+            self._send(200, (ROOT / "studio.html").read_bytes(), "text/html")
+            return
         if path == "/api/compile_stream":   # live Activity Rail (Server-Sent Events)
             self._compile_stream()
             return

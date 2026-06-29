@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ludwig Studio</title>
+<!--
+  Ludwig Studio — the rebuilt app shell (first cut of the "instant agentic CAD" direction).
+  Layout: top header (main actions) · large navigable 3D viewport · footer agent+CLI stripe ·
+  two hideable tool rails (2D/3D tools + model tree left, properties right).
+  The viewport holds a REAL parametric model (a stair) that rebuilds INSTANTLY from numeric fields
+  or footer commands — no compile, no LLM in the geometry path. The agent lane is stubbed and
+  LABELLED as not-yet-wired (no faked AI). Offline: vendored three.js, no CDN.
+-->
+<script type="importmap">
+{ "imports": {
+  "three": "/vendor/three/three.module.js",
+  "three/addons/": "/vendor/three/addons/"
+}}
+</script>
+<style>
+  :root{
+    --paper:#efece7; --chrome:#e7e3dc; --ink:#1c1a17; --muted:#6e675b; --ink-soft:#322e29;
+    --hair:rgba(28,26,23,.14); --hair2:rgba(28,26,23,.30); --accent:#8a5a2b;
+    --ok:#3a7d6b; --warn:#b07a2b; --fail:#9e3b30;
+    --sans:system-ui,-apple-system,"Inter","Segoe UI",Arial,sans-serif;
+    --mono:"SFMono-Regular","JetBrains Mono","IBM Plex Mono",ui-monospace,Menlo,monospace;
+    --rail-l:248px; --rail-r:272px; --foot:168px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    height:100vh; display:grid; grid-template-rows:46px 1fr var(--foot);
+    background:var(--chrome); color:var(--ink); font-family:var(--sans);
+    font-size:13px; -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  button{font-family:inherit; color:inherit; cursor:pointer;}
+
+  /* ---------- header ---------- */
+  header{
+    display:flex; align-items:center; gap:6px; padding:0 12px;
+    background:var(--paper); border-bottom:1px solid var(--hair2);
+  }
+  .brand{font-weight:700; letter-spacing:.16em; font-size:12px; margin-right:4px;}
+  .brand .s{font-weight:400; color:var(--muted); letter-spacing:.04em;}
+  .file{font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-right:14px;}
+  .grp{display:flex; align-items:center; gap:2px; padding:0 8px; border-left:1px solid var(--hair);}
+  .grp:first-of-type{border-left:none;}
+  header .sp{flex:1;}
+  .btn{
+    border:1px solid transparent; background:none; border-radius:5px; padding:5px 9px;
+    font-size:12px; color:var(--ink-soft); white-space:nowrap;
+  }
+  .btn:hover{background:rgba(28,26,23,.06);}
+  .btn.on{background:var(--ink); color:var(--paper);}
+  .btn.ghost{border-color:var(--hair2);}
+  .seg{display:flex; border:1px solid var(--hair2); border-radius:6px; overflow:hidden;}
+  .seg .btn{border-radius:0; border:none; padding:5px 10px;}
+  .seg .btn+.btn{border-left:1px solid var(--hair);}
+  .modepill{font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+    border:1px solid var(--hair2); border-radius:20px; padding:3px 9px;}
+  .modepill b{color:var(--accent);}
+
+  /* ---------- main row ---------- */
+  main{
+    display:grid; grid-template-columns:var(--rail-l) 1fr var(--rail-r);
+    min-height:0; background:var(--chrome);
+  }
+  body.no-left{ --rail-l:0px; }
+  body.no-right{ --rail-r:0px; }
+  .rail{
+    background:var(--paper); min-height:0; display:flex; flex-direction:column;
+    overflow:hidden; transition:width .12s ease;
+  }
+  .rail.l{border-right:1px solid var(--hair2);}
+  .rail.r{border-left:1px solid var(--hair2);}
+  .rail-h{display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid var(--hair);}
+  .rail-h .tab{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+    padding:3px 0; cursor:pointer; border-bottom:2px solid transparent;}
+  .rail-h .tab.on{color:var(--ink); border-bottom-color:var(--accent);}
+  .rail-b{padding:10px; overflow:auto; min-height:0;}
+
+  /* tool palette */
+  .toolgrid{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:14px;}
+  .tool{display:flex; flex-direction:column; align-items:center; gap:5px; padding:9px 4px;
+    border:1px solid var(--hair); border-radius:6px; background:rgba(255,255,255,.4); font-size:11px;
+    color:var(--ink-soft);}
+  .tool:hover{border-color:var(--hair2);}
+  .tool.on{border-color:var(--accent); color:var(--accent); background:rgba(138,90,43,.06);}
+  .tool .ic{font-size:16px; line-height:1;}
+  .seclbl{font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
+    margin:2px 0 8px;}
+
+  /* model tree */
+  .tree{font-family:var(--mono); font-size:12px;}
+  .tree .node{padding:3px 6px; border-radius:4px; cursor:pointer; display:flex; gap:7px; align-items:center;}
+  .tree .node:hover{background:rgba(28,26,23,.05);}
+  .tree .node.sel{background:rgba(138,90,43,.10);}
+  .tree .ind{color:var(--muted);}
+  .tree .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;}
+
+  /* properties */
+  .prop{margin-bottom:13px;}
+  .prop .lbl{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:4px;}
+  .prop .lbl .nm{color:var(--ink-soft);}
+  .prop .row{display:flex; gap:8px; align-items:center;}
+  .prop input[type=number]{width:74px; font-family:var(--mono); font-size:12.5px; padding:4px 6px;
+    border:1px solid var(--hair2); border-radius:5px; background:#fff; color:var(--ink);}
+  .prop input[type=range]{flex:1; accent-color:var(--accent);}
+  .prop .unit{font-size:11px; color:var(--muted);}
+  .verdict{margin-top:6px; padding:9px 10px; border:1px solid var(--hair); border-radius:6px;
+    background:rgba(255,255,255,.4); font-size:11.5px; line-height:1.5;}
+  .verdict .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+  .verdict .mono{font-family:var(--mono);}
+
+  /* ---------- viewport ---------- */
+  .stage{position:relative; min-width:0; background:
+    radial-gradient(120% 90% at 50% 8%, #f3f1ec 0%, #e4e0d9 55%, #d6d1c8 100%);}
+  #view{display:block; width:100%; height:100%;}
+  .vp-tools{position:absolute; top:10px; right:12px; display:flex; gap:4px; background:rgba(239,236,231,.85);
+    border:1px solid var(--hair2); border-radius:7px; padding:3px; backdrop-filter:blur(3px);}
+  .vp-tools .btn{padding:4px 8px; font-size:11px;}
+  .vp-tools .sep{width:1px;background:var(--hair);margin:3px 1px;}
+  .vp-badge{position:absolute; left:12px; top:10px; font-family:var(--mono); font-size:10.5px;
+    color:var(--muted); letter-spacing:.04em;}
+  .vp-units{position:absolute; left:12px; bottom:10px; font-family:var(--mono); font-size:10.5px; color:var(--muted);}
+  .railtab{position:absolute; top:50%; transform:translateY(-50%); width:16px; height:54px;
+    background:var(--paper); border:1px solid var(--hair2); display:flex; align-items:center;
+    justify-content:center; cursor:pointer; color:var(--muted); font-size:11px; z-index:3;}
+  .railtab.l{left:0; border-left:none; border-radius:0 6px 6px 0;}
+  .railtab.r{right:0; border-right:none; border-radius:6px 0 0 6px;}
+  body:not(.no-left) .railtab.l{display:none;}
+  body:not(.no-right) .railtab.r{display:none;}
+
+  /* ---------- footer: agent + CLI ---------- */
+  footer{display:flex; flex-direction:column; background:var(--paper); border-top:1px solid var(--hair2); min-height:0;}
+  .foot-h{display:flex; align-items:center; gap:10px; padding:5px 12px; border-bottom:1px solid var(--hair);}
+  .foot-h .ttl{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted);}
+  .foot-h .hint{font-size:11px; color:var(--muted); margin-left:auto; font-family:var(--mono);}
+  .log{flex:1; overflow:auto; padding:8px 12px; font-family:var(--mono); font-size:12px; line-height:1.6;}
+  .log .ln{display:flex; gap:9px; padding:1px 0;}
+  .log .who{flex:none; width:52px; text-transform:uppercase; font-size:9.5px; letter-spacing:.1em; padding-top:3px;}
+  .log .who.you{color:var(--accent);}
+  .log .who.sys{color:var(--muted);}
+  .log .who.agent{color:var(--ok);}
+  .log .msg{color:var(--ink-soft); white-space:pre-wrap;}
+  .log .msg.ok{color:var(--ok);} .log .msg.warn{color:var(--warn);} .log .msg.err{color:var(--fail);}
+  .cli{display:flex; align-items:center; gap:9px; padding:8px 12px; border-top:1px solid var(--hair);}
+  .cli .prefix{font-family:var(--mono); color:var(--accent); font-size:13px;}
+  .cli input{flex:1; border:none; outline:none; background:none; font-family:var(--mono); font-size:13px; color:var(--ink);}
+  .cli input::placeholder{color:var(--muted);}
+  .cli .send{border:1px solid var(--hair2); border-radius:6px; padding:5px 12px; font-size:12px; background:none;}
+  .cli .send:hover{background:rgba(28,26,23,.06);}
+</style>
+</head>
+<body>
+
+  <!-- ============ HEADER ============ -->
+  <header>
+    <span class="brand">LUDWIG<span class="s"> studio</span></span>
+    <span class="file" id="file">untitled.ldw</span>
+    <div class="grp">
+      <button class="btn ghost" id="b-new">New</button>
+      <button class="btn ghost" id="b-open">Open</button>
+      <button class="btn ghost" id="b-save">Save</button>
+    </div>
+    <div class="grp">
+      <div class="seg"><button class="btn on" id="rep-3d">3D</button><button class="btn" id="rep-2d">2D</button></div>
+    </div>
+    <div class="grp">
+      <div class="seg">
+        <button class="btn on" id="cam-persp">Persp</button><button class="btn" id="cam-ortho">Ortho</button>
+      </div>
+      <button class="btn" id="b-fit">Fit</button>
+    </div>
+    <span class="sp"></span>
+    <button class="btn" id="t-left" title="toggle left rail">⮜ Tools</button>
+    <button class="btn" id="t-right" title="toggle right rail">Props ⮞</button>
+    <span class="modepill" id="agentmode">agent · <b>Plan</b></span>
+  </header>
+
+  <!-- ============ MAIN: rails + viewport ============ -->
+  <main>
+    <!-- LEFT RAIL: tools + model tree -->
+    <aside class="rail l">
+      <div class="rail-h">
+        <span class="tab on" data-ltab="tools">Tools</span>
+        <span class="tab" data-ltab="model">Model</span>
+      </div>
+      <div class="rail-b" id="ltab-tools">
+        <div class="seclbl">3D</div>
+        <div class="toolgrid">
+          <button class="tool on" data-tool="stair"><span class="ic">▟</span>Stair</button>
+          <button class="tool" data-tool="box"><span class="ic">▢</span>Box</button>
+          <button class="tool" data-tool="extrude"><span class="ic">⬓</span>Extrude</button>
+          <button class="tool" data-tool="boolean"><span class="ic">◑</span>Boolean</button>
+          <button class="tool" data-tool="fillet"><span class="ic">◜</span>Fillet</button>
+          <button class="tool" data-tool="wall"><span class="ic">▥</span>Wall</button>
+        </div>
+        <div class="seclbl">2D</div>
+        <div class="toolgrid">
+          <button class="tool" data-tool="line"><span class="ic">╱</span>Line</button>
+          <button class="tool" data-tool="rect"><span class="ic">▭</span>Rect</button>
+          <button class="tool" data-tool="circle"><span class="ic">◯</span>Circle</button>
+          <button class="tool" data-tool="dim"><span class="ic">⊢</span>Dim</button>
+          <button class="tool" data-tool="constrain"><span class="ic">⟂</span>Constrain</button>
+          <button class="tool" data-tool="section"><span class="ic">⊟</span>Section</button>
+        </div>
+      </div>
+      <div class="rail-b" id="ltab-model" hidden>
+        <div class="tree">
+          <div class="node"><span class="ind">▸</span> Project</div>
+          <div class="node" style="padding-left:18px"><span class="ind">▾</span> Level 0 · FFL +0</div>
+          <div class="node sel" data-node="stair" style="padding-left:34px"><span class="dot"></span> Stair · straight flight</div>
+          <div class="node" style="padding-left:50px"><span class="ind">·</span> 17 going · 18 riser</div>
+          <div class="node" style="padding-left:18px"><span class="ind">▸</span> Level 1 · FFL +3000</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- VIEWPORT -->
+    <section class="stage">
+      <canvas id="view"></canvas>
+      <div class="vp-badge" id="badge">Stair · straight flight</div>
+      <div class="vp-units">mm · Z-up</div>
+      <div class="vp-tools">
+        <button class="btn" data-view="iso">Iso</button>
+        <button class="btn" data-view="top">Top</button>
+        <button class="btn" data-view="front">Front</button>
+        <div class="sep"></div>
+        <button class="btn" id="vp-fit">⤢ Fit</button>
+      </div>
+      <div class="railtab l" id="show-left">⮞</div>
+      <div class="railtab r" id="show-right">⮜</div>
+    </section>
+
+    <!-- RIGHT RAIL: properties -->
+    <aside class="rail r">
+      <div class="rail-h"><span class="tab on">Properties</span><span class="tab" style="color:var(--muted)">Inspector</span></div>
+      <div class="rail-b" id="props"></div>
+    </aside>
+  </main>
+
+  <!-- ============ FOOTER: agent + CLI ============ -->
+  <footer>
+    <div class="foot-h">
+      <span class="ttl">Agent &amp; command line</span>
+      <span class="hint" id="foot-hint">type a command — e.g. <b>going 320</b> · or <b>help</b></span>
+    </div>
+    <div class="log" id="log"></div>
+    <div class="cli">
+      <span class="prefix" id="cli-prefix">›</span>
+      <input id="cli" autocomplete="off" spellcheck="false"
+             placeholder="command (going 320 · iso · ortho) — or describe a change for the agent…">
+      <button class="send" id="cli-send">Run</button>
+    </div>
+  </footer>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+const $ = s => document.querySelector(s);
+
+/* ===================== viewport ===================== */
+const canvas = $("#view");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const persp = new THREE.PerspectiveCamera(40, 1, 0.1, 1e7); persp.up.set(0,0,1);
+const ortho = new THREE.OrthographicCamera(-1,1,1,-1,-1e6,1e7); ortho.up.set(0,0,1);
+let cam = persp;
+const controls = new OrbitControls(cam, canvas);
+controls.enableDamping = true; controls.screenSpacePanning = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9a948a, 1.0));
+const key = new THREE.DirectionalLight(0xffffff, 1.35); key.position.set(0.6,-1,1.4); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.45); fill.position.set(-1,0.5,0.4); scene.add(fill);
+let model=null, grid=null, userMoved=false;
+
+function sizeView(){
+  const r = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height);
+  persp.aspect = r.width/Math.max(r.height,1); persp.updateProjectionMatrix();
+}
+function frame(dir){                                   // fit the model; optional view direction
+  if(!model) return;
+  sizeView();
+  const box = new THREE.Box3().setFromObject(model);
+  if(box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 1);
+  const d = (dir||new THREE.Vector3(0.85,-1,0.62)).clone().normalize();
+  const fov = THREE.MathUtils.degToRad(persp.fov);
+  let dist = radius/Math.sin(fov/2); if(persp.aspect<1) dist/=persp.aspect; dist*=1.3;
+  persp.position.copy(c).addScaledVector(d, dist);
+  persp.near = Math.max(dist/1000,0.01); persp.far = dist*100; persp.updateProjectionMatrix();
+  // ortho framed to the same bounds
+  const s = radius*1.35, a = persp.aspect;
+  ortho.left=-s*a; ortho.right=s*a; ortho.top=s; ortho.bottom=-s;
+  ortho.position.copy(c).addScaledVector(d, dist); ortho.near=0.01; ortho.far=dist*100; ortho.updateProjectionMatrix();
+  cam.up.set(0,0,1);
+  controls.target.copy(c); controls.update(); userMoved=false;
+}
+new ResizeObserver(()=>{ sizeView(); if(!userMoved) frame(); }).observe($(".stage"));
+controls.addEventListener("start", ()=>{ userMoved=true; });
+canvas.addEventListener("dblclick", ()=>frame());
+(function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, cam); })();
+
+/* ===================== the live parametric model (a stair) ===================== */
+const P = { floor:3000, risers:18, going:280, width:1000 };
+const MAT = new THREE.MeshStandardMaterial({ color:0xc7c2b6, metalness:0.05, roughness:0.78, flatShading:true });
+const SLAB = new THREE.MeshStandardMaterial({ color:0xbdb8ac, metalness:0.04, roughness:0.82, flatShading:true });
+const EDGE = new THREE.LineBasicMaterial({ color:0x2b2824 });
+function blk(sx,sy,sz, cx,cy,cz, mat){
+  const g = new THREE.BoxGeometry(sx,sy,sz);
+  const grp = new THREE.Group();
+  const m = new THREE.Mesh(g, mat); grp.add(m);
+  grp.add(new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), EDGE));
+  grp.position.set(cx,cy,cz); return grp;
+}
+function buildStair(){
+  const g = new THREE.Group();
+  const rh = P.floor/P.risers, nG = P.risers-1, run = nG*P.going, w = P.width;
+  for(let i=0;i<nG;i++){                                // solid stepped flight: block i full height to its tread
+    const h = (i+1)*rh;
+    g.add(blk(P.going, w, h, i*P.going + P.going/2, 0, h/2, MAT));
+  }
+  g.add(blk(1500, w, 240, -750, 0, -120, SLAB));        // lower floor
+  g.add(blk(1500, w, 240, run+750, 0, P.floor-120, SLAB)); // upper floor
+  return g;
+}
+function rebuild(refit){
+  if(model) scene.remove(model);
+  model = buildStair(); scene.add(model);
+  if(grid) scene.remove(grid);
+  const run = (P.risers-1)*P.going;
+  grid = new THREE.GridHelper(Math.max(run, P.floor)*2.2, 24, 0xb9b3a8, 0xccc6bb);
+  grid.rotation.x = Math.PI/2; grid.position.set(run/2, 0, -240); scene.add(grid);
+  if(refit!==false && !userMoved) frame();
+  syncProps(); syncCompliance();
+}
+
+/* ===================== right rail: properties (instant, precise) ===================== */
+const FIELDS = [
+  {k:"floor",  label:"Floor-to-floor", min:2400, max:4000, step:10},
+  {k:"risers", label:"Risers",         min:10,   max:26,   step:1},
+  {k:"going",  label:"Going",          min:220,  max:360,  step:5},
+  {k:"width",  label:"Width",          min:800,  max:1600, step:10},
+];
+function buildProps(){
+  const box = $("#props"); box.innerHTML="";
+  FIELDS.forEach(f=>{
+    const el = document.createElement("div"); el.className="prop";
+    el.innerHTML =
+      `<div class="lbl"><span class="nm">${f.label}</span><span class="unit">${f.k==="risers"?"count":"mm"}</span></div>
+       <div class="row">
+         <input type="number" id="n-${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" value="${P[f.k]}">
+         <input type="range" id="r-${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" value="${P[f.k]}">
+       </div>`;
+    box.appendChild(el);
+    const n=el.querySelector(`#n-${f.k}`), r=el.querySelector(`#r-${f.k}`);
+    const set=v=>{ v=Math.max(f.min,Math.min(f.max, +v||P[f.k])); P[f.k]=v; n.value=v; r.value=v; rebuild(false); };
+    r.addEventListener("input", ()=>set(r.value));     // drag = live
+    n.addEventListener("change", ()=>set(n.value));    // exact entry
+  });
+  const v=document.createElement("div"); v.className="verdict"; v.id="verdict"; box.appendChild(v);
+}
+function syncProps(){ FIELDS.forEach(f=>{ const n=$(`#n-${f.k}`),r=$(`#r-${f.k}`); if(n){n.value=P[f.k];r.value=P[f.k];} }); }
+function compliance(){
+  const rh=P.floor/P.risers, tworg=2*rh+P.going, pitch=Math.atan2(rh,P.going)*180/Math.PI;
+  const ok = tworg>=550 && tworg<=700 && rh<=190 && P.going>=250 && pitch<=38;     // AD K, general access
+  return {rh,tworg,pitch,ok};
+}
+function syncCompliance(){
+  const c=compliance(), v=$("#verdict"); if(!v) return;
+  const col = c.ok? "var(--ok)" : "var(--warn)";
+  v.innerHTML =
+    `<span class="dot" style="background:${col}"></span><b>${c.ok?"Within Approved Doc K":"Outside AD K"}</b> · general access
+     <div class="mono" style="color:var(--muted);margin-top:5px">
+       riser ${c.rh.toFixed(1)} · 2R+G ${c.tworg.toFixed(0)} (550–700) · pitch ${c.pitch.toFixed(1)}° (≤38)</div>`;
+  $("#badge").textContent = `Stair · ${P.risers}R · ${P.going} going` + (c.ok? "" : " · ⚠ AD K");
+}
+
+/* ===================== footer: command line (real) + agent lane (stubbed, honest) ===================== */
+function log(who, msg, cls){
+  const l=$("#log"); const d=document.createElement("div"); d.className="ln";
+  d.innerHTML=`<span class="who ${who}">${who}</span><span class="msg ${cls||""}"></span>`;
+  d.querySelector(".msg").textContent=msg; l.appendChild(d); l.scrollTop=l.scrollHeight;
+}
+const VIEWDIR={ top:[0,0,1], bottom:[0,0,-1], front:[0,-1,0], back:[0,1,0],
+  right:[1,0,0], left:[-1,0,0], iso:[0.85,-1,0.62] };
+function setView(name){ const d=VIEWDIR[name]; if(d){ userMoved=false; frame(new THREE.Vector3(...d)); } }
+function setCam(which){
+  cam = which==="ortho"? ortho : persp; controls.object=cam;
+  $("#cam-persp").classList.toggle("on", which!=="ortho");
+  $("#cam-ortho").classList.toggle("on", which==="ortho");
+  frame(); controls.update();
+}
+const PARAM_ALIAS={ going:"going", riser:"risers", risers:"risers", width:"width", floor:"floor", "floor-to-floor":"floor", ftf:"floor" };
+function runCommand(raw){
+  const s=raw.trim(); if(!s) return;
+  log("you", s);
+  const [cmd,...rest]=s.split(/\s+/); const arg=rest.join(" "); const k=cmd.toLowerCase();
+  // parametric set: "going 320" / "risers 20"
+  if(PARAM_ALIAS[k] && rest.length){
+    const key=PARAM_ALIAS[k], val=parseFloat(rest[0]);
+    if(isNaN(val)){ log("sys","need a number, e.g. "+key+" 300","err"); return; }
+    P[key]=val; rebuild(false);
+    const c=compliance();
+    log("sys", `${key} = ${val}${key==="risers"?"":" mm"} — rebuilt`, "ok");
+    if(!c.ok) log("sys", `note: now outside Approved Doc K (general access)`, "warn");
+    return;
+  }
+  if(VIEWDIR[k]){ setView(k); log("sys","view: "+k); return; }
+  if(k==="ortho"||k==="persp"){ setCam(k); log("sys","camera: "+k); return; }
+  if(k==="fit"||k==="home"){ userMoved=false; frame(); log("sys","framed"); return; }
+  if(k==="left"){ document.body.classList.toggle("no-left"); log("sys","left rail toggled"); return; }
+  if(k==="right"){ document.body.classList.toggle("no-right"); log("sys","right rail toggled"); return; }
+  if(k==="help"){
+    log("sys","commands: <param> <n>  (going/risers/width/floor) · iso/top/front/right · ortho/persp · fit · left/right · help");
+    log("sys","anything else is routed to the agent (not wired yet).");
+    return;
+  }
+  // not a command → the agent lane (honest stub, no faked AI)
+  log("agent", "Engine wiring is next — I don't act yet. I'd translate \""+s+"\" into model ops "
+      +"(e.g. set going, add a landing, fillet an edge) and show them here for you to accept. "
+      +"For now drive it directly: try `help`.", "warn");
+}
+
+/* ===================== wiring ===================== */
+function tagActive(sel, el){ document.querySelectorAll(sel).forEach(b=>b.classList.remove("on")); el.classList.add("on"); }
+document.querySelectorAll("[data-view]").forEach(b=> b.addEventListener("click", ()=>setView(b.dataset.view)));
+$("#b-fit").onclick = ()=>{ userMoved=false; frame(); };
+$("#vp-fit").onclick = ()=>{ userMoved=false; frame(); };
+$("#cam-persp").onclick=()=>setCam("persp"); $("#cam-ortho").onclick=()=>setCam("ortho");
+$("#t-left").onclick =()=>document.body.classList.toggle("no-left");
+$("#t-right").onclick=()=>document.body.classList.toggle("no-right");
+$("#show-left").onclick =()=>document.body.classList.remove("no-left");
+$("#show-right").onclick=()=>document.body.classList.remove("no-right");
+$("#agentmode").onclick=()=>{ const e=$("#agentmode"); const plan=e.textContent.includes("Plan");
+  e.innerHTML="agent · <b>"+(plan?"Build":"Plan")+"</b>"; log("sys","agent mode: "+(plan?"Build":"Plan")); };
+document.querySelectorAll("[data-ltab]").forEach(t=> t.addEventListener("click", ()=>{
+  tagActive("[data-ltab]", t);
+  $("#ltab-tools").hidden = t.dataset.ltab!=="tools";
+  $("#ltab-model").hidden = t.dataset.ltab!=="model";
+}));
+document.querySelectorAll(".tool").forEach(t=> t.addEventListener("click", ()=>{
+  tagActive(".tool", t);
+  if(t.dataset.tool!=="stair") log("sys", t.dataset.tool+" tool — not wired yet (shell). Stair is the live model.","warn");
+}));
+["b-new","b-open","b-save"].forEach(id=> $("#"+id).addEventListener("click",
+  ()=> log("sys", id.slice(2)+" — file ops not wired yet (shell).","warn")));
+const cli=$("#cli");
+$("#cli-send").onclick=()=>{ runCommand(cli.value); cli.value=""; };
+cli.addEventListener("keydown", e=>{ if(e.key==="Enter"){ runCommand(cli.value); cli.value=""; } });
+
+/* ===================== boot ===================== */
+buildProps(); rebuild(); setView("iso");
+log("sys", "Ludwig Studio — shell. The stair is a real parametric model: it rebuilds instantly from the "
+   +"Properties fields or commands below. No compile, no LLM in the geometry path.");
+log("sys", "Try: going 320 · risers 20 · ortho · top · help");
+</script>
+</body>
+</html>
