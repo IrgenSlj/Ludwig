@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ludwig — Architecture vertical · concept</title>
+<!--
+  CONCEPT / VISION KEY VISUAL — Ludwig, architecture vertical.
+  Reconciles with docs/UX_BRIEF.md ("The Stage & the Director" + "graceful crystallization")
+  and extends that language toward buildings + drawings. Self-contained & offline by design
+  (no CDN, no fonts fetched) — the same ethos as backends/present.py.
+
+  The thesis made visible: language in -> one editable building model -> coordinated drawings
+  (plan + section, true vector geometry), all the SAME design, kept in sync. Re-prompt one
+  dimension and the DRAWING updates with the model. That last part is the whole point.
+
+  Honest about state: this is a vision artifact, but the running engine already does this
+  (see docs/concept/README.md). Geometry here is real parametric draughtsmanship — line
+  weights are the literal values from standards.yaml drawing.line_weights_mm.
+-->
+<style>
+  :root {
+    /* art direction tokens — lifted from backends/present.py / docs/UX_BRIEF.md */
+    --paper:#efece7; --field:#e4e0d9; --graphite:#1c1a17; --muted:#6e675b;
+    --ink-soft:#262320; --hairline:rgba(28,26,23,0.16); --hairline-strong:rgba(28,26,23,0.42);
+    --accent:#8a5a2b;
+    /* the critic's three signals (Ambient Correctness) */
+    --verified:#3a7d6b; --warn:#b07a2b; --fail:#9e3b30;
+    --sans:system-ui,-apple-system,"Inter","Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --mono:"SFMono-Regular","JetBrains Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--field); color:var(--graphite);
+    font-family:var(--sans); -webkit-font-smoothing:antialiased;
+    font-feature-settings:"kern" 1,"liga" 1; }
+  .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+  .wrap { max-width:1180px; margin:0 auto; padding:40px 28px 64px; }
+
+  /* masthead */
+  .mast { display:flex; justify-content:space-between; align-items:flex-end;
+    gap:24px; padding-bottom:18px; border-bottom:1px solid var(--hairline-strong); }
+  .eyebrow { font-size:11px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--muted); }
+  .eyebrow b { color:var(--graphite); font-weight:600; letter-spacing:.2em; }
+  .mast h1 { margin:8px 0 0; font-size:26px; font-weight:600; letter-spacing:-.012em;
+    line-height:1.12; max-width:30ch; }
+  .mast h1 em { font-style:normal; color:var(--accent); }
+  .mast .state { text-align:right; font-size:11px; color:var(--muted); line-height:1.5;
+    min-width:200px; }
+  .mast .state .dot { display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:var(--verified); margin-right:6px; vertical-align:middle; }
+
+  .lede { margin:18px 0 26px; max-width:78ch; font-size:14.5px; line-height:1.6;
+    color:var(--ink-soft); }
+  .lede b { color:var(--graphite); font-weight:600; }
+
+  /* ---- the key visual: one design, three views, in sync ---- */
+  .board { display:grid; grid-template-columns:0.92fr 1.18fr 1.24fr; gap:0;
+    background:var(--paper); border:1px solid var(--hairline);
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset, 0 18px 48px rgba(28,26,23,.10); }
+  .pane { padding:20px 20px 18px; position:relative; }
+  .pane + .pane { border-left:1px solid var(--hairline); }
+  .pane-h { display:flex; align-items:center; gap:9px; margin-bottom:14px; }
+  .pane-h .k { font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--muted); }
+  .pane-h .n { font-size:10px; letter-spacing:.1em; color:var(--accent);
+    border:1px solid var(--hairline); border-radius:2px; padding:1px 5px; }
+  .pane-h .sync { margin-left:auto; font-size:9.5px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--muted); opacity:0; transition:opacity .25s; }
+  .pane-h .sync.live { opacity:1; color:var(--verified); }
+
+  /* intent / conversation */
+  .intent { display:flex; flex-direction:column; gap:11px; }
+  .msg { font-size:12.5px; line-height:1.45; }
+  .msg .who { font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); display:block; margin-bottom:3px; }
+  .msg.u .body { color:var(--graphite); }
+  .msg.l .body { color:var(--ink-soft); }
+  .msg .body { padding:8px 11px; border:1px solid var(--hairline); border-radius:3px;
+    background:rgba(255,255,255,.34); }
+  .msg.u .body { border-left:2px solid var(--accent); }
+  .msg.l .body { display:flex; align-items:baseline; gap:7px; flex-wrap:wrap; }
+  .chk { color:var(--verified); font-weight:600; }
+  .msg .meta { font-size:11px; color:var(--muted); }
+  .msg.fresh .body { animation:flash 1.1s ease; }
+  @keyframes flash { 0%{ background:rgba(58,125,107,.16);} 100%{ background:rgba(255,255,255,.34);} }
+  .caret { display:inline-block; width:7px; height:14px; background:var(--accent);
+    vertical-align:-2px; animation:blink 1s steps(2) infinite; }
+  @keyframes blink { 50%{ opacity:0; } }
+
+  .intent-foot { margin-top:auto; padding-top:14px; font-size:11px; color:var(--muted);
+    border-top:1px solid var(--hairline); line-height:1.5; }
+
+  svg { display:block; width:100%; height:auto; }
+  .stage-svg { background:
+    linear-gradient(rgba(28,26,23,.035) 1px,transparent 1px) 0 0/100% 22px,
+    #fbfaf7; border:1px solid var(--hairline); }
+  .sheet-svg { background:#fcfbf8; border:1px solid var(--hairline); }
+
+  /* draughtsman line-weight hierarchy — px PROPORTIONAL to standards.yaml line_weights_mm
+     (cut .50 / visible .35 / hidden .18 / centre .13 / dimension .13), ×~3.8, non-scaling. */
+  .ln { fill:none; vector-effect:non-scaling-stroke; stroke:var(--graphite);
+    stroke-linejoin:round; stroke-linecap:round; }
+  .w-cut     { stroke-width:1.9; }
+  .w-visible { stroke-width:1.25; }
+  .w-hidden  { stroke-width:0.7; stroke-dasharray:5 3.5; stroke:#4a443c; }
+  .w-centre  { stroke-width:0.55; stroke-dasharray:9 2.5 1.5 2.5; stroke:var(--accent); }
+  .w-dim     { stroke-width:0.55; stroke:#5b544a; }
+  .poche     { fill:rgba(28,26,23,.07); stroke:none; }
+  .dimtext { font-family:var(--mono); font-size:11px; fill:var(--ink-soft);
+    font-variant-numeric:tabular-nums; }
+  .dimtext.hero { fill:var(--accent); font-weight:600; }
+  .notetext { font-family:var(--mono); font-size:10px; fill:var(--muted); }
+  .lvltext  { font-family:var(--mono); font-size:9.5px; fill:var(--muted);
+    letter-spacing:.04em; }
+
+  /* title block on the sheet */
+  .tblock { margin-top:10px; border:1px solid var(--hairline-strong); display:grid;
+    grid-template-columns:1.5fr 1fr 1fr; font-size:10.5px; }
+  .tblock .cell { padding:6px 9px; border-right:1px solid var(--hairline);
+    border-bottom:1px solid var(--hairline); }
+  .tblock .cell:nth-child(3n){ border-right:none; }
+  .tblock .cell .lab { font-size:8.5px; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--muted); display:block; margin-bottom:2px; }
+  .tblock .cell .val { color:var(--graphite); }
+  .tblock .org { grid-column:1/2; font-weight:600; letter-spacing:.14em; }
+  .tblock .hero-val .val { color:var(--accent); font-weight:600; }
+
+  /* ambient-correctness chip */
+  .chip { display:inline-flex; align-items:center; gap:6px; font-size:11px;
+    color:var(--ink-soft); }
+  .chip .dot { width:8px; height:8px; border-radius:50%; background:var(--verified);
+    box-shadow:0 0 0 3px rgba(58,125,107,.16); }
+  .chip .mono { color:var(--graphite); }
+  .ac-row { display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; }
+
+  /* ---- hero control strip ---- */
+  .hero { margin-top:0; background:var(--paper); border:1px solid var(--hairline);
+    border-top:none; padding:18px 22px; display:flex; align-items:center; gap:26px;
+    flex-wrap:wrap; }
+  .hero .label { font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); }
+  .hero .reprompt { font-family:var(--mono); font-size:12.5px; color:var(--graphite);
+    background:none; border:1px solid var(--hairline-strong); border-radius:3px;
+    padding:9px 16px; cursor:pointer; letter-spacing:.01em; transition:.18s; }
+  .hero .reprompt:hover { border-color:var(--accent); color:var(--accent);
+    background:rgba(138,90,43,.05); }
+  .hero .reprompt:active { transform:translateY(1px); }
+  .hero .slider-wrap { display:flex; align-items:center; gap:12px; flex:1; min-width:240px; }
+  .hero input[type=range]{ flex:1; accent-color:var(--accent); }
+  .hero .readout { font-family:var(--mono); font-size:13px; color:var(--graphite);
+    min-width:9ch; }
+  .hero .readout b { color:var(--accent); }
+  .hero .reset { font-size:11px; color:var(--muted); background:none; border:none;
+    cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+  .hero .note { width:100%; font-size:11.5px; color:var(--muted); line-height:1.5; }
+  .hero .note b { color:var(--ink-soft); font-weight:600; }
+
+  .toast { position:fixed; left:50%; bottom:30px; transform:translateX(-50%) translateY(20px);
+    background:var(--graphite); color:var(--paper); font-size:12px; letter-spacing:.02em;
+    padding:10px 18px; border-radius:4px; opacity:0; pointer-events:none; transition:.3s;
+    box-shadow:0 8px 28px rgba(28,26,23,.3); display:flex; align-items:center; gap:9px; }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast .chk { color:#7fc9b4; }
+
+  /* ---- crystallization band ---- */
+  .crystal { margin-top:40px; }
+  .sec-h { display:flex; align-items:baseline; gap:14px; margin-bottom:6px; }
+  .sec-h h2 { margin:0; font-size:13px; font-weight:600; letter-spacing:.04em; }
+  .sec-h .sub { font-size:12px; color:var(--muted); }
+  .crystal-stage { background:var(--paper); border:1px solid var(--hairline);
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset, 0 14px 38px rgba(28,26,23,.08);
+    padding:20px 22px; margin-top:12px; }
+  .crystal-svg { background:#fcfbf8; border:1px solid var(--hairline); }
+  .crystal-ctl { display:flex; align-items:center; gap:18px; margin-top:14px;
+    flex-wrap:wrap; }
+  .crystal-ctl .scrub { flex:1; min-width:260px; accent-color:var(--accent); }
+  .crystal-ctl .pct { font-family:var(--mono); font-size:13px; min-width:13ch; }
+  .crystal-ctl .pct b { color:var(--accent); }
+  .stops { display:flex; justify-content:space-between; margin-top:6px; font-size:10px;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--muted);
+    font-family:var(--mono); }
+
+  .footnote { margin-top:40px; padding-top:18px; border-top:1px solid var(--hairline-strong);
+    display:flex; justify-content:space-between; gap:30px; flex-wrap:wrap;
+    font-size:11.5px; color:var(--muted); line-height:1.6; }
+  .footnote b { color:var(--graphite); font-weight:600; }
+  .footnote .mark { font-weight:600; letter-spacing:.18em; color:var(--graphite); }
+  .footnote .col { max-width:46ch; }
+
+  @media (max-width:880px){
+    .board { grid-template-columns:1fr; }
+    .pane + .pane { border-left:none; border-top:1px solid var(--hairline); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <div>
+      <div class="eyebrow"><b>LUDWIG</b> &nbsp;·&nbsp; parametric stair drawing — demo</div>
+      <h1>Stair from a one-line spec → dimensioned section + plan. Change the going; the drawing updates.</h1>
+    </div>
+    <div class="state">
+      <span class="dot"></span>Interactive demo<br>
+      Hand-built SVG, not engine output<br>
+      <span class="mono" style="font-size:10px">stair geometry real · AD K general access</span>
+    </div>
+  </header>
+
+  <p class="lede">
+    3D, plan and section are computed from the same parameters — floor-to-floor, riser count,
+    going, width. Change one and all three recompute. The drawing is derived from the model,
+    not drawn and maintained as a separate file.
+  </p>
+
+  <!-- ============ THE KEY VISUAL: one design, three views, in sync ============ -->
+  <div class="board">
+
+    <!-- 1 · INTENT -->
+    <section class="pane">
+      <div class="pane-h"><span class="n">1</span><span class="k">Prompt</span></div>
+      <div class="intent" id="intent">
+        <div class="msg u">
+          <span class="who">Architect</span>
+          <div class="body mono">single straight-flight stair · 3000 floor-to-floor · 18 risers · 1000 wide · 280 going</div>
+        </div>
+        <div class="msg l">
+          <span class="who">Ludwig</span>
+          <div class="body"><span class="chk">✓</span><span>compiled — B-rep valid</span>
+            <span class="meta">· section + plan derived · Part&nbsp;K ✓</span></div>
+        </div>
+        <div id="intent-extra"></div>
+      </div>
+      <div class="intent-foot">
+        Re-prompting sets a parameter value; the model and the drawing rebuild from it.
+      </div>
+    </section>
+
+    <!-- 2 · STAGE (the editable model) -->
+    <section class="pane">
+      <div class="pane-h"><span class="n">2</span><span class="k">Model (3D)</span>
+        <span class="sync" id="sync-stage">updated</span></div>
+      <svg class="stage-svg" id="stage" viewBox="0 0 440 340" aria-label="Axonometric of the stair model">
+        <defs>
+          <marker id="arrowS" markerWidth="9" markerHeight="9" refX="7.5" refY="3"
+            orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0,0 L8,3 L0,6 z" fill="#5b544a"/></marker>
+          <marker id="arrowS2" markerWidth="9" markerHeight="9" refX="0.5" refY="3"
+            orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M8,0 L0,3 L8,6 z" fill="#5b544a"/></marker>
+        </defs>
+        <g id="stage-g"></g>
+      </svg>
+      <div class="ac-row">
+        <span class="chip"><span class="dot"></span> valid solid</span>
+        <span class="chip mono" style="color:var(--muted)">exports STEP · IFC</span>
+      </div>
+    </section>
+
+    <!-- 3 · THE SHEET (the real drawing — this is what matters) -->
+    <section class="pane">
+      <div class="pane-h"><span class="n">3</span><span class="k">Drawing (section + plan)</span>
+        <span class="sync" id="sync-sheet">updated</span></div>
+      <svg class="sheet-svg" id="sheet" viewBox="0 0 480 560" aria-label="Stair section and plan">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="8" refX="8.5" refY="3"
+            orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M0,0 L9,3 L0,6 z" fill="#5b544a"/></marker>
+          <marker id="arrowR" markerWidth="10" markerHeight="8" refX="0.5" refY="3"
+            orient="auto" markerUnits="userSpaceOnUse">
+            <path d="M9,0 L0,3 L9,6 z" fill="#5b544a"/></marker>
+          <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(28,26,23,.32)" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+        <g id="sheet-g"></g>
+      </svg>
+      <div class="tblock">
+        <div class="cell org">LUDWIG — generated</div>
+        <div class="cell"><span class="lab">Drawing</span><span class="val">Stair · section + plan</span></div>
+        <div class="cell"><span class="lab">Scale</span><span class="val mono">1:50 @ A3</span></div>
+        <div class="cell"><span class="lab">Floor–floor</span><span class="val mono">3000</span></div>
+        <div class="cell hero-val"><span class="lab">Going</span><span class="val mono" id="tb-going">280</span></div>
+        <div class="cell"><span class="lab">Rev</span><span class="val mono" id="tb-rev">A</span></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ THE HERO MOMENT ============ -->
+  <div class="hero">
+    <span class="label">Try it</span>
+    <button class="reprompt" id="reprompt">⟳ re-prompt: “make the stair 320&nbsp;mm going”</button>
+    <div class="slider-wrap">
+      <input type="range" id="going" min="240" max="340" step="5" value="280" aria-label="Going">
+      <span class="readout">going <b id="going-r">280</b> mm</span>
+    </div>
+    <button class="reset" id="reset">reset</button>
+    <p class="note">
+      Drag the going slider or click re-prompt. The section, plan, title block and 3D recompute
+      from the new value. Across 240–340 mm: 2R+G stays 583–673 (limit 550–700) and pitch 26–35°
+      (limit 38°) — within Approved Document K for general-access stairs.
+    </p>
+  </div>
+
+  <footer class="footnote">
+    <div class="col">
+      Line weights from <span class="mono">standards.yaml</span>: cut 0.50 / visible 0.35 /
+      hidden 0.18 mm. Stair: 18 risers @ 166.7, going 280, 2R+G 613, pitch 31° — within Approved
+      Document K for general-access stairs (fails institutional/assembly: max rise 150).
+    </div>
+    <div class="col">
+      Hand-built SVG demo. The engine compiles parts to B-rep + STEP/IFC today; it does not yet
+      cut building sections. This page scopes that gap — it doesn't claim it's built.
+    </div>
+  </footer>
+</div>
+
+<div class="toast" id="toast"><span class="chk">✓</span><span id="toast-msg">section + plan updated</span></div>
+
+<script>
+/* ----------------------------------------------------------------------------
+   All geometry is computed in millimetres from ONE parameter set, then projected
+   into each panel's pixel box. Same model -> three views. Change a parameter and
+   every view recomputes. This is the honest version of "kept in sync": the
+   section's going dimension is not swapped art — it is re-derived from the number.
+---------------------------------------------------------------------------- */
+const SVGNS = "http://www.w3.org/2000/svg";
+const FIXED = { floorToFloor:3000, risers:18, width:1000, waist:185, slab:240, landing:760 };
+let going = 280;
+
+/* --- derive the stair (mm; x = run to the right, y = up) -------------------- */
+function derive(g){
+  const riserH = FIXED.floorToFloor / FIXED.risers;        // 166.67
+  const nG = FIXED.risers - 1;                               // 17 goings in a straight flight
+  const run = nG * g;
+  const steps = [[0,0]];
+  let x=0,y=0;
+  for(let i=0;i<FIXED.risers;i++){ y+=riserH; steps.push([x,y]); if(i<nG){ x+=g; steps.push([x,y]); } }
+  const theta  = Math.atan2(riserH,g);
+  const waistV = FIXED.waist/Math.cos(theta);               // vertical thickness of the inclined waist
+  const soffitTop = [run, FIXED.floorToFloor - waistV];
+  const soffitBot = [0,   FIXED.floorToFloor*0 + (riserH - waistV)];
+  const nosings = []; for(let i=0;i<=nG;i++) nosings.push([i*g,(i+1)*riserH]);
+  return {riserH,nG,run,steps,soffitTop,soffitBot,nosings,theta,waistV};
+}
+
+/* --- fit mm-geometry into an explicit pixel rectangle (y-up -> screen y-down).
+       Built from the MAX-extent case so the frame never jumps as the stair grows. */
+function fitBox(boundsPts, x0,y0,x1,y1, pad){
+  const xs=boundsPts.map(p=>p[0]), ys=boundsPts.map(p=>p[1]);
+  const minx=Math.min(...xs),maxx=Math.max(...xs),miny=Math.min(...ys),maxy=Math.max(...ys);
+  const w=(maxx-minx)||1, h=(maxy-miny)||1;
+  const bw=(x1-x0)-2*pad, bh=(y1-y0)-2*pad;
+  const s=Math.min(bw/w,bh/h);
+  const offx = x0+pad + (bw - w*s)/2 - minx*s;              // left-anchored, centred
+  const offy = y1-pad - (bh - h*s)/2 + miny*s;              // bottom-anchored, centred
+  return { s, X:(x)=>offx+x*s, Y:(y)=>offy-y*s };
+}
+
+/* --- tiny SVG builders ------------------------------------------------------ */
+function el(tag,attrs){ const n=document.createElementNS(SVGNS,tag);
+  for(const k in attrs) n.setAttribute(k,attrs[k]); return n; }
+function poly(cls,pts,close){ const d="M"+pts.map(p=>p[0].toFixed(2)+","+p[1].toFixed(2)).join(" L")+(close?" Z":"");
+  return el("path",{class:cls,d}); }
+function txt(cls,x,y,s,extra){ const t=el("text",Object.assign({class:cls,x,y},extra||{}));
+  t.textContent=s; return t; }
+function line(cls,x1,y1,x2,y2,extra){ return el("line",Object.assign({class:cls,x1,y1,x2,y2},extra||{})); }
+
+/* a horizontal dimension between px x-positions, dim line at py, witness up to gy */
+function dimH(g,ax,bx,gy,py,label,hero){
+  g.appendChild(line("ln w-dim",ax,gy,ax,py));
+  g.appendChild(line("ln w-dim",bx,gy,bx,py));
+  g.appendChild(line("ln w-dim",ax,py,bx,py,{"marker-start":"url(#arrowR)","marker-end":"url(#arrow)"}));
+  g.appendChild(txt("dimtext"+(hero?" hero":""),(ax+bx)/2,py-5,label,{"text-anchor":"middle"}));
+}
+/* a vertical dimension between px y-positions, dim line at px, witness to gx */
+function dimV(g,ay,by,gx,px,label){
+  g.appendChild(line("ln w-dim",gx,ay,px,ay));
+  g.appendChild(line("ln w-dim",gx,by,px,by));
+  g.appendChild(line("ln w-dim",px,ay,px,by,{"marker-start":"url(#arrowR)","marker-end":"url(#arrow)"}));
+  g.appendChild(txt("dimtext",px-5,(ay+by)/2,label,
+    {"text-anchor":"middle",transform:`rotate(-90 ${px-5} ${(ay+by)/2})`}));
+}
+
+/* --- stable per-view transforms (computed once from going=340) -------------- */
+const REF = derive(340);
+const T_section = fitBox([[-FIXED.landing,-FIXED.slab],[REF.run+FIXED.landing,FIXED.floorToFloor]],
+                         86,40, 470,300, 8);
+const T_plan    = fitBox([[0,0],[REF.run,FIXED.width]], 96,388, 470,486, 6);
+
+/* --------------------------- THE SHEET: section + plan ---------------------- */
+function renderSheet(){
+  const S=derive(going), g=document.getElementById("sheet-g"); g.textContent="";
+  const A=T_section, X=A.X, Y=A.Y;
+
+  /* cut floor slabs (poché) */
+  const lowSlab=[[X(-FIXED.landing),Y(0)],[X(0),Y(0)],[X(0),Y(-FIXED.slab)],[X(-FIXED.landing),Y(-FIXED.slab)]];
+  const upSlab =[[X(S.run),Y(FIXED.floorToFloor)],[X(S.run+FIXED.landing),Y(FIXED.floorToFloor)],
+                 [X(S.run+FIXED.landing),Y(FIXED.floorToFloor-FIXED.slab)],[X(S.run),Y(FIXED.floorToFloor-FIXED.slab)]];
+  /* the cut stair body: stepped top -> soffit top -> soffit bottom -> close */
+  const body = S.steps.map(q=>[X(q[0]),Y(q[1])])
+    .concat([[X(S.soffitTop[0]),Y(S.soffitTop[1])],[X(S.soffitBot[0]),Y(S.soffitBot[1])]]);
+  [lowSlab,upSlab,body].forEach(pts=>{
+    g.appendChild(el("polygon",{points:pts.map(q=>q[0].toFixed(2)+","+q[1].toFixed(2)).join(" "),fill:"url(#hatch)"}));
+  });
+  g.appendChild(poly("ln w-cut",lowSlab,true));
+  g.appendChild(poly("ln w-cut",upSlab,true));
+  g.appendChild(poly("ln w-cut",body,true));
+
+  /* floor level lines + FFL tags */
+  g.appendChild(line("ln w-centre",X(-FIXED.landing-30),Y(0),X(160),Y(0)));
+  g.appendChild(txt("lvltext",X(-FIXED.landing-28),Y(0)-4,"FFL +0"));
+  g.appendChild(line("ln w-centre",X(S.run-160),Y(FIXED.floorToFloor),X(S.run+FIXED.landing),Y(FIXED.floorToFloor)));
+  g.appendChild(txt("lvltext",X(S.run+FIXED.landing),Y(FIXED.floorToFloor)-4,"FFL +3000",{"text-anchor":"end"}));
+
+  /* floor-to-floor vertical dim (left) */
+  dimV(g, Y(0), Y(FIXED.floorToFloor), X(-FIXED.landing), X(-FIXED.landing)-22, "3000");
+
+  /* going dim (HERO) — between nosings 3 and 4, dim line above the flight */
+  const k=3, a=[X(S.nosings[k][0]),Y(S.nosings[k][1])], b=[X(S.nosings[k+1][0]),Y(S.nosings[k+1][1])];
+  const dimY = Y(FIXED.floorToFloor)-14;
+  dimH(g, a[0], b[0], Math.min(a[1],b[1]), dimY, String(going), true);
+  g.appendChild(line("ln w-dim",(a[0]+b[0])/2,dimY+2,(a[0]+b[0])/2,a[1],{"stroke-dasharray":"2 2"}));
+
+  /* total run dim (bottom of section) */
+  const runY = Y(0)+26;
+  dimH(g, X(0), X(S.run), Y(0), runY, `${S.nG} G @ ${going} = ${S.run.toFixed(0)}`, false);
+
+  /* riser note + section label */
+  g.appendChild(txt("notetext", X(S.run+FIXED.landing), Y(FIXED.floorToFloor*0.46), "18 R @ 166.7",{"text-anchor":"end"}));
+  g.appendChild(txt("notetext", X(0), runY+20, "SECTION A–A   1:50"));
+
+  /* a hidden line (handrail) for drawing credibility */
+  g.appendChild(line("ln w-hidden",X(0),Y(900),X(S.run),Y(FIXED.floorToFloor+900)));
+
+  /* ---- PLAN (below) ---- */
+  const P=T_plan, PX=P.X, PY=P.Y;
+  const rx1=PX(0), rx2=PX(S.run), ry1=PY(FIXED.width), ry2=PY(0);
+  g.appendChild(el("rect",{class:"ln w-visible",x:rx1,y:ry1,width:rx2-rx1,height:ry2-ry1}));
+  for(let i=1;i<=S.nG;i++){ const x=PX(i*going); g.appendChild(line("ln w-visible",x,ry1,x,ry2)); }
+  const cy=(ry1+ry2)/2;
+  g.appendChild(line("ln w-centre",rx1+6,cy,rx2-6,cy));
+  g.appendChild(line("ln w-dim",rx1+10,cy,rx2-12,cy,{"marker-end":"url(#arrow)"}));
+  g.appendChild(txt("notetext",rx1+14,cy-5,"UP"));
+  dimV(g, ry1, ry2, rx1, rx1-16, "1000");
+  dimH(g, rx1, rx2, ry2, ry2+24, `${S.run.toFixed(0)}`, false);
+  g.appendChild(txt("notetext", rx1, ry2+42, "PLAN   1:50"));
+}
+
+/* --------------------------- THE STAGE: cabinet-oblique line model ---------- */
+const T_stage = (()=>{
+  const dz=0.42;
+  const raw=(x,y,z)=>[x + z*dz*0.92, y + z*dz*0.62];
+  const Z=FIXED.width;
+  const corners=[ raw(-200,-200,0), raw(REF.run+200,FIXED.floorToFloor+200,0),
+                  raw(-200,-200,Z), raw(REF.run+200,FIXED.floorToFloor+260,Z) ];
+  const T=fitBox(corners, 20,28, 420,330, 6);
+  return {T,dz,raw,Z};
+})();
+function renderStage(){
+  const S=derive(going), g=document.getElementById("stage-g"); g.textContent="";
+  const {T,dz,Z}=T_stage;
+  const ob=(x,y,z)=>{ const r=[x + z*dz*0.92, y + z*dz*0.62]; return [T.X(r[0]),T.Y(r[1])]; };
+  const near=S.steps.map(q=>ob(q[0],q[1],0));
+  const far =S.steps.map(q=>ob(q[0],q[1],Z));
+  const nearBody=near.concat([ob(S.soffitTop[0],S.soffitTop[1],0),ob(S.soffitBot[0],S.soffitBot[1],0)]);
+  const farBody = far.concat([ob(S.soffitTop[0],S.soffitTop[1],Z),ob(S.soffitBot[0],S.soffitBot[1],Z)]);
+  g.appendChild(poly("ln w-hidden",farBody,true));                       // far side, light
+  for(let i=0;i<S.steps.length;i+=2){                                    // depth edges at tread tops
+    g.appendChild(line("ln w-visible",near[i][0],near[i][1],far[i][0],far[i][1]));
+  }
+  g.appendChild(poly("ln w-visible",farBody,true));
+  g.appendChild(poly("ln w-cut",nearBody,true));                         // near silhouette, full weight
+  g.appendChild(poly("ln w-visible",near,false));                        // near tread top edges crisp
+  const tag=ob(S.run*0.46,FIXED.floorToFloor+260,Z*0.5);
+  g.appendChild(txt("notetext",tag[0]-26,tag[1],"editable B-rep"));
+}
+
+/* --------------------------- update everything ------------------------------ */
+function updateAll(){
+  renderSheet(); renderStage();
+  document.getElementById("going-r").textContent=going;
+  document.getElementById("tb-going").textContent=going;
+  document.getElementById("going").value=going;
+}
+
+/* --------------------------- hero: animate a re-prompt 280 -> 320 ----------- */
+function reprompt(){
+  const extra=document.getElementById("intent-extra");
+  extra.innerHTML =
+    `<div class="msg u fresh"><span class="who">Architect</span>
+       <div class="body mono">make the stair 320&nbsp;mm going<span class="caret"></span></div></div>`;
+  setTimeout(()=>{
+    extra.innerHTML +=
+     `<div class="msg l fresh"><span class="who">Ludwig</span>
+        <div class="body"><span class="chk">✓</span><span>edited — 1 dim changed</span>
+          <span class="meta">· minimal diff · section + plan re-derived</span></div></div>`;
+    const c=document.querySelector("#intent-extra .caret"); if(c) c.remove();
+  },520);
+  document.getElementById("sync-stage").classList.add("live");
+  document.getElementById("sync-sheet").classList.add("live");
+  animateGoing(going,320,820,()=>{
+    document.getElementById("tb-rev").textContent="B";
+    showToast("section · plan · 3D re-derived from one edit");
+    setTimeout(()=>{ document.getElementById("sync-stage").classList.remove("live");
+                     document.getElementById("sync-sheet").classList.remove("live"); },1400);
+  });
+}
+function animateGoing(from,to,dur,done){
+  const t0=performance.now();
+  function step(now){
+    const u=Math.min(1,(now-t0)/dur);
+    const e=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;             // easeInOut
+    going=Math.round((from+(to-from)*e)/5)*5;
+    updateAll();
+    if(u<1) requestAnimationFrame(step); else { going=to; updateAll(); if(done) done(); }
+  }
+  requestAnimationFrame(step);
+}
+let toastTimer;
+function showToast(msg){
+  const t=document.getElementById("toast");
+  document.getElementById("toast-msg").textContent=msg;
+  t.classList.add("show"); clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove("show"),2600);
+}
+
+/* --------------------------- wiring ----------------------------------------- */
+document.getElementById("going").addEventListener("input",e=>{ going=+e.target.value; updateAll(); });
+document.getElementById("reprompt").addEventListener("click",reprompt);
+document.getElementById("reset").addEventListener("click",()=>{ going=280; updateAll();
+  document.getElementById("intent-extra").innerHTML=""; document.getElementById("tb-rev").textContent="A"; });
+updateAll();
+</script>
+</body>
+</html>
