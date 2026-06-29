@@ -6,7 +6,10 @@ never imports at module load. Grow this from real use, never speculatively (prin
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
+
+if TYPE_CHECKING:
+    from ir.feature import FeatureGraph
 
 
 @dataclass
@@ -87,6 +90,9 @@ class Element:
     provenance: Optional[ProgramNode] = None
     features: list = field(default_factory=list)
     children: list = field(default_factory=list)
+    # R2: feature graph recorded by toolkit/elements.py when recording() context is active.
+    # Default None — additive, zero behavior change when recording is off ([H1]).
+    graph: Optional[FeatureGraph] = None
 
     def __post_init__(self) -> None:
         self.crystallization = _clamp01(self.crystallization)

@@ -44,6 +44,43 @@ def selftest() -> int:
     b.provenance = ProgramNode(node_id="bracket", source_span=(1, 12))
     check("provenance is a ProgramNode", isinstance(b.provenance, ProgramNode))
 
+    # Feature graph recorder — R2 gate (pure-Python, kernel-free).
+    # Builds the bracket recipe under recording() and asserts stable node ids + correct params.
+    from ir.feature import FeatureGraph, FeatureNode
+    from toolkit.elements import recording as _recording
+    from toolkit import clearance_hole as _clearance_hole
+
+    def _build_bracket_graph():
+        with _recording() as _g:
+            _b = box("_bracket_r2", 80, 40, 6)
+            _clearance_hole(_b, "M8", (-25, 0))
+            _clearance_hole(_b, "M8", (25, 0))
+        return _g
+
+    _g1 = _build_bracket_graph()
+    _g2 = _build_bracket_graph()
+
+    check("feature graph: 3 nodes (box + 2 clearance holes)",
+          len(_g1.nodes) == 3,
+          f"got {len(_g1.nodes)}: {[n.node_id for n in _g1.nodes]}")
+    check("feature graph: ids box#1 / hole#1 / hole#2",
+          [n.node_id for n in _g1.nodes] == ["box#1", "hole#1", "hole#2"],
+          f"got {[n.node_id for n in _g1.nodes]}")
+    check("feature graph: box params 80x40x6 mm",
+          _g1.nodes[0].params.get("length") == 80
+          and _g1.nodes[0].params.get("width") == 40
+          and _g1.nodes[0].params.get("height") == 6,
+          f"box params={_g1.nodes[0].params}")
+    check("feature graph: M8 clearance holes -> dia 9.0 mm",
+          _g1.nodes[1].params.get("diameter") == 9.0
+          and _g1.nodes[2].params.get("diameter") == 9.0,
+          f"diameters={_g1.nodes[1].params.get('diameter')}, {_g1.nodes[2].params.get('diameter')}")
+    check("feature graph: ids lineage-stable across independent builds",
+          [n.node_id for n in _g1.nodes] == [n.node_id for n in _g2.nodes],
+          f"run1={[n.node_id for n in _g1.nodes]} run2={[n.node_id for n in _g2.nodes]}")
+    check("feature graph: recording OFF by default (unrecorded box has graph=None)",
+          box("_no_record", 10, 10, 10).graph is None)
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:
