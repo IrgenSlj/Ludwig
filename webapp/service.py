@@ -56,6 +56,26 @@ def _substitute_unique_literal(program: str, old: float, new: float) -> Optional
     return program[:m.start()] + txt + program[m.end():]
 
 
+def _substitute_all_literals(program: str, old: float, new: float) -> Optional[str]:
+    """Replace EVERY standalone code occurrence of `old` with `new` (comments excluded).
+
+    Unlike `_substitute_unique_literal`, this handles the common case where one physical extent is
+    echoed — `box(..., 120, ...)` AND `register_dim("plate_length", 120)` — which must move together.
+    The caller guards against a coincidental same-valued literal by re-measuring the intended axis
+    after the rebuild. Returns None if `old` never occurs in code. Preserves int/float spelling."""
+    comments = _comment_regions(program)
+    in_comment = lambda pos: any(a <= pos < b for a, b in comments)  # noqa: E731
+    spans = [m for m in _NUM.finditer(program)
+             if abs(float(m.group()) - old) < 1e-9 and not in_comment(m.start())]
+    if not spans:
+        return None
+    out = program
+    for m in reversed(spans):  # right-to-left so earlier spans' offsets stay valid
+        txt = str(float(new)) if "." in m.group() else str(int(new))
+        out = out[:m.start()] + txt + out[m.end():]
+    return out
+
+
 def _try_fast_edit(program: str, name: str, old: float, new: float, out: Path) -> Optional[dict]:
     """Deterministic, no-LLM parametric tweak for a single extent dim. Substitute the literal,
     re-execute, and ACCEPT only if the intended axis now measures `new` and the solid is valid/
@@ -64,17 +84,26 @@ def _try_fast_edit(program: str, name: str, old: float, new: float, out: Path) -
     axis = _EXTENT_AXIS.get(name)
     if axis is None:
         return None
-    new_program = _substitute_unique_literal(program, old, new)
-    if new_program is None:
-        return None
     from agent.loop import Brief, LoopResult, execute, verify
-    el, err = execute(new_program)
-    if err or el is None:
-        return None
     from geometry import GeometryService
     from toolkit.standards import tol_linear
-    if abs(GeometryService().bbox(el.geometry)[axis] - new) > max(tol_linear(), 1e-3):
-        return None  # the literal we changed didn't drive this axis as intended → fall back
+    g = GeometryService()
+    orig, _e = execute(program)  # baseline extents, to confirm ONLY the intended axis moves
+    if orig is None or orig.geometry is None:
+        return None
+    orig_bb = g.bbox(orig.geometry)
+    new_program = _substitute_all_literals(program, old, new)  # move all echoes of this value together
+    if new_program is None:
+        return None
+    el, err = execute(new_program)
+    if err or el is None or el.geometry is None:
+        return None
+    bb, tol = g.bbox(el.geometry), max(tol_linear(), 1e-3)
+    # the target axis must become `new`; every OTHER extent must be unchanged. This rejects a coincidental
+    # same-valued literal AND a square (editing length when length==width would move both) → fall back to LLM.
+    for i in range(3):
+        if abs(bb[i] - (new if i == axis else orig_bb[i])) > tol:
+            return None
     crit = verify(el, Brief(prompt=""))
     if not crit.passed:
         return None
@@ -296,5 +325,57 @@ def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = No
     return result
 
 
+def preview_edit(program: str, name: str, old: float, new: float) -> dict:
+    """Geometry-only LIVE preview for a slider drag — the direct-manipulation path.
+
+    Substitute the literal, re-execute IN-PROCESS, tessellate, and return the mesh + critic. It writes
+    NO files and runs NO backends (no STEP/IFC/DXF/PNG) — that is what makes it instant, so the 3D
+    model updates continuously under the slider like a Grasshopper/Rhino parameter, instead of paying
+    the full fabrication-export cost on every tick. The real `edit_to_result` (with the fab gate +
+    minimal-diff provenance) runs once, on release. Returns {"ok": False, ...} when the change can't be
+    applied cleanly, so the UI simply keeps the last good mesh rather than flickering."""
+    new_program = _substitute_all_literals(program, old, new)
+    if new_program is None:
+        return {"ok": False, "reason": "literal-not-found"}
+    from agent.loop import Brief, execute, verify
+    el, err = execute(new_program)
+    if err or el is None or el.geometry is None:
+        return {"ok": False, "reason": err or "no-geometry"}
+    from geometry import GeometryService
+    g = GeometryService()
+    try:
+        length, width, height = g.bbox(el.geometry)
+    except Exception as e:
+        return {"ok": False, "reason": f"{type(e).__name__}: {e}"}
+    axis = _EXTENT_AXIS.get(name)  # for an extent dim, confirm the substitution drove the intended axis
+    if axis is not None:
+        from toolkit.standards import tol_linear
+        if abs((length, width, height)[axis] - new) > max(tol_linear(), 1e-3):
+            return {"ok": False, "reason": "axis-mismatch"}
+    out: dict = {"ok": True, "id": el.id, "type": el.type, "dims": _dims(el.manifest),
+                 "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)},
+                 "mesh": None, "children": [], "critic": []}
+    try:
+        out["mesh"] = g.tessellate(el.geometry)
+    except Exception as e:
+        return {"ok": False, "reason": f"{type(e).__name__}: {e}"}
+    for c in getattr(el, "children", []) or []:  # assemblies: one selectable mesh per child, as in _assemble
+        child = {"id": c.id, "type": c.type, "mesh": None}
+        if c.geometry is not None:
+            try:
+                child["mesh"] = g.tessellate(c.geometry)
+            except Exception:
+                child["mesh"] = None
+        out["children"].append(child)
+    crit = verify(el, Brief(prompt=""))  # so Ambient Correctness repaints live (amber the moment it leaves spec)
+    out["critic"] = [
+        {"check": c.check, "status": c.status.value, "message": c.message,
+         "element_id": getattr(c, "element_id", None),
+         "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
+        for c in (crit.checks if crit else [])
+    ]
+    return out
+
+
 __all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
-           "_variant_payload", "OUT"]
+           "preview_edit", "_variant_payload", "OUT"]

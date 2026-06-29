@@ -93,7 +93,7 @@ class Handler(BaseHTTPRequestHandler):
             event({"event": "error", "fatal": f"{type(e).__name__}: {e}"})
 
     def do_POST(self) -> None:
-        if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt"):
+        if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt", "/api/preview"):
             self._send(404, b"not found", "text/plain")
             return
         n = int(self.headers.get("Content-Length", 0))
@@ -118,6 +118,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("adopt needs a `program`")
                 from webapp.service import adopt_to_result
                 result = adopt_to_result(program)
+            elif self.path == "/api/preview":  # live direct-manipulation: geometry-only, no files/backends
+                program = req.get("program") or ""
+                param = req.get("param") or {}
+                if not program or not {"name", "old", "new"} <= set(param):
+                    raise ValueError("preview needs `program` and param{name, old, new}")
+                from webapp.service import preview_edit
+                result = preview_edit(program, param["name"], float(param["old"]), float(param["new"]))
             else:  # /api/edit — re-prompt an existing program into a minimal diff (S6)
                 program = req.get("program") or ""
                 instruction = (req.get("instruction") or "").strip()

@@ -325,7 +325,8 @@ function buildSolid(mesh) {
 }
 
 // Render the result: an Assembly's children become one selectable solid each; a plain Part is one.
-function showGeometry(d) {
+function showGeometry(d, opts) {
+  opts = opts || {};
   if (partGroup) { scene.remove(partGroup); partGroup = null; }
   if (grid) { scene.remove(grid); grid = null; }
   childMats = {};
@@ -351,7 +352,7 @@ function showGeometry(d) {
   scene.add(gh); grid = gh;
 
   applyAmbient(d);   // paint the critic's verdict onto the solid before framing (Ambient Correctness)
-  fitView();   // always re-frame from the actual bounds — new geometry, grown part, any size
+  if (opts.refit !== false) fitView();   // re-frame on commit; a live preview drag keeps the camera put
 }
 
 // Select one element: brighten it (keeping its critic colour), fade the rest. id===null clears it.
@@ -648,18 +649,46 @@ function buildParams(d) {
   if (!d.id || !editable.length) {
     box.innerHTML = '<span class="muted" style="font-size:12.5px">no slider-editable extents</span>'; return;
   }
+  const valCount = {};                                   // a value shared by two extents (a square) can't be
+  editable.forEach(x => { valCount[x.value] = (valCount[x.value] || 0) + 1; });  // disambiguated by literal
   editable.forEach(x => {
     const lo = Math.max(1, Math.round(x.value * 0.4)), hi = Math.max(lo + 1, Math.round(x.value * 2.2));
     const el = document.createElement("div"); el.className = "param";
     el.innerHTML = '<div class="top"><span class="name">'+x.name+'</span><span class="val">'+x.value+' '+x.unit+'</span></div>'
       + '<input type="range" min="'+lo+'" max="'+hi+'" step="1" value="'+x.value+'">';
     const range = el.querySelector("input"), val = el.querySelector(".val");
-    range.addEventListener("input", () => { val.textContent = range.value + " " + x.unit; });
-    range.addEventListener("change", () => applyEdit(
+    const canPreview = valCount[x.value] === 1;          // unique value → literal substitution is unambiguous
+    range.addEventListener("input", () => {
+      val.textContent = range.value + " " + x.unit;
+      if (canPreview) livePreview({ name: x.name, old: x.value, new: Number(range.value) });  // live geometry — no LLM/files
+    });
+    range.addEventListener("change", () => applyEdit(                          // release: commit + fab export
       "make the " + x.name + " " + range.value + " mm",
       { name: x.name, old: x.value, new: Number(range.value) }));
     box.appendChild(el);
   });
+}
+
+// ---- live direct-manipulation: a slider drag previews geometry in real time (no LLM, no files) ----
+// /api/preview calls are COALESCED — at most one in flight, always rendering the latest value — so a
+// fast drag stays smooth. Release (`change`) runs the real edit + fab export via applyEdit.
+let _previewInFlight = false, _previewPending = null;
+function livePreview(param) {
+  if (!LAST || !LAST.program) return;
+  _previewPending = param;
+  if (!_previewInFlight) pumpPreview();
+}
+async function pumpPreview() {
+  if (_previewPending == null) { _previewInFlight = false; return; }
+  _previewInFlight = true;
+  const param = _previewPending; _previewPending = null;
+  try {
+    const r = await fetch("/api/preview", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ program: LAST.program, param }) });
+    const d = await r.json();
+    if (d && d.ok) showGeometry(d, { refit:false });   // swap the mesh in place; keep the camera put
+  } catch (e) { /* drop this frame, keep the last good mesh */ }
+  pumpPreview();   // immediately service the latest pending value
 }
 
 async function applyEdit(instruction, param) {
