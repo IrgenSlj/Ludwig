@@ -190,7 +190,7 @@
       <div class="rail-b" id="ltab-tools">
         <div class="seclbl">3D</div>
         <div class="toolgrid">
-          <button class="tool on" data-tool="stair"><span class="ic">▟</span>Stair</button>
+          <button class="tool" data-tool="stair"><span class="ic">▟</span>Stair</button>
           <button class="tool" data-tool="box"><span class="ic">▢</span>Box</button>
           <button class="tool" data-tool="extrude"><span class="ic">⬓</span>Extrude</button>
           <button class="tool" data-tool="boolean"><span class="ic">◑</span>Boolean</button>
@@ -221,7 +221,7 @@
     <!-- VIEWPORT -->
     <section class="stage">
       <canvas id="view"></canvas>
-      <div class="vp-badge" id="badge">Stair · straight flight</div>
+      <div class="vp-badge" id="badge">no model — loading…</div>
       <div class="vp-units">mm · Z-up</div>
       <div class="vp-tools">
         <button class="btn" data-view="iso">Iso</button>
@@ -245,13 +245,13 @@
   <footer>
     <div class="foot-h">
       <span class="ttl">Agent &amp; command line</span>
-      <span class="hint" id="foot-hint">type a command — e.g. <b>going 320</b> · or <b>help</b></span>
+      <span class="hint" id="foot-hint">type a command — e.g. <b>iso</b> · <b>ortho</b> · or <b>help</b></span>
     </div>
     <div class="log" id="log"></div>
     <div class="cli">
       <span class="prefix" id="cli-prefix">›</span>
       <input id="cli" autocomplete="off" spellcheck="false"
-             placeholder="command (going 320 · iso · ortho) — or describe a change for the agent…">
+             placeholder="command (iso · top · front · ortho · persp · fit) — or describe a change for the agent…">
       <button class="send" id="cli-send">Run</button>
     </div>
   </footer>
@@ -281,7 +281,7 @@ function sizeView(){
   renderer.setSize(r.width, r.height);
   persp.aspect = r.width/Math.max(r.height,1); persp.updateProjectionMatrix();
 }
-function frame(dir){                                   // fit the model; optional view direction
+function frame(dir){
   if(!model) return;
   sizeView();
   const box = new THREE.Box3().setFromObject(model);
@@ -293,7 +293,6 @@ function frame(dir){                                   // fit the model; optiona
   let dist = radius/Math.sin(fov/2); if(persp.aspect<1) dist/=persp.aspect; dist*=1.3;
   persp.position.copy(c).addScaledVector(d, dist);
   persp.near = Math.max(dist/1000,0.01); persp.far = dist*100; persp.updateProjectionMatrix();
-  // ortho framed to the same bounds
   const s = radius*1.35, a = persp.aspect;
   ortho.left=-s*a; ortho.right=s*a; ortho.top=s; ortho.bottom=-s;
   ortho.position.copy(c).addScaledVector(d, dist); ortho.near=0.01; ortho.far=dist*100; ortho.updateProjectionMatrix();
@@ -305,82 +304,127 @@ controls.addEventListener("start", ()=>{ userMoved=true; });
 canvas.addEventListener("dblclick", ()=>frame());
 (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, cam); })();
 
-/* ===================== the live parametric model (a stair) ===================== */
-const P = { floor:3000, risers:18, going:280, width:1000 };
-const MAT = new THREE.MeshStandardMaterial({ color:0xc7c2b6, metalness:0.05, roughness:0.78, flatShading:true });
-const SLAB = new THREE.MeshStandardMaterial({ color:0xbdb8ac, metalness:0.04, roughness:0.82, flatShading:true });
-const EDGE = new THREE.LineBasicMaterial({ color:0x2b2824 });
-function blk(sx,sy,sz, cx,cy,cz, mat){
-  const g = new THREE.BoxGeometry(sx,sy,sz);
-  const grp = new THREE.Group();
-  const m = new THREE.Mesh(g, mat); grp.add(m);
-  grp.add(new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), EDGE));
-  grp.position.set(cx,cy,cz); return grp;
-}
-function buildStair(){
+/* ===================== geometry: real OCCT B-rep (ported from index.html) ===================== */
+
+function buildSolid(mesh) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(mesh.positions, 3));
+  geo.setIndex(mesh.indices);
+  geo.computeVertexNormals();
   const g = new THREE.Group();
-  const rh = P.floor/P.risers, nG = P.risers-1, run = nG*P.going, w = P.width;
-  for(let i=0;i<nG;i++){                                // solid stepped flight: block i full height to its tread
-    const h = (i+1)*rh;
-    g.add(blk(P.going, w, h, i*P.going + P.going/2, 0, h/2, MAT));
+  const mat = new THREE.MeshStandardMaterial({ color:0xb8b2a6, metalness:0.25, roughness:0.62, flatShading:true });
+  g.add(new THREE.Mesh(geo, mat));
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 24), new THREE.LineBasicMaterial({ color:0x2b2824 })));
+  return { group: g, mat };
+}
+
+function showGeometry(d, opts) {
+  opts = opts || {};
+  if (model) { scene.remove(model); model = null; }
+  if (grid)  { scene.remove(grid);  grid  = null; }
+
+  const has = m => m && m.positions && m.positions.length;
+  const solids = (d.children && d.children.length)
+    ? d.children.filter(c => has(c.mesh)).map(c => ({ id: c.id, mesh: c.mesh }))
+    : (has(d.mesh) ? [{ id: d.id, mesh: d.mesh }] : []);
+  if (!solids.length) return;
+
+  model = new THREE.Group();
+  for (const s of solids) {
+    const b = buildSolid(s.mesh);
+    b.group.userData.elementId = s.id;
+    model.add(b.group);
   }
-  g.add(blk(1500, w, 240, -750, 0, -120, SLAB));        // lower floor
-  g.add(blk(1500, w, 240, run+750, 0, P.floor-120, SLAB)); // upper floor
-  return g;
-}
-function rebuild(refit){
-  if(model) scene.remove(model);
-  model = buildStair(); scene.add(model);
-  if(grid) scene.remove(grid);
-  const run = (P.risers-1)*P.going;
-  grid = new THREE.GridHelper(Math.max(run, P.floor)*2.2, 24, 0xb9b3a8, 0xccc6bb);
-  grid.rotation.x = Math.PI/2; grid.position.set(run/2, 0, -240); scene.add(grid);
-  if(refit!==false && !userMoved) frame();
-  syncProps(); syncCompliance();
+  scene.add(model);
+
+  const box = new THREE.Box3().setFromObject(model);
+  const c   = box.getCenter(new THREE.Vector3());
+  const R   = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 1);
+  const gh  = new THREE.GridHelper(R * 4, 20, 0xcfc9bf, 0xdedacf);
+  gh.rotation.x = Math.PI / 2;
+  gh.position.set(c.x, c.y, box.min.z - 0.5);
+  scene.add(gh); grid = gh;
+
+  if (opts.refit !== false) { userMoved=false; frame(); }
 }
 
-/* ===================== right rail: properties (instant, precise) ===================== */
-const FIELDS = [
-  {k:"floor",  label:"Floor-to-floor", min:2400, max:4000, step:10},
-  {k:"risers", label:"Risers",         min:10,   max:26,   step:1},
-  {k:"going",  label:"Going",          min:220,  max:360,  step:5},
-  {k:"width",  label:"Width",          min:800,  max:1600, step:10},
-];
-function buildProps(){
-  const box = $("#props"); box.innerHTML="";
-  FIELDS.forEach(f=>{
-    const el = document.createElement("div"); el.className="prop";
-    el.innerHTML =
-      `<div class="lbl"><span class="nm">${f.label}</span><span class="unit">${f.k==="risers"?"count":"mm"}</span></div>
-       <div class="row">
-         <input type="number" id="n-${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" value="${P[f.k]}">
-         <input type="range" id="r-${f.k}" min="${f.min}" max="${f.max}" step="${f.step}" value="${P[f.k]}">
-       </div>`;
-    box.appendChild(el);
-    const n=el.querySelector(`#n-${f.k}`), r=el.querySelector(`#r-${f.k}`);
-    const set=v=>{ v=Math.max(f.min,Math.min(f.max, +v||P[f.k])); P[f.k]=v; n.value=v; r.value=v; rebuild(false); };
-    r.addEventListener("input", ()=>set(r.value));     // drag = live
-    n.addEventListener("change", ()=>set(n.value));    // exact entry
-  });
-  const v=document.createElement("div"); v.className="verdict"; v.id="verdict"; box.appendChild(v);
-}
-function syncProps(){ FIELDS.forEach(f=>{ const n=$(`#n-${f.k}`),r=$(`#r-${f.k}`); if(n){n.value=P[f.k];r.value=P[f.k];} }); }
-function compliance(){
-  const rh=P.floor/P.risers, tworg=2*rh+P.going, pitch=Math.atan2(rh,P.going)*180/Math.PI;
-  const ok = tworg>=550 && tworg<=700 && rh<=190 && P.going>=250 && pitch<=38;     // AD K, general access
-  return {rh,tworg,pitch,ok};
-}
-function syncCompliance(){
-  const c=compliance(), v=$("#verdict"); if(!v) return;
-  const col = c.ok? "var(--ok)" : "var(--warn)";
-  v.innerHTML =
-    `<span class="dot" style="background:${col}"></span><b>${c.ok?"Within Approved Doc K":"Outside AD K"}</b> · general access
-     <div class="mono" style="color:var(--muted);margin-top:5px">
-       riser ${c.rh.toFixed(1)} · 2R+G ${c.tworg.toFixed(0)} (550–700) · pitch ${c.pitch.toFixed(1)}° (≤38)</div>`;
-  $("#badge").textContent = `Stair · ${P.risers}R · ${P.going} going` + (c.ok? "" : " · ⚠ AD K");
+/* ===================== window.LUDWIG seam (token-free test injection) ===================== */
+const STATE = { program: null, payload: null };
+
+function render(payload) {
+  if (!payload || (!payload.mesh && !(payload.children && payload.children.length))) {
+    emptyStage("no model — start the engine");
+    return;
+  }
+  showGeometry(payload);
+  STATE.payload = payload;
+  STATE.program = payload.program || null;
+
+  const id   = payload.id   || "model";
+  const type = payload.type || "";
+  const bb   = payload.bbox;
+  const bbtxt = bb ? ` · ${bb.length}×${bb.width}×${bb.height} mm` : "";
+  $("#badge").textContent = `${type || id}${bbtxt}`;
+
+  const props = $("#props");
+  props.innerHTML = "";
+  if (payload.dims && payload.dims.length) {
+    payload.dims.forEach(d => {
+      const el = document.createElement("div"); el.className = "prop";
+      el.innerHTML =
+        `<div class="lbl"><span class="nm">${d.name}</span><span class="unit">${d.unit||"mm"}</span></div>
+         <div class="row"><span style="font-family:var(--mono);font-size:13px">${d.value}</span></div>`;
+      props.appendChild(el);
+    });
+  } else {
+    props.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">— sliders coming in R5</div>';
+  }
 }
 
-/* ===================== footer: command line (real) + agent lane (stubbed, honest) ===================== */
+function emptyStage(msg) {
+  if (model) { scene.remove(model); model = null; }
+  if (grid)  { scene.remove(grid);  grid  = null; }
+  $("#badge").textContent = msg || "no model";
+  $("#props").innerHTML =
+    `<div style="color:var(--muted);font-size:12px;padding:8px 0">${msg || "no model"}</div>`;
+}
+
+window.LUDWIG = { render, state: STATE };
+
+/* ===================== seed boot via /api/adopt (token-free) ===================== */
+const SEED_PROGRAM = [
+  "import cadquery as cq",
+  "from toolkit import box, clearance_hole",
+  "",
+  "element = box(\"bracket\", 80, 40, 6)",
+  "element.register_dim(\"length\", 80)",
+  "element.register_dim(\"width\", 40)",
+  "element.register_dim(\"height\", 6)",
+  "clearance_hole(element, \"M8\", (30, 13))",
+  "clearance_hole(element, \"M8\", (-30, -13))",
+].join("\n");
+
+async function bootModel() {
+  try {
+    const resp = await fetch("/api/adopt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ program: SEED_PROGRAM }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const d = await resp.json();
+    if (d.fatal) throw new Error(d.fatal);
+    render(d);
+    const bb = d.bbox ? `${d.bbox.length}×${d.bbox.width}×${d.bbox.height} mm` : "?";
+    log("sys", `adopted bracket — ${d.id||"?"} · ${d.type||"?"} · ${bb}`, "ok");
+  } catch (e) {
+    emptyStage("no model — start the engine");
+    log("sys", "Engine not available. Start the server with: .venv/bin/python cli.py --serve", "warn");
+    log("sys", `detail: ${e.message}`, "warn");
+  }
+}
+
+/* ===================== footer: command line + agent lane (stubbed) ===================== */
 function log(who, msg, cls){
   const l=$("#log"); const d=document.createElement("div"); d.className="ln";
   d.innerHTML=`<span class="who ${who}">${who}</span><span class="msg ${cls||""}"></span>`;
@@ -395,35 +439,24 @@ function setCam(which){
   $("#cam-ortho").classList.toggle("on", which==="ortho");
   frame(); controls.update();
 }
-const PARAM_ALIAS={ going:"going", riser:"risers", risers:"risers", width:"width", floor:"floor", "floor-to-floor":"floor", ftf:"floor" };
 function runCommand(raw){
   const s=raw.trim(); if(!s) return;
   log("you", s);
-  const [cmd,...rest]=s.split(/\s+/); const arg=rest.join(" "); const k=cmd.toLowerCase();
-  // parametric set: "going 320" / "risers 20"
-  if(PARAM_ALIAS[k] && rest.length){
-    const key=PARAM_ALIAS[k], val=parseFloat(rest[0]);
-    if(isNaN(val)){ log("sys","need a number, e.g. "+key+" 300","err"); return; }
-    P[key]=val; rebuild(false);
-    const c=compliance();
-    log("sys", `${key} = ${val}${key==="risers"?"":" mm"} — rebuilt`, "ok");
-    if(!c.ok) log("sys", `note: now outside Approved Doc K (general access)`, "warn");
-    return;
-  }
+  const [cmd,...rest]=s.split(/\s+/); const k=cmd.toLowerCase();
   if(VIEWDIR[k]){ setView(k); log("sys","view: "+k); return; }
   if(k==="ortho"||k==="persp"){ setCam(k); log("sys","camera: "+k); return; }
   if(k==="fit"||k==="home"){ userMoved=false; frame(); log("sys","framed"); return; }
   if(k==="left"){ document.body.classList.toggle("no-left"); log("sys","left rail toggled"); return; }
   if(k==="right"){ document.body.classList.toggle("no-right"); log("sys","right rail toggled"); return; }
   if(k==="help"){
-    log("sys","commands: <param> <n>  (going/risers/width/floor) · iso/top/front/right · ortho/persp · fit · left/right · help");
-    log("sys","anything else is routed to the agent (not wired yet).");
+    log("sys","view: iso · top · front · back · right · left · bottom");
+    log("sys","camera: ortho · persp · fit");
+    log("sys","rails: left · right");
+    log("sys","anything else routes to the agent (wiring in R4/R6).");
     return;
   }
-  // not a command → the agent lane (honest stub, no faked AI)
-  log("agent", "Engine wiring is next — I don't act yet. I'd translate \""+s+"\" into model ops "
-      +"(e.g. set going, add a landing, fillet an edge) and show them here for you to accept. "
-      +"For now drive it directly: try `help`.", "warn");
+  log("agent", "Agent wiring comes in R4/R6. I'd translate \""+s+"\" into model ops "
+      +"and show them here for you to accept. For now use view commands — try `help`.", "warn");
 }
 
 /* ===================== wiring ===================== */
@@ -445,7 +478,7 @@ document.querySelectorAll("[data-ltab]").forEach(t=> t.addEventListener("click",
 }));
 document.querySelectorAll(".tool").forEach(t=> t.addEventListener("click", ()=>{
   tagActive(".tool", t);
-  if(t.dataset.tool!=="stair") log("sys", t.dataset.tool+" tool — not wired yet (shell). Stair is the live model.","warn");
+  log("sys", t.dataset.tool+" tool — not wired yet (R3+).", "warn");
 }));
 ["b-new","b-open","b-save"].forEach(id=> $("#"+id).addEventListener("click",
   ()=> log("sys", id.slice(2)+" — file ops not wired yet (shell).","warn")));
@@ -454,10 +487,10 @@ $("#cli-send").onclick=()=>{ runCommand(cli.value); cli.value=""; };
 cli.addEventListener("keydown", e=>{ if(e.key==="Enter"){ runCommand(cli.value); cli.value=""; } });
 
 /* ===================== boot ===================== */
-buildProps(); rebuild(); setView("iso");
-log("sys", "Ludwig Studio — shell. The stair is a real parametric model: it rebuilds instantly from the "
-   +"Properties fields or commands below. No compile, no LLM in the geometry path.");
-log("sys", "Try: going 320 · risers 20 · ortho · top · help");
+bootModel();
+setView("iso");
+log("sys", "Ludwig Studio (R1) — fetching real OCCT B-rep via /api/adopt…");
+log("sys", "Commands: iso · top · front · ortho · persp · fit · left · right · help");
 </script>
 </body>
 </html>
