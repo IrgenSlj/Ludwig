@@ -105,6 +105,30 @@ def selftest() -> int:
         rate, _ = harness.run(reference.build)
         check("eval pass-rate harness reports 100% on the oracle", rate == 1.0, f"got {rate:.2f}")
 
+        # R3 — deterministic params→geometry evaluator parity (DAG-EVAL). For every graph-expressible
+        # frozen brief, the NO-LLM evaluator (replaying the recorded FeatureGraph onto GeometryService)
+        # must match the closure oracle on bbox / cylindrical-face count / validity within the gate.
+        from geometry.evaluator import evaluate, is_graph_expressible
+        from toolkit.elements import recording
+        _expr, _skipped = [], []
+        for _brief in BRIEFS:
+            with recording() as _gr:
+                _oracle = reference.build(_brief)   # ops recorded as a side-effect of the oracle build
+            if not is_graph_expressible(_gr):
+                _skipped.append(_brief["id"])
+                continue
+            _ev = evaluate(_gr)
+            _ob, _eb = g.bbox(_oracle.geometry), g.bbox(_ev)
+            _ok = (all(abs(a - b) <= tol for a, b in zip(_ob, _eb))
+                   and g.cylindrical_face_count(_ev) == g.cylindrical_face_count(_oracle.geometry)
+                   and g.is_valid(_ev))
+            _expr.append(_brief["id"])
+            check(f"evaluator parity · {_brief['id']}", _ok,
+                  f"oracle {tuple(round(x, 3) for x in _ob)} vs eval {tuple(round(x, 3) for x in _eb)}")
+        check("evaluator: ≥6 briefs graph-expressible", len(_expr) >= 6, f"expressible={_expr}")
+        print(f"  [info] evaluator parity: {len(_expr)} graph-expressible {_expr} · "
+              f"{len(_skipped)} fall back to text-substitution {_skipped}")
+
         import tempfile
         from backends import step as step_backend
         with tempfile.TemporaryDirectory() as td:
