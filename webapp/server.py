@@ -129,13 +129,22 @@ class Handler(BaseHTTPRequestHandler):
             if not safety.is_safe_derivative(program, gallery.programs()):
                 raise PermissionError("program rejected — the public demo only runs the gallery seeds "
                                       "with their dimensions changed (no arbitrary code).")
+            if not safety.within_envelope(program):   # block giant/non-finite dims (tessellation DoS)
+                raise PermissionError("dimensions out of range — keep edits within a sane physical size.")
         return program
 
     def do_POST(self) -> None:
         if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt", "/api/preview"):
             self._send(404, b"not found", "text/plain")
             return
-        n = int(self.headers.get("Content-Length", 0))
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            self._send(400, b"bad content-length", "text/plain")
+            return
+        if n > 262_144:   # 256 KB — a seed + numeric edits is tiny; refuse multi-GB body DoS
+            self._send(413, b"request too large", "text/plain")
+            return
         try:
             req = json.loads(self.rfile.read(n) or b"{}")
             if self.path in ("/api/compile", "/api/explore"):
@@ -173,7 +182,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not instruction:
                     raise ValueError("edit needs an `instruction`")
                 from webapp.service import edit_to_result
-                result = edit_to_result(program, instruction, param=param, rounds=int(req.get("rounds", 1)))
+                result = edit_to_result(program, instruction, param=param,
+                                        rounds=min(int(req.get("rounds", 1)), 5),  # cap the repair-loop amplifier
+                                        allow_llm=not DEMO)   # demo: never exec model-authored code
             self._send(200, json.dumps(result).encode(), "application/json")
         except Exception as e:  # never 500 silently — the UI shows the reason
             self._send(200, json.dumps({"fatal": f"{type(e).__name__}: {e}"}).encode(),

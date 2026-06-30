@@ -398,14 +398,19 @@ def compile_to_result(prompt: str, *, candidates: int = 1, rounds: int = 2,
 
 
 def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = None,
-                   rounds: int = 1, out: Optional[Path] = None) -> dict:
+                   rounds: int = 1, out: Optional[Path] = None, allow_llm: bool = True) -> dict:
     """Re-prompt an existing program with a change, aiming for a MINIMAL diff (the editability thesis,
     S6). Returns the same shape as compile_to_result plus `diff` (+added/-removed line counts and the
     unified diff) so the UI can show that an edit is a surgical change, not a rewrite ([H2] lineage).
 
     When `param={name, old, new}` is supplied (a slider drag on an extent dim), a deterministic
     no-LLM fast-path is tried first; it falls through to the LLM edit if the change is ambiguous or
-    doesn't verify. `result["fast"]` flags which path ran."""
+    doesn't verify. `result["fast"]` flags which path ran.
+
+    `allow_llm=False` (the public demo) FORBIDS the inference fallback: if the deterministic path can't
+    apply, return a clean rejection rather than exec'ing model-authored, un-gated code. Without this a
+    well-formed param whose dim isn't a deterministic extent (e.g. `diameter`) would reach the LLM
+    exec() path, defeating the demo's RCE gate entirely."""
     from agent.loop import edit
 
     out = Path(out) if out is not None else OUT
@@ -418,6 +423,10 @@ def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = No
         if fast is not None:
             fast["instruction"] = instruction
             return fast
+    if not allow_llm:   # demo: never exec model-authored code — the deterministic path didn't apply
+        return {"fatal": "this change needs generation, which is disabled in the public demo. Drag a "
+                         "dimension instead, or run Ludwig locally with your own AI key.",
+                "instruction": instruction, "fast": False}
     res = edit(program, instruction, rounds=rounds)
     result = _assemble(res, out)
     result["instruction"] = instruction

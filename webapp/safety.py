@@ -11,8 +11,29 @@ rejected before it can run.
 from __future__ import annotations
 
 import ast
+import math
 
 _MAX_PROGRAM_CHARS = 8000   # a seed + numeric edits is tiny; cap to blunt parser-DoS attempts
+_MAX_ABS_DIM = 50_000.0     # mm (50 m) — every real part/element fits; blocks DoS via giant dims
+                            # (a numeric-only derivative passes is_safe_derivative but huge radii blow
+                            # up OCCT tessellation into millions of facets → unbounded CPU/mem/JSON).
+
+
+def within_envelope(program: str, max_abs: float = _MAX_ABS_DIM) -> bool:
+    """True iff every numeric literal in `program` is FINITE and |value| <= max_abs. Rejects inf/nan
+    (e.g. `1e400`) and pathologically large dimensions that survive the structural gate but explode
+    tessellation. Defence-in-depth alongside is_safe_derivative."""
+    try:
+        tree = ast.parse(program)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
+                and not isinstance(node.value, bool):
+            v = float(node.value)
+            if not math.isfinite(v) or abs(v) > max_abs:
+                return False
+    return True
 
 
 def _normalize(program: str) -> str:
@@ -46,4 +67,4 @@ def is_safe_derivative(program: str, seed_programs) -> bool:
     return False
 
 
-__all__ = ["is_safe_derivative"]
+__all__ = ["is_safe_derivative", "within_envelope"]
