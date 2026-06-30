@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ludwig Studio</title>
 <!--
-  Ludwig Studio — the rebuilt app shell (first cut of the "instant agentic CAD" direction).
+  Ludwig Studio — the rebuilt app shell (the "instant agentic CAD" direction).
   Layout: top header (main actions) · large navigable 3D viewport · footer agent+CLI stripe ·
   two hideable tool rails (2D/3D tools + model tree left, properties right).
-  The viewport holds a REAL parametric model (a stair) that rebuilds INSTANTLY from numeric fields
-  or footer commands — no compile, no LLM in the geometry path. The agent lane is stubbed and
-  LABELLED as not-yet-wired (no faked AI). Offline: vendored three.js, no CDN.
+  R1: the viewport shows the REAL compiled B-rep from the engine — it boots by POSTing a vendored
+  bracket seed to /api/adopt (token-free, no LLM) and rendering the genuine tessellated solid via the
+  same mesh path as index.html. Honest empty-stage when there's no geometry. The agent lane + tool
+  palette are stubbed and LABELLED as not-yet-wired (no faked AI). Offline: vendored three.js, no CDN.
+  window.LUDWIG.render(_assemble dict) is the headless seam. Properties/critic become interactive in R5.
 -->
 <script type="importmap">
 { "imports": {
@@ -124,6 +126,11 @@
   .vp-badge{position:absolute; left:12px; top:10px; font-family:var(--mono); font-size:10.5px;
     color:var(--muted); letter-spacing:.04em;}
   .vp-units{position:absolute; left:12px; bottom:10px; font-family:var(--mono); font-size:10.5px; color:var(--muted);}
+  .vp-empty{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:9px; text-align:center; padding:0 30px; pointer-events:none;}
+  .vp-empty[hidden]{display:none;}
+  .vp-empty .k{font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted);}
+  .vp-empty .msg{font:600 19px/1.35 Georgia,"Times New Roman",serif; color:var(--ink-soft); max-width:430px;}
   .railtab{position:absolute; top:50%; transform:translateY(-50%); width:16px; height:54px;
     background:var(--paper); border:1px solid var(--hair2); display:flex; align-items:center;
     justify-content:center; cursor:pointer; color:var(--muted); font-size:11px; z-index:3;}
@@ -208,13 +215,7 @@
         </div>
       </div>
       <div class="rail-b" id="ltab-model" hidden>
-        <div class="tree">
-          <div class="node"><span class="ind">▸</span> Project</div>
-          <div class="node" style="padding-left:18px"><span class="ind">▾</span> Level 0 · FFL +0</div>
-          <div class="node sel" data-node="stair" style="padding-left:34px"><span class="dot"></span> Stair · straight flight</div>
-          <div class="node" style="padding-left:50px"><span class="ind">·</span> 17 going · 18 riser</div>
-          <div class="node" style="padding-left:18px"><span class="ind">▸</span> Level 1 · FFL +3000</div>
-        </div>
+        <div class="tree" id="tree"><span class="ind">— nothing loaded yet</span></div>
       </div>
     </aside>
 
@@ -223,6 +224,10 @@
       <canvas id="view"></canvas>
       <div class="vp-badge" id="badge">no model — loading…</div>
       <div class="vp-units">mm · Z-up</div>
+      <div class="vp-empty" id="empty" hidden>
+        <div class="k">Empty stage</div>
+        <div class="msg">No model loaded.</div>
+      </div>
       <div class="vp-tools">
         <button class="btn" data-view="iso">Iso</button>
         <button class="btn" data-view="top">Top</button>
@@ -327,7 +332,7 @@ function showGeometry(d, opts) {
   const solids = (d.children && d.children.length)
     ? d.children.filter(c => has(c.mesh)).map(c => ({ id: c.id, mesh: c.mesh }))
     : (has(d.mesh) ? [{ id: d.id, mesh: d.mesh }] : []);
-  if (!solids.length) return;
+  if (!solids.length) return false;
 
   model = new THREE.Group();
   for (const s of solids) {
@@ -346,17 +351,24 @@ function showGeometry(d, opts) {
   scene.add(gh); grid = gh;
 
   if (opts.refit !== false) { userMoved=false; frame(); }
+  return true;
 }
 
 /* ===================== window.LUDWIG seam (token-free test injection) ===================== */
 const STATE = { program: null, payload: null };
 
 function render(payload) {
-  if (!payload || (!payload.mesh && !(payload.children && payload.children.length))) {
-    emptyStage("no model — start the engine");
+  if (!payload || payload.fatal) {
+    emptyStage(payload && payload.fatal ? "engine error · " + payload.fatal : "no model — start the engine");
     return;
   }
-  showGeometry(payload);
+  const drew = showGeometry(payload);            // false → there's no display mesh (e.g. no kernel)
+  if (!drew) {
+    emptyStage(payload.id ? "compiled, but no display geometry (kernel may be absent)"
+                          : "no model — start the engine");
+    return;
+  }
+  $("#empty").hidden = true;                      // honest empty-stage overlay off once a solid is shown
   STATE.payload = payload;
   STATE.program = payload.program || null;
 
@@ -364,16 +376,30 @@ function render(payload) {
   const type = payload.type || "";
   const bb   = payload.bbox;
   const bbtxt = bb ? ` · ${bb.length}×${bb.width}×${bb.height} mm` : "";
-  $("#badge").textContent = `${type || id}${bbtxt}`;
+  $("#badge").textContent = `${id}${type ? " · " + type : ""}${bbtxt}`;
 
-  const props = $("#props");
-  props.innerHTML = "";
-  if (payload.dims && payload.dims.length) {
-    payload.dims.forEach(d => {
+  buildTree(payload);
+  buildProps(payload);
+}
+
+// Left · model tree (read-only in R1; R5 makes it payload-driven + click-to-isolate).
+function buildTree(d) {
+  const id = d.id || "model", type = (d.type || "").toLowerCase();
+  const kids = (d.children && d.children.length)
+    ? d.children.map(c => `<div class="node" style="padding-left:22px"><span class="dot"></span>${c.id}<span class="ind" style="margin-left:auto">${(c.type||"").toLowerCase()}</span></div>`).join("")
+    : (d.dims || []).map(x => `<div class="node" style="padding-left:22px"><span class="ind">·</span> ${x.name} ${x.value} ${x.unit||"mm"}</div>`).join("");
+  $("#tree").innerHTML = `<div class="node sel"><span class="dot"></span>${id}<span class="ind" style="margin-left:auto">${type}</span></div>${kids}`;
+}
+
+// Right · properties (read-only in R1; R5 adds editable sliders + /api/preview → /api/edit round-trip).
+function buildProps(d) {
+  const props = $("#props"); props.innerHTML = "";
+  if (d.dims && d.dims.length) {
+    d.dims.forEach(x => {
       const el = document.createElement("div"); el.className = "prop";
       el.innerHTML =
-        `<div class="lbl"><span class="nm">${d.name}</span><span class="unit">${d.unit||"mm"}</span></div>
-         <div class="row"><span style="font-family:var(--mono);font-size:13px">${d.value}</span></div>`;
+        `<div class="lbl"><span class="nm">${x.name}</span><span class="unit">${x.unit||"mm"}</span></div>
+         <div class="row"><span style="font-family:var(--mono);font-size:13px">${x.value}</span></div>`;
       props.appendChild(el);
     });
   } else {
@@ -384,9 +410,12 @@ function render(payload) {
 function emptyStage(msg) {
   if (model) { scene.remove(model); model = null; }
   if (grid)  { scene.remove(grid);  grid  = null; }
-  $("#badge").textContent = msg || "no model";
+  const m = msg || "No model loaded.";
+  const empty = $("#empty"); empty.hidden = false; empty.querySelector(".msg").textContent = m;
+  $("#badge").textContent = "no model";
+  $("#tree").innerHTML = '<span class="ind">— nothing loaded yet</span>';
   $("#props").innerHTML =
-    `<div style="color:var(--muted);font-size:12px;padding:8px 0">${msg || "no model"}</div>`;
+    `<div style="color:var(--muted);font-size:12px;padding:8px 0">${m}</div>`;
 }
 
 window.LUDWIG = { render, state: STATE };
