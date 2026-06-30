@@ -47,7 +47,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         if path in ("/", "/index.html"):
-            self._send(200, (ROOT / "index.html").read_bytes(), "text/html")
+            # In demo, the front door is the Studio (gallery + free direct manipulation). index.html's
+            # prompt-compiler needs inference, which is disabled publicly — don't greet visitors with it.
+            page = "studio.html" if (DEMO and path == "/") else "index.html"
+            self._send(200, (ROOT / page).read_bytes(), "text/html")
             return
         if path in ("/studio", "/studio.html"):   # the rebuilt app shell (instant agentic CAD direction)
             self._send(200, (ROOT / "studio.html").read_bytes(), "text/html")
