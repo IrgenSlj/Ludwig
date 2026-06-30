@@ -287,6 +287,23 @@ def selftest() -> int:
                   abs(_rl - 80) <= tol and abs(_rw - 60) <= tol and abs(_rh - 100) <= tol,
                   f"reimport {_rl:.1f}×{_rw:.1f}×{_rh:.1f}")
 
+        # R29 — section op + void-aware cut profile. A YZ cut keeps half the bracket (40×40×6) with one
+        # outer loop (240 mm²). A horizontal (z) cut shows the plate plan with the two holes as INNER
+        # loops — the void-aware case. (A through-hole splits the section rather than nesting; the
+        # honest void-aware profile is the cut across the holes' axis — see docs/FINDINGS.md.)
+        _yz = g.section(bracket.geometry, axis="x", offset=0.0, keep="+")
+        _ybb = g.bbox(_yz)
+        _yp = g.section_profile(bracket.geometry, axis="x", offset=0.0)
+        check("section: YZ cut keeps 40×40×6 with one outer loop ≈240 mm²",
+              abs(_ybb[0] - 40) <= tol and abs(_ybb[1] - 40) <= tol and abs(_ybb[2] - 6) <= tol
+              and len(_yp["outer"]) == 1 and abs(g.loop_area(_yp["outer"][0]) - 240) <= 1.0,
+              f"bbox {tuple(round(v, 1) for v in _ybb)} outer {[round(g.loop_area(l), 1) for l in _yp['outer']]}")
+        _zp = g.section_profile(bracket.geometry, axis="z", offset=0.0)
+        check("section: horizontal cut = plate outline (≈3200 mm²) + two hole inner loops",
+              len(_zp["outer"]) == 1 and abs(g.loop_area(_zp["outer"][0]) - 3200) <= 1.0
+              and len(_zp["inners"]) == 2,
+              f"outer {[round(g.loop_area(l), 1) for l in _zp['outer']]} inners {len(_zp['inners'])}")
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend

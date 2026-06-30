@@ -107,6 +107,61 @@ class GeometryService:
             return handle.solid().cut(tool)
         return BRepHandle(build)
 
+    def section(self, handle: BRepHandle, *, axis: str = "x", offset: float = 0.0,
+                keep: str = "-") -> BRepHandle:
+        """Cut a solid with a plane perpendicular to `axis` (x|y|z) at `offset`, keeping one half
+        (keep '+' = higher side, '-' = lower) — an oversized half-space box intersection, robust for
+        the prismatic parts we section. StdFail_NotDone surfaces via execute()."""
+        ai = {"x": 0, "y": 1, "z": 2}.get(axis, axis)
+
+        def build() -> Any:
+            cq = _cq()
+            solid = handle.solid()
+            big = 1e5
+            sizes = [2 * big, 2 * big, 2 * big]
+            sizes[ai] = big
+            center = [0.0, 0.0, 0.0]
+            center[ai] = offset + (big / 2 if keep in ("+", "plus", "pos") else -big / 2)
+            half = cq.Workplane("XY").box(sizes[0], sizes[1], sizes[2]).translate(tuple(center))
+            return solid.intersect(half)
+        return BRepHandle(build)
+
+    def section_profile(self, handle: BRepHandle, *, axis: str = "x", offset: float = 0.0) -> dict:
+        """The cross-section loops at the cutting plane: {'outer': [[(u,v),…],…], 'inners': [[…],…]}
+        — every face of the kept solid lying ON the plane, its outer wire(s) and any inner (hole)
+        wires projected to the plane's (u, v). Through-features split the section into multiple outer
+        loops; enclosed voids appear as inner loops. Best-effort; empty lists if nothing lies on the
+        plane."""
+        ai = {"x": 0, "y": 1, "z": 2}.get(axis, axis)
+        u_ax, v_ax = {0: (1, 2), 1: (0, 2), 2: (0, 1)}[ai]
+        kept = self.section(handle, axis=axis, offset=offset, keep="+")
+        solid = kept.solid()
+
+        def uv(wire):
+            return [(v.toTuple()[u_ax], v.toTuple()[v_ax]) for v in wire.Vertices()]
+
+        outer, inners = [], []
+        for f in solid.faces().vals():
+            c = f.Center().toTuple()
+            n = f.normalAt().toTuple()
+            if abs(c[ai] - offset) < 1e-4 and abs(abs(n[ai]) - 1) < 1e-3:
+                outer.append(uv(f.outerWire()))
+                inners.extend(uv(w) for w in f.innerWires())
+        return {"outer": outer, "inners": inners}
+
+    @staticmethod
+    def loop_area(loop) -> float:
+        """Shoelace area (mm²) of a closed (u, v) polygon loop. |signed area|; 0 for < 3 points."""
+        n = len(loop)
+        if n < 3:
+            return 0.0
+        a = 0.0
+        for i in range(n):
+            x1, y1 = loop[i]
+            x2, y2 = loop[(i + 1) % n]
+            a += x1 * y2 - x2 * y1
+        return abs(a) / 2.0
+
     # ---- queries (used by the dimensional/geometric critic and the eval harness) ----
 
     def volume(self, handle: BRepHandle) -> float:

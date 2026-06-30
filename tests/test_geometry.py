@@ -78,6 +78,24 @@ def test_sketch_extrude_l_profile():
     assert lp.dim("depth") == 100.0
 
 
+def test_section_and_void_aware_profile():
+    # R29: a YZ cut keeps half the bracket; a horizontal cut profile shows the holes as inner loops
+    from toolkit import box, clearance_hole
+    g = GeometryService()
+    br = box("br", 80, 40, 6); clearance_hole(br, "M8", (-25, 0)); clearance_hole(br, "M8", (25, 0))
+    kept = g.section(br.geometry, axis="x", offset=0.0, keep="+")
+    bx, by, bz = g.bbox(kept)
+    assert abs(bx - 40) < 1e-6 and abs(by - 40) < 1e-6 and abs(bz - 6) < 1e-6   # half the length kept
+    yz = g.section_profile(br.geometry, axis="x", offset=0.0)
+    assert len(yz["outer"]) == 1 and abs(g.loop_area(yz["outer"][0]) - 240) < 1.0 and not yz["inners"]
+    z = g.section_profile(br.geometry, axis="z", offset=0.0)
+    assert len(z["outer"]) == 1 and abs(g.loop_area(z["outer"][0]) - 3200) < 1.0   # 80×40 plan
+    assert len(z["inners"]) == 2                                                   # the two holes
+    # a through-hole splits the section across its own axis (no nested inner loop) — documented behavior
+    thru = g.section_profile(br.geometry, axis="x", offset=25.0)
+    assert len(thru["outer"]) == 2 and not thru["inners"]
+
+
 def test_harness_discriminates_a_wrong_build():
     # an off-by-5mm height build must FAIL the gate — proves the instrument has real signal
     def bad(b):
