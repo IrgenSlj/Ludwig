@@ -129,6 +129,38 @@ def selftest() -> int:
         print(f"  [info] evaluator parity: {len(_expr)} graph-expressible {_expr} · "
               f"{len(_skipped)} fall back to text-substitution {_skipped}")
 
+        # R4 — content-hash cache + incremental set_param (tree-reduction). Editing one param rebuilds
+        # EXACTLY the dirty descendant set; clean subtrees (an assembly's untouched base) come from cache.
+        from geometry.evaluator import Evaluator, descendants
+        from toolkit import assembly as _assembly, stack as _stack
+        with recording() as _rbg:                              # bracket: length cascades to both holes
+            _rb = box("_r4_bracket", 80, 40, 6)
+            _clearance_hole(_rb, "M8", (-25, 0))
+            _clearance_hole(_rb, "M8", (25, 0))
+        _ebr = Evaluator(_rbg)
+        _, _warm = _ebr.build()                                # warm the cache — first build is full
+        _h, _rebuilt = _ebr.set_param("box#1", "length", 100)
+        _dirty = descendants(_rbg, "box#1")
+        check("R4 bracket: length edit rebuilds box + both holes only (== dirty set)",
+              _warm == {"box#1", "hole#1", "hole#2"} and _rebuilt == _dirty == {"box#1", "hole#1", "hole#2"}
+              and abs(g.bbox(_h)[0] - 100) <= tol,
+              f"warm={sorted(_warm)} rebuilt={sorted(_rebuilt)} dirty={sorted(_dirty)}")
+        with recording() as _rag:                              # assembly: resize the top plate
+            _abase = box("base", 60, 60, 10)
+            _atop = box("top", 40, 40, 10)
+            _stack(_abase, _atop)
+            _assembly("stacked", _abase, _atop)
+        _eas = Evaluator(_rag)
+        _eas.build()
+        _h2, _rebuilt2 = _eas.set_param("box#2", "height", 20)
+        _dirty2 = descendants(_rag, "box#2")
+        check("R4 assembly: top resize rebuilds top+stack+compound, NOT base (== dirty set)",
+              _rebuilt2 == _dirty2 == {"box#2", "stack#1", "assembly#1"} and "box#1" not in _rebuilt2,
+              f"rebuilt={sorted(_rebuilt2)} dirty={sorted(_dirty2)}")
+        _, _noop = _eas.set_param("box#1", "length", 60)       # set to current value → cache hit, no rebuild
+        check("R4 unchanged param rebuilds nothing (content-key stable)", _noop == set(),
+              f"rebuilt={sorted(_noop)}")
+
         import tempfile
         from backends import step as step_backend
         with tempfile.TemporaryDirectory() as td:

@@ -70,10 +70,11 @@ def box(element_id: str, length: float, width: float, height: float, *, name: st
     el.register_dim("height", height)
     _g = _RECORDING.get()
     if _g is not None:
-        _g.append("box",
-                  {"element_id": element_id, "length": length, "width": width, "height": height},
-                  [])
+        _node = _g.append("box",
+                          {"element_id": element_id, "length": length, "width": width, "height": height},
+                          [])
         el.graph = _g
+        el.graph_node = _node.node_id
     return el
 
 
@@ -96,7 +97,7 @@ def hole(el: Element, diameter: float, at: tuple[float, float], *,
     })
     _g = _RECORDING.get()
     if _g is not None:
-        _prev = el.graph.result_id if (el.graph is not None and el.graph is _g) else ""
+        _prev = el.graph_node if (el.graph is _g and el.graph_node) else ""
         _params: dict = {
             "diameter": float(diameter),
             "at": (float(at[0]), float(at[1])),
@@ -106,8 +107,9 @@ def hole(el: Element, diameter: float, at: tuple[float, float], *,
             _params["depth"] = depth
         if thread is not None:
             _params["thread"] = thread
-        _g.append("hole", _params, [_prev] if _prev else [])
+        _node = _g.append("hole", _params, [_prev] if _prev else [])
         el.graph = _g
+        el.graph_node = _node.node_id
     return el
 
 
@@ -153,11 +155,12 @@ def anchor(el: Element, diameter: float, at: tuple[float, float], depth: float, 
                         "through": False, "thread": None})
     _g = _RECORDING.get()
     if _g is not None:
-        _prev = el.graph.result_id if (el.graph is not None and el.graph is _g) else ""
-        _g.append("anchor",
-                  {"diameter": float(diameter), "at": (float(at[0]), float(at[1])), "depth": float(depth)},
-                  [_prev] if _prev else [])
+        _prev = el.graph_node if (el.graph is _g and el.graph_node) else ""
+        _node = _g.append("anchor",
+                          {"diameter": float(diameter), "at": (float(at[0]), float(at[1])), "depth": float(depth)},
+                          [_prev] if _prev else [])
         el.graph = _g
+        el.graph_node = _node.node_id
     return el
 
 
@@ -168,9 +171,10 @@ def place(el: Element, offset: tuple[float, float, float]) -> Element:
     el.geometry = _geom.translate(el.geometry, offset)
     _g = _RECORDING.get()
     if _g is not None:
-        _prev = el.graph.result_id if (el.graph is not None and el.graph is _g) else ""
-        _g.append("place", {"offset": [float(c) for c in offset]}, [_prev] if _prev else [])
+        _prev = el.graph_node if (el.graph is _g and el.graph_node) else ""
+        _node = _g.append("place", {"offset": [float(c) for c in offset]}, [_prev] if _prev else [])
         el.graph = _g
+        el.graph_node = _node.node_id
     return el
 
 
@@ -187,11 +191,12 @@ def stack(base: Element, top: Element) -> Element:
     top.geometry = _geom.translate(top.geometry, offset)
     _g = _RECORDING.get()
     if _g is not None:
-        _bi = base.graph.result_id if (base.graph is not None and base.graph is _g) else ""
-        _ti = top.graph.result_id if (top.graph is not None and top.graph is _g) else ""
+        _bi = base.graph_node if (base.graph is _g and base.graph_node) else ""
+        _ti = top.graph_node if (top.graph is _g and top.graph_node) else ""
         _inputs = [x for x in [_bi, _ti] if x]
-        _g.append("stack", {"offset": [float(c) for c in offset]}, _inputs)
+        _node = _g.append("stack", {"offset": [float(c) for c in offset]}, _inputs)
         top.graph = _g
+        top.graph_node = _node.node_id   # the stacked top is now this placed solid
     return top
 
 
@@ -205,10 +210,11 @@ def assembly(element_id: str, *children: Element, name: str = "") -> Element:
         el.relations.append(Relation("contains", c.id))
     _g = _RECORDING.get()
     if _g is not None:
-        _child_ids = [c.graph.result_id for c in children
-                      if c.graph is not None and c.graph is _g and c.graph.result_id]
-        _g.append("assembly", {"element_id": element_id}, _child_ids)
+        _child_ids = [c.graph_node for c in children
+                      if c.graph is _g and c.graph_node]
+        _node = _g.append("assembly", {"element_id": element_id}, _child_ids)
         el.graph = _g
+        el.graph_node = _node.node_id
     return el
 
 

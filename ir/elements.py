@@ -93,6 +93,10 @@ class Element:
     # R2: feature graph recorded by toolkit/elements.py when recording() context is active.
     # Default None — additive, zero behavior change when recording is off ([H1]).
     graph: Optional[FeatureGraph] = None
+    # R4: node_id of THIS element's latest recorded feature node within `graph`. Per-element
+    # (unlike graph.result_id which is graph-global), so an assembly recovers each child's own
+    # lineage — the prerequisite for incremental set_param to rebuild only the dirty subtree.
+    graph_node: Optional[str] = None
 
     def __post_init__(self) -> None:
         self.crystallization = _clamp01(self.crystallization)
