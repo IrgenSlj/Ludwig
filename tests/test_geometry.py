@@ -67,6 +67,17 @@ def test_wall_opening_cuts_a_void_and_hosts_it():
     assert abs(length - 3000) < 1e-6 and abs(thickness - 200) < 1e-6 and abs(height - 2400) < 1e-6
 
 
+def test_sketch_extrude_l_profile():
+    # R28: a constrained L-section sketch extrudes to an exact solid (the deterministic 2D->3D compiler)
+    lp = reference.build(next(b for b in BRIEFS if b["id"] == "l_profile"))
+    g = GeometryService()
+    length, width, height = g.bbox(lp.geometry)
+    assert abs(length - 80) < 1e-6 and abs(width - 60) < 1e-6 and abs(height - 100) < 1e-6
+    assert g.is_valid(lp.geometry) and g.cylindrical_face_count(lp.geometry) == 0
+    assert abs(g.volume(lp.geometry) / 100.0 - 1300) < 1e-3        # section area t·(Lx+Ly−t)
+    assert lp.dim("depth") == 100.0
+
+
 def test_harness_discriminates_a_wrong_build():
     # an off-by-5mm height build must FAIL the gate — proves the instrument has real signal
     def bad(b):

@@ -83,6 +83,17 @@ class GeometryService:
             return cq.Workplane(plane).polyline(pts).close().extrude(float(width))
         return BRepHandle(build)
 
+    def extrude(self, profile, depth: float, plane: str = "XY") -> BRepHandle:
+        """Extrude a closed 2D polyline (a solved sketch's outer loop, in `plane`) by `depth` along the
+        plane normal → a prism. The face is built from polyline().close().extrude(); a non-simple loop
+        surfaces as a kernel error via execute(). This is the sketch→solid compiler (R28)."""
+        pts = [tuple(float(c) for c in p) for p in profile]
+
+        def build() -> Any:
+            cq = _cq()
+            return cq.Workplane(plane).polyline(pts).close().extrude(float(depth))
+        return BRepHandle(build)
+
     def cut(self, handle: BRepHandle, box_spec) -> BRepHandle:
         """Subtract a rectangular box from a solid — the generic rect boolean for openings, slots,
         pockets. `box_spec = (length, width, height, (cx, cy, cz))`: a box of those extents centred at

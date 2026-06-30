@@ -270,6 +270,23 @@ def selftest() -> int:
               _op.type == "Opening"
               and any(r.kind == "hosts" and r.target_id == _op.id for r in _w.relations))
 
+        # R28 — sketch→extrude: an L-section compiles from a FULLY-CONSTRAINED sketch to an exact solid.
+        from backends import step as _step_b
+        _lp = reference.build(next(x for x in BRIEFS if x["id"] == "l_profile"))
+        _ll, _lw, _lh = g.bbox(_lp.geometry)
+        check("L-profile bbox 80×60×100 from a constrained sketch",
+              abs(_ll - 80) <= tol and abs(_lw - 60) <= tol and abs(_lh - 100) <= tol,
+              f"got {_ll:.1f}×{_lw:.1f}×{_lh:.1f}")
+        check("L-profile section area ≈ 1300 mm² (t·(Lx+Ly−t)) and solid valid",
+              g.is_valid(_lp.geometry) and abs(g.volume(_lp.geometry) / 100.0 - 1300) <= 1.0,
+              f"section {g.volume(_lp.geometry) / 100.0:.1f}")
+        with tempfile.TemporaryDirectory() as _td:
+            _lsp = _step_b.compile(_lp, _td)
+            _rl, _rw, _rh = _step_b.reimport_bbox(_lsp)
+            check("L-profile STEP round-trips through OCCT",
+                  abs(_rl - 80) <= tol and abs(_rw - 60) <= tol and abs(_rh - 100) <= tol,
+                  f"reimport {_rl:.1f}×{_rw:.1f}×{_rh:.1f}")
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend

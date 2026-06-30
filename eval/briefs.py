@@ -48,4 +48,7 @@ BRIEFS = [
      "dims": {"length": 3360.0, "width": 1000.0, "height": 2800.0},   # run=14×240, ftf=14×200
      "holes": 0, "use_class": "private",                              # private-compliant; general-non-compliant
      "stair": {"rise": 200, "going": 240, "width": 1000, "riser_count": 14}},
+    {"id": "l_profile",
+     "prompt": "an L-section profile, 80 × 60 mm legs, 10 mm thick, extruded 100 mm long",
+     "dims": {"length": 80.0, "width": 60.0, "height": 100.0}, "holes": 0},   # from a constrained sketch
 ]

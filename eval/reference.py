@@ -6,7 +6,8 @@ real `first-pass geometric pass-rate` ([H6]) instead of the trivial 100% a corre
 """
 from __future__ import annotations
 
-from toolkit import anchor, assembly, box, clearance_hole, hole, panel, part, profile, stack, stair
+from toolkit import (anchor, assembly, box, clearance_hole, extrude, hole, panel, part, profile,
+                     sketch, stack, stair)
 from ir.elements import BRepHandle, Element
 
 
@@ -39,6 +40,8 @@ def build(brief: dict) -> Element:
         s = brief.get("stair", {})
         return stair(bid, rise=s.get("rise", 170), going=s.get("going", 280),
                      width=s.get("width", 1000), riser_count=s.get("riser_count", 17))
+    if bid == "l_profile":
+        return _l_profile(brief)
     # ---- original simple builders ----
     el = box(bid, d["length"], d["width"], d["height"])
     if bid == "bracket":
@@ -130,6 +133,26 @@ def _steel_beam(brief):
     """2000 mm long, 100 × 50 mm cross-section — a Profile element."""
     d = brief["dims"]
     return profile(brief["id"], d["length"], d["width"], d["height"])
+
+
+def _l_profile(brief):
+    """An L-section (80 × 60 legs, 10 thick) extruded `height` mm — built from a FULLY-CONSTRAINED
+    sketch (6 edges, H/V on each, 4 distance dims, an anchor → 0 DoF), then extruded. Exercises the
+    sketch→extrude compiler (R28). bbox = Lx × Ly × depth; section area = t·(Lx + Ly − t)."""
+    d = brief["dims"]
+    Lx, Ly, depth = d["length"], d["width"], d["height"]
+    t = 10.0
+    s = sketch(brief["id"])
+    s.point("p0", 0, 0, fixed=True)
+    s.point("p1", Lx, 0); s.point("p2", Lx, t); s.point("p3", t, t); s.point("p4", t, Ly); s.point("p5", 0, Ly)
+    for lid, a, b in [("L0", "p0", "p1"), ("L1", "p1", "p2"), ("L2", "p2", "p3"),
+                      ("L3", "p3", "p4"), ("L4", "p4", "p5"), ("L5", "p5", "p0")]:
+        s.line(lid, a, b)
+    s.constrain("horizontal", "L0"); s.constrain("vertical", "L1"); s.constrain("horizontal", "L2")
+    s.constrain("vertical", "L3"); s.constrain("horizontal", "L4"); s.constrain("vertical", "L5")
+    s.constrain("distance", "L0", value=Lx); s.constrain("distance", "L5", value=Ly)
+    s.constrain("distance", "L1", value=t); s.constrain("distance", "L4", value=t)
+    return extrude(s, depth, element_id=brief["id"])
 
 
 def _counterbored_plate(brief):
