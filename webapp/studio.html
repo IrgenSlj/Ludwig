@@ -93,6 +93,14 @@
   .seclbl{font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
     margin:2px 0 8px;}
 
+  /* gallery (demo seed picker) */
+  .gallery{display:flex; flex-direction:column; gap:5px; margin-bottom:6px;}
+  .gitem{display:flex; flex-direction:column; align-items:flex-start; gap:1px; text-align:left;
+    padding:7px 9px; border:1px solid var(--hair); border-radius:6px; background:rgba(255,255,255,.45);}
+  .gitem:hover{border-color:var(--accent); background:rgba(138,90,43,.06);}
+  .gitem .gt{font-size:12px; color:var(--ink-soft); font-weight:600;}
+  .gitem .gb{font-family:var(--mono); font-size:10px; color:var(--muted);}
+
   /* model tree */
   .tree{font-family:var(--mono); font-size:12px;}
   .tree .node{padding:3px 6px; border-radius:4px; cursor:pointer; display:flex; gap:7px; align-items:center;}
@@ -191,10 +199,10 @@
     <!-- LEFT RAIL: tools + model tree -->
     <aside class="rail l">
       <div class="rail-h">
-        <span class="tab on" data-ltab="tools">Tools</span>
-        <span class="tab" data-ltab="model">Model</span>
+        <span class="tab" data-ltab="tools">Tools</span>
+        <span class="tab on" data-ltab="model">Model</span>
       </div>
-      <div class="rail-b" id="ltab-tools">
+      <div class="rail-b" id="ltab-tools" hidden>
         <div class="seclbl">3D</div>
         <div class="toolgrid">
           <button class="tool" data-tool="stair"><span class="ic">▟</span>Stair</button>
@@ -214,7 +222,10 @@
           <button class="tool" data-tool="section"><span class="ic">⊟</span>Section</button>
         </div>
       </div>
-      <div class="rail-b" id="ltab-model" hidden>
+      <div class="rail-b" id="ltab-model">
+        <div class="seclbl">Gallery · click to load</div>
+        <div class="gallery" id="gallery"><span class="ind" style="font-size:11px">loading…</span></div>
+        <div class="seclbl" style="margin-top:12px">Model</div>
         <div class="tree" id="tree"><span class="ind">— nothing loaded yet</span></div>
       </div>
     </aside>
@@ -581,32 +592,53 @@ window.LUDWIG = {
       ([id, m]) => [id, { hex: m.emissive.getHex(), opacity: m.opacity }])) }; },
 };
 
-/* ===================== seed boot via /api/adopt (token-free) ===================== */
-const SEED_PROGRAM = [
-  "import cadquery as cq",
-  "from toolkit import box, clearance_hole",
-  "",
-  "element = box(\"bracket\", 80, 40, 6)",
-  "element.register_dim(\"length\", 80)",
-  "element.register_dim(\"width\", 40)",
-  "element.register_dim(\"height\", 6)",
-  "clearance_hole(element, \"M8\", (30, 13))",
-  "clearance_hole(element, \"M8\", (-30, -13))",
+/* ===================== gallery + seed boot (token-free, server-trusted seeds) =====================
+   The browser never sends a program to execute (RCE). It loads trusted seeds by id; in DEMO mode the
+   server only accepts those + numeric edits (webapp/safety.py). All token-free — no inference cost. */
+let DEMO = false, SEEDS = [];
+const SEED_FALLBACK = [   // only used if /api/gallery is unavailable (older local server)
+  'element = box("bracket", 80, 40, 6)',
+  'clearance_hole(element, "M8", (-25, 0))',
+  'clearance_hole(element, "M8", (25, 0))',
 ].join("\n");
 
-async function bootModel() {
+function renderGallery(seeds){
+  const box = $("#gallery"); if(!box) return; box.innerHTML = "";
+  if(!seeds.length){ box.innerHTML = '<span class="ind" style="font-size:11px">— gallery unavailable</span>'; return; }
+  seeds.forEach(s => {
+    const b = document.createElement("button"); b.className = "gitem";
+    b.innerHTML = `<span class="gt"></span><span class="gb"></span>`;
+    b.querySelector(".gt").textContent = s.title; b.querySelector(".gb").textContent = s.blurb;
+    b.onclick = () => adoptSeed(s.id, s.title);
+    box.appendChild(b);
+  });
+}
+async function adoptSeed(id, title){
   try {
-    const resp = await fetch("/api/adopt", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ program: SEED_PROGRAM }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const d = await resp.json();
-    if (d.fatal) throw new Error(d.fatal);
+    const d = await fetch("/api/adopt", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ seed: id }) }).then(r => r.json());
+    if(d.fatal){ log("sys", "load failed: " + d.fatal, "err"); return; }
     render(d);
-    const bb = d.bbox ? `${d.bbox.length}×${d.bbox.width}×${d.bbox.height} mm` : "?";
-    log("sys", `adopted bracket — ${d.id||"?"} · ${d.type||"?"} · ${bb}`, "ok");
+    log("you", "load " + id);
+    log("sys", "loaded " + (title||id) + (d.bbox ? ` · ${d.bbox.length}×${d.bbox.width}×${d.bbox.height} mm` : ""), "ok");
+  } catch(e){ log("sys", "load failed: " + e, "err"); }
+}
+async function bootModel(){
+  try {
+    const g = await fetch("/api/gallery").then(r => r.json());
+    DEMO = !!g.demo; SEEDS = g.seeds || [];
+    renderGallery(SEEDS);
+  } catch(e){ /* no gallery endpoint — fall back to the embedded seed below */ }
+  const first = SEEDS[0];
+  try {
+    const resp = await fetch("/api/adopt", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(first ? { seed: first.id } : { program: SEED_FALLBACK }) });
+    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const d = await resp.json();
+    if(d.fatal) throw new Error(d.fatal);
+    render(d);
+    log("sys", `loaded ${d.id||"?"} — ${d.type||"?"}` + (d.bbox ? ` · ${d.bbox.length}×${d.bbox.width}×${d.bbox.height} mm` : ""), "ok");
+    if(DEMO) log("sys", "demo — drag a dimension to edit (free, no AI); pick another part from the Gallery. Generation runs locally with your own key.");
   } catch (e) {
     emptyStage("no model — start the engine");
     log("sys", "Engine not available. Start the server with: .venv/bin/python cli.py --serve", "warn");

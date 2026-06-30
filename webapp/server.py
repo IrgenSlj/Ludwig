@@ -14,11 +14,18 @@ inference seam). Stdlib only — no web framework — so it adds zero dependenci
 from __future__ import annotations
 
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT.parent / "out"
+
+# DEMO mode (env LUDWIG_DEMO=1) is the safe public face. The browser may NOT submit a fresh program to
+# exec (that is RCE — see webapp/safety.py): it picks trusted seeds by id and only NUMERIC parameter
+# edits are accepted, and generation (compile/explore, which needs inference) is disabled. Off by
+# default, so local `cli.py --serve` keeps full developer behavior.
+DEMO = os.environ.get("LUDWIG_DEMO", "") not in ("", "0", "false", "False")
 
 _TYPES = {".html": "text/html", ".svg": "image/svg+xml", ".step": "application/step",
           ".ifc": "application/x-step", ".py": "text/plain", ".js": "text/javascript",
@@ -44,6 +51,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/studio", "/studio.html"):   # the rebuilt app shell (instant agentic CAD direction)
             self._send(200, (ROOT / "studio.html").read_bytes(), "text/html")
+            return
+        if path == "/api/gallery":   # trusted seed listing (id/title/blurb) + demo flag; no programs leave
+            from webapp import gallery
+            self._send(200, json.dumps({"demo": DEMO, "seeds": gallery.listing()}).encode(),
+                       "application/json")
             return
         if path == "/api/compile_stream":   # live Activity Rail (Server-Sent Events)
             self._compile_stream()
@@ -95,6 +107,27 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             event({"event": "error", "fatal": f"{type(e).__name__}: {e}"})
 
+    def _program(self, req: dict) -> str:
+        """Resolve the program to operate on. A `seed` id loads the trusted server-side program; a
+        client `program` is allowed verbatim in local mode, but in DEMO must be a numeric-only
+        derivative of a gallery seed (webapp/safety.py) — anything else is rejected before it runs."""
+        seed = req.get("seed")
+        if seed:
+            from webapp import gallery
+            prog = gallery.program_for(seed)
+            if prog is None:
+                raise ValueError(f"unknown seed {seed!r}")
+            return prog
+        program = req.get("program") or ""
+        if not program:
+            raise ValueError("need a `seed` id or a `program`")
+        if DEMO:
+            from webapp import gallery, safety
+            if not safety.is_safe_derivative(program, gallery.programs()):
+                raise PermissionError("program rejected — the public demo only runs the gallery seeds "
+                                      "with their dimensions changed (no arbitrary code).")
+        return program
+
     def do_POST(self) -> None:
         if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt", "/api/preview"):
             self._send(404, b"not found", "text/plain")
@@ -102,40 +135,42 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         try:
             req = json.loads(self.rfile.read(n) or b"{}")
-            if self.path == "/api/compile":
+            if self.path in ("/api/compile", "/api/explore"):
+                if DEMO:  # generation needs inference + would exec model-written code — off in the demo
+                    raise PermissionError("generation is disabled in the public demo. Bring your own AI "
+                                          "key and run Ludwig locally; direct manipulation of the gallery "
+                                          "parts (drag dimensions → STEP/IFC/DXF) is free here.")
                 prompt = (req.get("prompt") or "").strip()
                 if not prompt:
                     raise ValueError("empty prompt")
-                from webapp.service import compile_to_result
-                result = compile_to_result(prompt, candidates=int(req.get("candidates", 1)),
-                                           rounds=int(req.get("rounds", 2)))
-            elif self.path == "/api/explore":  # contact sheet — N ranked first-pass variants
-                prompt = (req.get("prompt") or "").strip()
-                if not prompt:
-                    raise ValueError("empty prompt")
-                from webapp.service import explore_to_result
-                result = explore_to_result(prompt, n=int(req.get("n") or 3))
-            elif self.path == "/api/adopt":  # token-free: re-execute a chosen variant's program
-                program = req.get("program") or ""
-                if not program:
-                    raise ValueError("adopt needs a `program`")
+                if self.path == "/api/compile":
+                    from webapp.service import compile_to_result
+                    result = compile_to_result(prompt, candidates=int(req.get("candidates", 1)),
+                                               rounds=int(req.get("rounds", 2)))
+                else:
+                    from webapp.service import explore_to_result
+                    result = explore_to_result(prompt, n=int(req.get("n") or 3))
+            elif self.path == "/api/adopt":  # load a seed (or re-execute a chosen variant) — token-free
                 from webapp.service import adopt_to_result
-                result = adopt_to_result(program)
+                result = adopt_to_result(self._program(req))
             elif self.path == "/api/preview":  # live direct-manipulation: geometry-only, no files/backends
-                program = req.get("program") or ""
+                program = self._program(req)
                 param = req.get("param") or {}
-                if not program or not {"name", "old", "new"} <= set(param):
-                    raise ValueError("preview needs `program` and param{name, old, new}")
+                if not {"name", "old", "new"} <= set(param):
+                    raise ValueError("preview needs param{name, old, new}")
                 from webapp.service import preview_edit
                 result = preview_edit(program, param["name"], float(param["old"]), float(param["new"]))
             else:  # /api/edit — re-prompt an existing program into a minimal diff (S6)
-                program = req.get("program") or ""
+                program = self._program(req)
+                param = req.get("param")
                 instruction = (req.get("instruction") or "").strip()
-                if not program or not instruction:
-                    raise ValueError("edit needs both `program` and `instruction`")
+                if DEMO and not (param and {"name", "old", "new"} <= set(param)):
+                    raise PermissionError("the public demo only commits numeric parameter edits (drag a "
+                                          "dimension). Free-text agent edits need your own AI key locally.")
+                if not instruction:
+                    raise ValueError("edit needs an `instruction`")
                 from webapp.service import edit_to_result
-                result = edit_to_result(program, instruction, param=req.get("param"),
-                                        rounds=int(req.get("rounds", 1)))
+                result = edit_to_result(program, instruction, param=param, rounds=int(req.get("rounds", 1)))
             self._send(200, json.dumps(result).encode(), "application/json")
         except Exception as e:  # never 500 silently — the UI shows the reason
             self._send(200, json.dumps({"fatal": f"{type(e).__name__}: {e}"}).encode(),
