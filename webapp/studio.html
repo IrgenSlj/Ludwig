@@ -391,20 +391,94 @@ function buildTree(d) {
   $("#tree").innerHTML = `<div class="node sel"><span class="dot"></span>${id}<span class="ind" style="margin-left:auto">${type}</span></div>${kids}`;
 }
 
-// Right · properties (read-only in R1; R5 adds editable sliders + /api/preview → /api/edit round-trip).
+// Right · properties (R5): a slider per editable extent dim bound to the manifest — drag previews
+// geometry live via /api/preview (no LLM, no files), release commits via /api/edit. Other named dims
+// are read-only rows. Below them, the REAL deterministic critic verdict from payload.critic.
+const EDITABLE = new Set(["length", "width", "height", "thickness", "diameter"]);
 function buildProps(d) {
   const props = $("#props"); props.innerHTML = "";
-  if (d.dims && d.dims.length) {
-    d.dims.forEach(x => {
-      const el = document.createElement("div"); el.className = "prop";
-      el.innerHTML =
-        `<div class="lbl"><span class="nm">${x.name}</span><span class="unit">${x.unit||"mm"}</span></div>
-         <div class="row"><span style="font-family:var(--mono);font-size:13px">${x.value}</span></div>`;
-      props.appendChild(el);
+  const dims = d.dims || [];
+  const seen = new Set();
+  const editable = dims.filter(x => EDITABLE.has(x.name) && !seen.has(x.name) && seen.add(x.name));
+  // a value shared by two extents (a 30×30 square) can't be disambiguated by literal substitution —
+  // its slider still commits via /api/edit (LLM), but the live preview is disabled to avoid moving both.
+  const valCount = {}; editable.forEach(x => valCount[x.value] = (valCount[x.value] || 0) + 1);
+  editable.forEach(x => {
+    const lo = Math.max(1, Math.round(x.value * 0.4)), hi = Math.max(lo + 1, Math.round(x.value * 2.2));
+    const el = document.createElement("div"); el.className = "prop";
+    el.innerHTML =
+      `<div class="lbl"><span class="nm">${x.name}</span><span class="unit">${x.value} ${x.unit||"mm"}</span></div>
+       <div class="row"><input type="range" min="${lo}" max="${hi}" step="1" value="${x.value}"></div>`;
+    const range = el.querySelector("input"), valLbl = el.querySelector(".unit");
+    const canPreview = valCount[x.value] === 1;
+    range.addEventListener("input", () => {
+      valLbl.textContent = range.value + " " + (x.unit || "mm");
+      if (canPreview) livePreview({ name: x.name, old: x.value, new: Number(range.value) });
     });
+    range.addEventListener("change", () => applyEdit(
+      "make the " + x.name + " " + range.value + " mm",
+      { name: x.name, old: x.value, new: Number(range.value) }));
+    props.appendChild(el);
+  });
+  dims.filter(x => !EDITABLE.has(x.name)).forEach(x => {           // remaining dims, read-only
+    const el = document.createElement("div"); el.className = "prop"; el.style.marginBottom = "6px";
+    el.innerHTML = `<div class="lbl"><span class="nm">${x.name}</span><span class="unit">${x.value} ${x.unit||"mm"}</span></div>`;
+    props.appendChild(el);
+  });
+  const checks = d.critic || [];                                  // the real deterministic verdict
+  const v = document.createElement("div"); v.className = "verdict"; v.id = "verdict";
+  if (!checks.length) {
+    v.innerHTML = '<span style="color:var(--muted)">critic — no checks</span>';
   } else {
-    props.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">— sliders coming in R5</div>';
+    const fails = checks.filter(c => c.status === "fail");
+    const warnOnly = fails.length > 0 && fails.every(c => c.severity === "warning");
+    const col = !fails.length ? "var(--ok)" : warnOnly ? "var(--warn)" : "var(--fail)";
+    const head = !fails.length ? "Verified · all checks pass" : warnOnly ? "Below spec" : fails.length + " failing";
+    v.innerHTML = `<span class="dot" style="background:${col}"></span><b>${head}</b>`
+      + checks.map(c => `<div class="mono" style="color:var(--muted);margin-top:4px">`
+          + `${c.status === "fail" ? "✗" : c.status === "pass" ? "✓" : "·"} ${c.check}`
+          + `${c.message ? " — " + c.message : ""}</div>`).join("");
   }
+  props.appendChild(v);
+}
+
+// Live direct-manipulation: a slider drag previews geometry in real time (no LLM, no files). Calls
+// are COALESCED — at most one /api/preview in flight, always rendering the latest value — so a fast
+// drag stays smooth. The program text is unchanged during a drag, so STATE.program is left intact;
+// release runs the real /api/edit (fab-gated, minimal-diff) via applyEdit.
+let _previewInFlight = false, _previewPending = null;
+function livePreview(param) {
+  if (!STATE.program) return;
+  _previewPending = param;
+  if (!_previewInFlight) pumpPreview();
+}
+async function pumpPreview() {
+  if (_previewPending == null) { _previewInFlight = false; return; }
+  _previewInFlight = true;
+  const param = _previewPending; _previewPending = null;
+  try {
+    const r = await fetch("/api/preview", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ program: STATE.program, param }) });
+    const d = await r.json();
+    if (d && d.ok) showGeometry(d, { refit: false });   // swap mesh in place; keep the camera put
+  } catch (e) { /* drop this frame, keep the last good mesh */ }
+  pumpPreview();
+}
+async function applyEdit(instruction, param) {
+  if (!STATE.program) return;
+  log("you", instruction);
+  document.querySelectorAll("#props input").forEach(i => i.disabled = true);
+  try {
+    const r = await fetch("/api/edit", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ program: STATE.program, instruction, param }) });
+    const d = await r.json();
+    if (d.fatal) { log("sys", "edit failed: " + d.fatal, "err"); return; }
+    render(d);
+    if (d.diff) log("sys", (d.fast ? "instant parametric edit (no model call)" : "minimal-diff edit")
+      + " · +" + d.diff.added + " / −" + d.diff.removed + " line(s)"
+      + (d.rounds ? " · " + d.rounds + " repair round(s)" : ""), "ok");
+  } catch (e) { log("sys", "edit request failed: " + e, "err"); }
+  finally { document.querySelectorAll("#props input").forEach(i => i.disabled = false); }
 }
 
 function emptyStage(msg) {
