@@ -6,7 +6,7 @@ real `first-pass geometric pass-rate` ([H6]) instead of the trivial 100% a corre
 """
 from __future__ import annotations
 
-from toolkit import anchor, assembly, box, clearance_hole, hole, panel, part, profile, stack
+from toolkit import anchor, assembly, box, clearance_hole, hole, panel, part, profile, stack, stair
 from ir.elements import BRepHandle, Element
 
 
@@ -35,6 +35,10 @@ def build(brief: dict) -> Element:
         return _counterbored_plate(brief)
     if bid == "steel_beam":
         return _steel_beam(brief)
+    if bid == "stair_flight":
+        s = brief.get("stair", {})
+        return stair(bid, rise=s.get("rise", 170), going=s.get("going", 280),
+                     width=s.get("width", 1000), riser_count=s.get("riser_count", 17))
     # ---- original simple builders ----
     el = box(bid, d["length"], d["width"], d["height"])
     if bid == "bracket":

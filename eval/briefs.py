@@ -43,4 +43,9 @@ BRIEFS = [
     {"id": "steel_beam",
      "prompt": "a steel beam profile, 2000 mm long, 100 × 50 mm cross-section (width × height), no holes",
      "dims": {"length": 2000.0, "width": 100.0, "height": 50.0}, "holes": 0},
+    {"id": "stair_flight",
+     "prompt": "a straight stair flight, 14 risers at 200 rise / 240 going, 1000 mm wide (private dwelling)",
+     "dims": {"length": 3360.0, "width": 1000.0, "height": 2800.0},   # run=14×240, ftf=14×200
+     "holes": 0, "use_class": "private",                              # private-compliant; general-non-compliant
+     "stair": {"rise": 200, "going": 240, "width": 1000, "riser_count": 14}},
 ]
