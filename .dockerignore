@@ -1,0 +1,19 @@
+# Keep the build context (and image) small — the heavy deps install fresh from wheels in the image.
+.venv/
+**/__pycache__/
+**/*.pyc
+.git/
+.gitignore
+out/
+renders/
+desktop/node_modules/
+webapp/__pycache__/
+*.step
+*.ifc
+*.dxf
+*.svg
+*.png
+docs/
+tests/
+*.md
+scratchpad/

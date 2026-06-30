@@ -182,8 +182,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port: int = 8765) -> int:
     OUT.mkdir(exist_ok=True)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"Ludwig web UI on http://localhost:{port}  (Ctrl-C to stop)")
+    host = os.environ.get("LUDWIG_HOST", "127.0.0.1")  # 0.0.0.0 in a container (set in the Dockerfile)
+    httpd = ThreadingHTTPServer((host, port), Handler)
+    print(f"Ludwig web UI on http://{host}:{port}  (Ctrl-C to stop)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
