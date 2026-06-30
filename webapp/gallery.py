@@ -50,6 +50,32 @@ SEEDS = [
      "blurb": "3000 × 2400 × 200 wall · 900 × 2100 door void",
      "program": ('element = wall("wall", 3000, 2400, 200)\n'
                  'opening(element, 900, 2100, (0, 0))\n')},
+    {"id": "l_profile", "title": "L-section (sketch→extrude)",
+     "blurb": "80 × 60 legs · 10 thick · extruded 100 — constrained sketch",
+     "program": ('s = sketch("l_profile")\n'
+                 's.point("p0", 0, 0, fixed=True)\n'
+                 's.point("p1", 80, 0)\n'
+                 's.point("p2", 80, 10)\n'
+                 's.point("p3", 10, 10)\n'
+                 's.point("p4", 10, 60)\n'
+                 's.point("p5", 0, 60)\n'
+                 's.line("L0", "p0", "p1")\n'
+                 's.line("L1", "p1", "p2")\n'
+                 's.line("L2", "p2", "p3")\n'
+                 's.line("L3", "p3", "p4")\n'
+                 's.line("L4", "p4", "p5")\n'
+                 's.line("L5", "p5", "p0")\n'
+                 's.constrain("horizontal", "L0")\n'
+                 's.constrain("vertical", "L1")\n'
+                 's.constrain("horizontal", "L2")\n'
+                 's.constrain("vertical", "L3")\n'
+                 's.constrain("horizontal", "L4")\n'
+                 's.constrain("vertical", "L5")\n'
+                 's.constrain("distance", "L0", value=80)\n'
+                 's.constrain("distance", "L5", value=60)\n'
+                 's.constrain("distance", "L1", value=10)\n'
+                 's.constrain("distance", "L4", value=10)\n'
+                 'element = extrude(s, 100, element_id="l_profile")\n')},
 ]
 
 _BY_ID = {s["id"]: s for s in SEEDS}

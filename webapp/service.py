@@ -22,7 +22,7 @@ _EXTENT_AXIS = {"length": 0, "width": 1, "thickness": 1, "height": 2}
 # the rest (diameter, stair rise/going/riser_count) are editable via literal substitution with no axis
 # signature (their acceptance test is cylindrical / a re-measure, not a bbox axis).
 _EDITABLE_DIMS = {"length", "width", "height", "thickness", "diameter",
-                  "rise", "going", "riser_count"}
+                  "rise", "going", "riser_count", "depth"}
 
 
 def _dims(manifest) -> list[dict]:

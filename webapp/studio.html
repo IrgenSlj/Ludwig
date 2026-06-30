@@ -484,7 +484,7 @@ function buildTree(d) {
 // Right · properties (R5): a slider per editable extent dim bound to the manifest — drag previews
 // geometry live via /api/preview (no LLM, no files), release commits via /api/edit. Other named dims
 // are read-only rows. Below them, the REAL deterministic critic verdict from payload.critic.
-const EDITABLE = new Set(["length", "width", "height", "thickness", "diameter", "rise", "going", "riser_count"]);
+const EDITABLE = new Set(["length", "width", "height", "thickness", "diameter", "rise", "going", "riser_count", "depth"]);
 function buildProps(d) {
   const props = $("#props"); props.innerHTML = "";
   const dims = d.dims || [];
