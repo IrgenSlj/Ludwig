@@ -71,6 +71,18 @@ class GeometryService:
             return top.hole(diameter) if through else top.hole(diameter, depth=depth)
         return BRepHandle(build)
 
+    def prism(self, profile, width: float, plane: str = "XZ") -> BRepHandle:
+        """Extrude a closed 2D polyline `profile` (a list of (u, v) points in `plane`) by `width` along
+        the plane normal — a single solid, no booleans. Used for saw-tooth stair flights and other
+        constant-section members. `profile` must be a simple (non-self-intersecting) loop; .close()
+        joins the last point back to the first."""
+        pts = [tuple(float(c) for c in p) for p in profile]
+
+        def build() -> Any:
+            cq = _cq()
+            return cq.Workplane(plane).polyline(pts).close().extrude(float(width))
+        return BRepHandle(build)
+
     # ---- queries (used by the dimensional/geometric critic and the eval harness) ----
 
     def bbox(self, handle: BRepHandle) -> tuple[float, float, float]:

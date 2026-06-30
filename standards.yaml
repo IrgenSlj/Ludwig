@@ -106,6 +106,7 @@ ifc_map:
   Part: IfcBuildingElementProxy
   Panel: IfcWall            # precast wall panel; IFC4precast refinement in P1
   Profile: IfcMember
+  Stair: IfcStair           # straight flight (R19); IfcStairFlight decomposition later
   Wall: IfcWall
   Slab: IfcSlab
   Column: IfcColumn

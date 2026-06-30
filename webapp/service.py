@@ -19,8 +19,10 @@ OUT = Path("out")
 # extent dims a slider can tweak deterministically, mapped to their bbox axis (x,y,z)
 _EXTENT_AXIS = {"length": 0, "width": 1, "thickness": 1, "height": 2}
 # dims the UI exposes as direct-edit controls (a slider / face-drag). Extents bind to a bbox axis;
-# diameter is editable but has no axis signature (its acceptance test is cylindrical, not bbox).
-_EDITABLE_DIMS = {"length", "width", "height", "thickness", "diameter"}
+# the rest (diameter, stair rise/going/riser_count) are editable via literal substitution with no axis
+# signature (their acceptance test is cylindrical / a re-measure, not a bbox axis).
+_EDITABLE_DIMS = {"length", "width", "height", "thickness", "diameter",
+                  "rise", "going", "riser_count"}
 
 
 def _dims(manifest) -> list[dict]:

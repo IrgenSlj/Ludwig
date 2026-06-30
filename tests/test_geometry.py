@@ -41,6 +41,19 @@ def test_precast_panel_builds_and_passes():
     assert geometric_pass(el, pb, GeometryService(), bbox_gate())  # 3000×200×2000, 2 anchor pockets
 
 
+def test_stair_is_one_valid_prism_with_correct_extents():
+    from toolkit import stair
+    el = stair("s", rise=170, going=280, width=1000, riser_count=17)
+    assert el.type == "Stair"
+    g = GeometryService()
+    length, width, height = g.bbox(el.geometry)
+    assert abs(length - 17 * 280) < 1e-6 and abs(width - 1000) < 1e-6 and abs(height - 17 * 170) < 1e-6
+    assert g.is_valid(el.geometry)
+    assert g.cylindrical_face_count(el.geometry) == 0          # saw-tooth prism, no booleans/holes
+    assert el.dim("rise") == 170 and el.dim("going") == 280 and el.dim("riser_count") == 17
+    assert el.dim("floor_to_floor") == 17 * 170
+
+
 def test_harness_discriminates_a_wrong_build():
     # an off-by-5mm height build must FAIL the gate — proves the instrument has real signal
     def bad(b):

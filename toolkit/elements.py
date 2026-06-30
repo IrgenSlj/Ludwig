@@ -133,6 +133,38 @@ def profile(element_id: str, length: float, width: float, height: float, *, name
     return el
 
 
+def stair(element_id: str, *, rise: float = 170.0, going: float = 280.0, width: float = 1000.0,
+          riser_count: int = 17, name: str = "") -> Element:
+    """A straight stair flight (type 'Stair') — a saw-tooth side profile extruded by `width` into a
+    single solid, no booleans. floor-to-floor = riser_count × rise, run = riser_count × going. Registers
+    the design parameters as named dims so the AD-K compliance critic (R20) and the UI read them; maps
+    to IfcStair via standards.yaml. The extents length/width/height carry the bbox so the dimensional
+    critic and eval harness see run × width × floor-to-floor."""
+    el = part(element_id, name=name)
+    el.type = "Stair"
+    n = max(1, int(riser_count))
+    ftf = n * float(rise)
+    run = n * float(going)
+    profile = [(0.0, 0.0)]
+    x = 0.0
+    for i in range(1, n + 1):
+        profile.append((x, i * float(rise)))     # vertical riser
+        x = i * float(going)
+        profile.append((x, i * float(rise)))     # horizontal tread (going)
+    profile.append((run, 0.0))                   # down the far end; .close() returns to the origin
+    el.geometry = _geom.prism(profile, width)
+    el.register_dim("length", run)               # x extent = total run
+    el.register_dim("width", float(width))
+    el.register_dim("height", ftf)               # z extent = floor-to-floor
+    el.register_dim("rise", float(rise))
+    el.register_dim("going", float(going))
+    el.register_dim("riser_count", n, unit="count")
+    el.register_dim("floor_to_floor", ftf)
+    el.features.append({"kind": "stair", "rise": float(rise), "going": float(going),
+                        "width": float(width), "riser_count": n, "floor_to_floor": ftf})
+    return el
+
+
 def panel(element_id: str, length: float, height: float, thickness: float, *, name: str = "") -> Element:
     """A precast wall panel (P1) — a Part of type 'Panel'. Oriented x=length, y=thickness, z=height,
     so the large faces are the length×height elevation. Registers length/thickness/height as named dims."""

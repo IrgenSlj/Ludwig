@@ -199,6 +199,17 @@ def selftest() -> int:
         except ImportError:
             print("  [skip] shop-drawing check — ezdxf not installed")
 
+        # R19 — Stair: a saw-tooth flight extruded as ONE prism (no booleans). bbox = run × width × ftf.
+        from toolkit import stair as _stair
+        _st = _stair("selftest_stair", rise=170, going=280, width=1000, riser_count=17)
+        _sl, _sw, _sh = g.bbox(_st.geometry)
+        check("stair bbox = run×width×floor-to-floor within gate",
+              abs(_sl - 17 * 280) <= tol and abs(_sw - 1000) <= tol and abs(_sh - 17 * 170) <= tol,
+              f"got {_sl:.1f}×{_sw:.1f}×{_sh:.1f} (want {17*280}×1000×{17*170})")
+        check("stair is a valid solid with no cylindrical faces",
+              g.is_valid(_st.geometry) and g.cylindrical_face_count(_st.geometry) == 0,
+              f"valid={g.is_valid(_st.geometry)} cyl={g.cylindrical_face_count(_st.geometry)}")
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend
