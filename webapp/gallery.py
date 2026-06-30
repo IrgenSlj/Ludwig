@@ -46,6 +46,10 @@ SEEDS = [
     {"id": "stair", "title": "Stair flight (AEC)",
      "blurb": "17 risers · 170 rise / 280 going · 1000 wide",
      "program": 'element = stair("stair", rise=170, going=280, width=1000, riser_count=17)\n'},
+    {"id": "wall_opening", "title": "Wall + opening (BIM)",
+     "blurb": "3000 × 2400 × 200 wall · 900 × 2100 door void",
+     "program": ('element = wall("wall", 3000, 2400, 200)\n'
+                 'opening(element, 900, 2100, (0, 0))\n')},
 ]
 
 _BY_ID = {s["id"]: s for s in SEEDS}

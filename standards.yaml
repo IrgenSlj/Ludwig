@@ -108,6 +108,7 @@ ifc_map:
   Profile: IfcMember
   Stair: IfcStair           # straight flight (R19); IfcStairFlight decomposition later
   Wall: IfcWall
+  Opening: IfcOpeningElement  # door/window void cut in a wall (R22)
   Slab: IfcSlab
   Column: IfcColumn
   Beam: IfcBeam

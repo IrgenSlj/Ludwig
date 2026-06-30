@@ -177,6 +177,40 @@ def panel(element_id: str, length: float, height: float, thickness: float, *, na
     return el
 
 
+def wall(element_id: str, length: float, height: float, thickness: float, *, name: str = "") -> Element:
+    """A wall segment (type 'Wall') — oriented x=length, y=thickness, z=height, so the large faces are
+    the length×height elevation. Maps to IfcWall. Openings are cut with `opening(...)`."""
+    el = part(element_id, name=name)
+    el.type = "Wall"
+    el.geometry = _geom.box(length, thickness, height)
+    el.register_dim("length", length)
+    el.register_dim("thickness", thickness)
+    el.register_dim("height", height)
+    return el
+
+
+def opening(wall_el: Element, width: float, height: float, at: tuple[float, float], *,
+            name: str | None = None) -> Element:
+    """Cut a rectangular opening (door/window void) through a wall at (x, z) on its elevation — the void
+    spans the full thickness. Records an Opening element (type='Opening', maps to IfcOpeningElement)
+    hosted by the wall via Relation('hosts', opening.id), and the opening position as a feature (the
+    drawing/IFC backends read it). Returns the Opening element; the wall is modified in place."""
+    x, z = float(at[0]), float(at[1])
+    thickness = wall_el.dim("thickness") or wall_el.dim("width") or 200.0
+    # oversize the cut along y (thickness) so the void passes cleanly through both faces
+    wall_el.geometry = _geom.cut(wall_el.geometry, (width, thickness * 2, height, (x, 0.0, z)))
+    oid = name or f"{wall_el.id}_opening_{sum(1 for r in wall_el.relations if r.kind == 'hosts') + 1}"
+    op = part(oid)
+    op.type = "Opening"
+    op.register_dim("width", width)
+    op.register_dim("height", height)
+    feat = {"kind": "opening", "at": (x, z), "width": float(width), "height": float(height)}
+    op.features.append(feat)
+    wall_el.relations.append(Relation("hosts", op.id))
+    wall_el.features.append(feat)
+    return op
+
+
 def anchor(el: Element, diameter: float, at: tuple[float, float], depth: float, *, name: str | None = None) -> Element:
     """A cast-in anchor pocket — a blind hole drilled `depth` mm into the top (+z) edge at (x, y)."""
     el.geometry = _geom.hole(el.geometry, diameter, at, through=False, depth=depth)

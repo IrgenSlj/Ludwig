@@ -231,6 +231,19 @@ def selftest() -> int:
               _br_crit.passed and any(c.check == "stair_compliance" and c.status.value == "n/a"
                                       for c in _br_crit.checks))
 
+        # R22 — Wall + Opening: a generic rect boolean cuts a door/window void; the wall stays a valid
+        # solid with less material, and the Opening is hosted via a 'hosts' relation.
+        from toolkit import opening as _opening, wall as _wall
+        _w = _wall("selftest_wall", 3000, 2400, 200)
+        _vol_solid = g.volume(_w.geometry)
+        _op = _opening(_w, 900, 2100, (0, 0))     # a door-sized void through the centre
+        check("wall + opening: void reduces volume, wall stays valid",
+              g.is_valid(_w.geometry) and g.volume(_w.geometry) < _vol_solid - 1.0,
+              f"vol {g.volume(_w.geometry):.0f} < {_vol_solid:.0f}")
+        check("opening is type 'Opening' hosted by the wall",
+              _op.type == "Opening"
+              and any(r.kind == "hosts" and r.target_id == _op.id for r in _w.relations))
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend

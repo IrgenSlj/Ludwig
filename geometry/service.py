@@ -83,7 +83,26 @@ class GeometryService:
             return cq.Workplane(plane).polyline(pts).close().extrude(float(width))
         return BRepHandle(build)
 
+    def cut(self, handle: BRepHandle, box_spec) -> BRepHandle:
+        """Subtract a rectangular box from a solid — the generic rect boolean for openings, slots,
+        pockets. `box_spec = (length, width, height, (cx, cy, cz))`: a box of those extents centred at
+        (cx, cy, cz), removed from `handle`. Returns a new lazy handle chaining on the previous build."""
+        length, width, height, center = box_spec
+        cx, cy, cz = (float(c) for c in center)
+
+        def build() -> Any:
+            cq = _cq()
+            tool = cq.Workplane("XY").box(float(length), float(width), float(height)).translate((cx, cy, cz))
+            return handle.solid().cut(tool)
+        return BRepHandle(build)
+
     # ---- queries (used by the dimensional/geometric critic and the eval harness) ----
+
+    def volume(self, handle: BRepHandle) -> float:
+        """Solid volume (mm³) — the dimensional/manufacturing critic uses it to confirm a void actually
+        removed material."""
+        return float(handle.solid().val().Volume())
+
 
     def bbox(self, handle: BRepHandle) -> tuple[float, float, float]:
         """Bounding-box extents (x, y, z). The dimensional critic checks these vs declared dims."""

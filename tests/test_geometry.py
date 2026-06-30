@@ -54,6 +54,19 @@ def test_stair_is_one_valid_prism_with_correct_extents():
     assert el.dim("floor_to_floor") == 17 * 170
 
 
+def test_wall_opening_cuts_a_void_and_hosts_it():
+    from toolkit import opening, wall
+    g = GeometryService()
+    w = wall("w", 3000, 2400, 200)
+    vol0 = g.volume(w.geometry)
+    op = opening(w, 900, 2100, (0, 0))
+    assert op.type == "Opening" and op.dim("width") == 900 and op.dim("height") == 2100
+    assert g.is_valid(w.geometry) and g.volume(w.geometry) < vol0          # void removed material
+    assert any(r.kind == "hosts" and r.target_id == op.id for r in w.relations)
+    length, thickness, height = g.bbox(w.geometry)                          # overall extents unchanged
+    assert abs(length - 3000) < 1e-6 and abs(thickness - 200) < 1e-6 and abs(height - 2400) < 1e-6
+
+
 def test_harness_discriminates_a_wrong_build():
     # an off-by-5mm height build must FAIL the gate — proves the instrument has real signal
     def bad(b):
