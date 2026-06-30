@@ -18,9 +18,9 @@ def test_compliance_critic_ad_k_stairs():
     bad = compliance.evaluate(stair("bad", rise=240, going=180, width=1000, riser_count=12),
                               Brief(prompt="general stair", use_class="general"))
     assert not bad.passed and {c.check for c in bad.failures} & {"rise", "pitch", "going"}
-    priv = compliance.evaluate(stair("p", rise=210, going=230, width=800, riser_count=14),
+    priv = compliance.evaluate(stair("p", rise=200, going=240, width=800, riser_count=14),
                                Brief(prompt="private stair", use_class="private"))
-    assert priv.passed                                                     # private class is more permissive
+    assert priv.passed   # rise 200<=220, going 240>=220, pitch 39.8<=42 — allowed for private, not general
     na = compliance.evaluate(box("b", 80, 40, 6), Brief(prompt="bracket"))
     assert na.passed and na.checks[0].status.value == "n/a"                # NA for non-stairs
 
