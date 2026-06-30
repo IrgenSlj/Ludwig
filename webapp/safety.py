@@ -67,4 +67,15 @@ def is_safe_derivative(program: str, seed_programs) -> bool:
     return False
 
 
-__all__ = ["is_safe_derivative", "within_envelope"]
+def value_in_envelope(v, max_abs: float = _MAX_ABS_DIM) -> bool:
+    """True iff a single numeric value (e.g. a slider's new/old) is finite and within the dimension
+    envelope. The substituted `param.new` reaches the kernel AFTER within_envelope ran on the original
+    program text, so the server must bound it separately — else a giant `new` re-introduces the DoS."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(v) and abs(v) <= max_abs
+
+
+__all__ = ["is_safe_derivative", "within_envelope", "value_in_envelope"]

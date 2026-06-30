@@ -50,7 +50,8 @@ def evaluate(el, brief) -> Critique:
         chk("going", going >= gmin - 1e-6, f"going {going:.0f} < {gmin:.0f} mm min ({uc})")
     if pmax is not None:
         chk("pitch", pitch <= pmax + 1e-6, f"pitch {pitch:.1f}° > {pmax:.0f}° max ({uc})")
-    chk("2R+G", band[0] <= two_rg <= band[1], f"2R+G {two_rg:.0f} outside {band[0]}–{band[1]} mm")
+    chk("2R+G", band[0] - 1e-6 <= two_rg <= band[1] + 1e-6,
+        f"2R+G {two_rg:.0f} outside {band[0]}–{band[1]} mm")
     if wmin is not None and width is not None:
         chk("width", width >= wmin - 1e-6, f"width {width:.0f} < {wmin:.0f} mm min ({uc})")
     return Critique(checks=checks)

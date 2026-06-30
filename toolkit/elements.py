@@ -145,14 +145,14 @@ def stair(element_id: str, *, rise: float = 170.0, going: float = 280.0, width: 
     n = max(1, int(riser_count))
     ftf = n * float(rise)
     run = n * float(going)
-    profile = [(0.0, 0.0)]
+    step_profile = [(0.0, 0.0)]                  # local name avoids shadowing the module-level profile()
     x = 0.0
     for i in range(1, n + 1):
-        profile.append((x, i * float(rise)))     # vertical riser
+        step_profile.append((x, i * float(rise)))     # vertical riser
         x = i * float(going)
-        profile.append((x, i * float(rise)))     # horizontal tread (going)
-    profile.append((run, 0.0))                   # down the far end; .close() returns to the origin
-    el.geometry = _geom.prism(profile, width)
+        step_profile.append((x, i * float(rise)))     # horizontal tread (going)
+    step_profile.append((run, 0.0))              # down the far end; .close() returns to the origin
+    el.geometry = _geom.prism(step_profile, width)
     el.register_dim("length", run)               # x extent = total run
     el.register_dim("width", float(width))
     el.register_dim("height", ftf)               # z extent = floor-to-floor

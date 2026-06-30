@@ -55,6 +55,14 @@ def test_within_envelope_blocks_giant_and_nonfinite_dims():
     assert not safety.within_envelope('element = box("plate", 1e400, 60, 10)\n')      # inf
 
 
+def test_param_value_is_bounded():
+    # the substituted slider `new` reaches the kernel after the program-level envelope check — bound it
+    assert safety.value_in_envelope(120) and safety.value_in_envelope(3000)
+    assert not safety.value_in_envelope(200_000_000)        # 200 km
+    assert not safety.value_in_envelope(float("inf"))
+    assert not safety.value_in_envelope("not-a-number")
+
+
 def test_demo_edit_never_invokes_the_llm(monkeypatch, tmp_path):
     # CRITICAL regression: in demo (allow_llm=False) a well-formed param whose dim is NOT a deterministic
     # extent (e.g. diameter) must NOT fall through to the LLM exec() path — it must cleanly reject.

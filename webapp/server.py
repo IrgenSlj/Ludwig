@@ -133,6 +133,16 @@ class Handler(BaseHTTPRequestHandler):
                 raise PermissionError("dimensions out of range — keep edits within a sane physical size.")
         return program
 
+    def _check_param_bounds(self, param: dict) -> None:
+        """Bound a slider's old/new in DEMO — the substituted value reaches OCCT tessellation after the
+        program-level within_envelope check ran, so an unbounded `new` would re-open the dimension DoS."""
+        if not DEMO:
+            return
+        from webapp import safety
+        for key in ("old", "new"):
+            if not safety.value_in_envelope(param.get(key)):
+                raise PermissionError("parameter value out of range — keep edits within a sane size.")
+
     def do_POST(self) -> None:
         if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt", "/api/preview"):
             self._send(404, b"not found", "text/plain")
@@ -170,6 +180,7 @@ class Handler(BaseHTTPRequestHandler):
                 param = req.get("param") or {}
                 if not {"name", "old", "new"} <= set(param):
                     raise ValueError("preview needs param{name, old, new}")
+                self._check_param_bounds(param)   # the substituted `new` reaches the kernel — bound it
                 from webapp.service import preview_edit
                 result = preview_edit(program, param["name"], float(param["old"]), float(param["new"]))
             else:  # /api/edit — re-prompt an existing program into a minimal diff (S6)
@@ -179,6 +190,8 @@ class Handler(BaseHTTPRequestHandler):
                 if DEMO and not (param and {"name", "old", "new"} <= set(param)):
                     raise PermissionError("the public demo only commits numeric parameter edits (drag a "
                                           "dimension). Free-text agent edits need your own AI key locally.")
+                if param:
+                    self._check_param_bounds(param)   # the substituted `new` reaches the kernel — bound it
                 if not instruction:
                     raise ValueError("edit needs an `instruction`")
                 from webapp.service import edit_to_result
