@@ -323,6 +323,74 @@ function buildSolid(mesh) {
   return { group: g, mat };
 }
 
+/* ---- Ambient Correctness (R6): the deterministic critic painted onto the geometry. A subtle
+   always-on wash of each solid's critic colour (teal verified · amber below-spec · red fail),
+   brighter on select, faded when another element is the focus. "Calm, not alarmist." ---- */
+let childMats = {};                                       // element id → its mesh material
+let AMBIENT = { overall:"ok", byId:{}, colorOf:()=>0x3a7d6b };
+const _RANK = { ok:0, warn:1, fail:2 };
+function _statusOf(checks){
+  let s="ok";
+  for(const c of checks) if(c.status==="fail"){ const cur=c.severity==="warning"?"warn":"fail"; if(_RANK[cur]>_RANK[s]) s=cur; }
+  return s;
+}
+function ambientStatus(d){
+  const colorOf = s => s==="fail"?0x9e3b30 : s==="warn"?0xb07a2b : 0x3a7d6b;   // --fail / --warn / --ok
+  const checks = d.critic || [];
+  const byId = {};
+  new Set(checks.map(c=>c.element_id).filter(Boolean)).forEach(
+    id => byId[id] = _statusOf(checks.filter(c=>c.element_id===id)));
+  return { overall:_statusOf(checks), byId, colorOf };
+}
+function paintMat(mat, { selected=false, faded=false }={}){
+  const amb = mat.userData.ambient ?? 0x3a7d6b;
+  mat.emissive = new THREE.Color(amb);
+  mat.emissiveIntensity = selected ? 0.5 : 0.14;
+  mat.transparent = faded; mat.opacity = faded ? 0.18 : 1.0; mat.depthWrite = !faded;
+  mat.needsUpdate = true;
+}
+function applyAmbient(d){
+  AMBIENT = ambientStatus(d);
+  for(const [id, mat] of Object.entries(childMats)){
+    mat.userData.ambient = AMBIENT.colorOf(AMBIENT.byId[id] || AMBIENT.overall);
+    paintMat(mat, {});
+  }
+}
+
+/* ---- Point-to-Navigate (R6): pick a solid → its model-tree node highlights, and vice-versa.
+   Geometry is the index into the program; selection resolves to a program node by lineage, never a
+   kernel handle ([H2]). A drag is an orbit, not a pick (movement threshold separates them). ---- */
+function setSelection(id){
+  for(const [cid, mat] of Object.entries(childMats))
+    paintMat(mat, { selected: id!==null && cid===id, faded: id!==null && cid!==id });
+}
+function pulseAll(){
+  Object.values(childMats).forEach(m=>paintMat(m,{selected:true}));
+  setTimeout(()=>Object.values(childMats).forEach(m=>paintMat(m,{})), 650);
+}
+function selectFromStage(id){
+  document.querySelectorAll("#tree .node").forEach(n=> n.classList.toggle("sel", n.dataset.elid===id));
+  setSelection(id);
+}
+function clearStageSelection(){
+  document.querySelectorAll("#tree .node").forEach(n=> n.classList.remove("sel"));
+  setSelection(null);
+}
+const _ray = new THREE.Raycaster(); let _downXY = null;
+canvas.addEventListener("pointerdown", e=>{ _downXY=[e.clientX, e.clientY]; });
+canvas.addEventListener("pointerup", e=>{
+  if(!_downXY) return;
+  const moved = Math.hypot(e.clientX-_downXY[0], e.clientY-_downXY[1]); _downXY=null;
+  if(moved>5 || !model) return;                          // a drag is an orbit, not a pick
+  const r = canvas.getBoundingClientRect();
+  _ray.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1), cam);
+  const hits = _ray.intersectObjects(model.children, true);
+  let o = hits.length ? hits[0].object : null;
+  while(o && o.userData.elementId===undefined) o = o.parent;
+  if(o && o.userData.elementId) selectFromStage(o.userData.elementId);
+  else clearStageSelection();
+});
+
 function showGeometry(d, opts) {
   opts = opts || {};
   if (model) { scene.remove(model); model = null; }
@@ -335,9 +403,11 @@ function showGeometry(d, opts) {
   if (!solids.length) return false;
 
   model = new THREE.Group();
+  childMats = {};
   for (const s of solids) {
     const b = buildSolid(s.mesh);
     b.group.userData.elementId = s.id;
+    childMats[s.id] = b.mat;                              // for per-child select + ambient wash
     model.add(b.group);
   }
   scene.add(model);
@@ -350,6 +420,7 @@ function showGeometry(d, opts) {
   gh.position.set(c.x, c.y, box.min.z - 0.5);
   scene.add(gh); grid = gh;
 
+  applyAmbient(d);                                         // paint the critic verdict onto the solids
   if (opts.refit !== false) { userMoved=false; frame(); }
   return true;
 }
@@ -382,13 +453,21 @@ function render(payload) {
   buildProps(payload);
 }
 
-// Left · model tree (read-only in R1; R5 makes it payload-driven + click-to-isolate).
+// Left · model tree (R6): payload-driven + click-to-isolate. Clicking the head pulses the whole
+// part/assembly; clicking a child isolates that solid on the Stage (lineage, never a kernel handle).
 function buildTree(d) {
   const id = d.id || "model", type = (d.type || "").toLowerCase();
+  const head = `<div class="node sel" data-elid="${id}" data-head="1"><span class="dot"></span>${id}<span class="ind" style="margin-left:auto">${type}</span></div>`;
   const kids = (d.children && d.children.length)
-    ? d.children.map(c => `<div class="node" style="padding-left:22px"><span class="dot"></span>${c.id}<span class="ind" style="margin-left:auto">${(c.type||"").toLowerCase()}</span></div>`).join("")
+    ? d.children.map(c => `<div class="node" data-elid="${c.id}" style="padding-left:22px"><span class="dot"></span>${c.id}<span class="ind" style="margin-left:auto">${(c.type||"").toLowerCase()}</span></div>`).join("")
     : (d.dims || []).map(x => `<div class="node" style="padding-left:22px"><span class="ind">·</span> ${x.name} ${x.value} ${x.unit||"mm"}</div>`).join("");
-  $("#tree").innerHTML = `<div class="node sel"><span class="dot"></span>${id}<span class="ind" style="margin-left:auto">${type}</span></div>${kids}`;
+  const tree = $("#tree"); tree.innerHTML = head + kids;
+  tree.querySelectorAll(".node[data-elid]").forEach(n => n.addEventListener("click", () => {
+    if (n.dataset.head === "1") {                          // the whole part/assembly
+      document.querySelectorAll("#tree .node").forEach(x => x.classList.toggle("sel", x === n));
+      setSelection(null); pulseAll();
+    } else selectFromStage(n.dataset.elid);                // isolate one child
+  }));
 }
 
 // Right · properties (R5): a slider per editable extent dim bound to the manifest — drag previews
@@ -492,7 +571,15 @@ function emptyStage(msg) {
     `<div style="color:var(--muted);font-size:12px;padding:8px 0">${m}</div>`;
 }
 
-window.LUDWIG = { render, state: STATE };
+// A small automation/debug seam (browser console + headless E2E) — the controller, not a network
+// surface. Exposes render + selection so the Stage's Point-to-Navigate / Ambient wash are testable.
+window.LUDWIG = {
+  render, selectFromStage, clearStageSelection,
+  state: STATE,
+  get ambient(){ return { overall: AMBIENT.overall, byId: AMBIENT.byId,
+    mats: Object.fromEntries(Object.entries(childMats).map(
+      ([id, m]) => [id, { hex: m.emissive.getHex(), opacity: m.opacity }])) }; },
+};
 
 /* ===================== seed boot via /api/adopt (token-free) ===================== */
 const SEED_PROGRAM = [
@@ -544,22 +631,18 @@ function setCam(which){
 }
 function runCommand(raw){
   const s=raw.trim(); if(!s) return;
-  log("you", s);
   const [cmd,...rest]=s.split(/\s+/); const k=cmd.toLowerCase();
-  if(VIEWDIR[k]){ setView(k); log("sys","view: "+k); return; }
-  if(k==="ortho"||k==="persp"){ setCam(k); log("sys","camera: "+k); return; }
-  if(k==="fit"||k==="home"){ userMoved=false; frame(); log("sys","framed"); return; }
-  if(k==="left"){ document.body.classList.toggle("no-left"); log("sys","left rail toggled"); return; }
-  if(k==="right"){ document.body.classList.toggle("no-right"); log("sys","right rail toggled"); return; }
-  if(k==="help"){
-    log("sys","view: iso · top · front · back · right · left · bottom");
-    log("sys","camera: ortho · persp · fit");
-    log("sys","rails: left · right");
-    log("sys","anything else routes to the agent (wiring in R4/R6).");
+  if(VIEWDIR[k]){ log("you",s); setView(k); log("sys","view: "+k); return; }
+  if(k==="ortho"||k==="persp"){ log("you",s); setCam(k); log("sys","camera: "+k); return; }
+  if(k==="fit"||k==="home"){ log("you",s); userMoved=false; frame(); log("sys","framed"); return; }
+  if(k==="help"){ log("you",s);
+    log("sys","view: iso · top · front · back · right · left · bottom · ortho · persp · fit");
+    log("sys","anything else is a change request → routed through the real edit loop (/api/edit).");
     return;
   }
-  log("agent", "Agent wiring comes in R4/R6. I'd translate \""+s+"\" into model ops "
-      +"and show them here for you to accept. For now use view commands — try `help`.", "warn");
+  // anything else is a change request — route it through the real edit loop (minimal-diff, fab-gated).
+  if(!STATE.program){ log("you",s); log("sys","load a model first.","warn"); return; }
+  applyEdit(s, null);
 }
 
 /* ===================== wiring ===================== */
