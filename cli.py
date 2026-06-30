@@ -81,6 +81,32 @@ def selftest() -> int:
     check("feature graph: recording OFF by default (unrecorded box has graph=None)",
           box("_no_record", 10, 10, 10).graph is None)
 
+    # R27 — sketch constraint solver (pure-Python, no kernel). A fully-constrained rectangle solves to
+    # exact corners; dropping the two distance dims leaves exactly 2 DoF — reported deterministically.
+    from geometry.sketch_solver import solve as _solve_sketch
+    from ir.sketch import Sketch
+
+    def _rect(dims: bool = True):
+        s = Sketch("r")
+        s.point("a", 0, 0, fixed=True)                                  # anchor removes translation DoF
+        s.point("b", 35, 3); s.point("c", 33, 18); s.point("d", 2, 19)  # rough initial corners
+        for lid, p, q in [("L0", "a", "b"), ("L1", "b", "c"), ("L2", "c", "d"), ("L3", "d", "a")]:
+            s.line(lid, p, q)
+        s.constrain("horizontal", "L0"); s.constrain("vertical", "L1")
+        s.constrain("horizontal", "L2"); s.constrain("vertical", "L3")
+        if dims:
+            s.constrain("distance", "L0", value=40); s.constrain("distance", "L1", value=20)
+        return s
+
+    _rs = _solve_sketch(_rect(True))
+    _want = {"a": (0, 0), "b": (40, 0), "c": (40, 20), "d": (0, 20)}
+    _corners_ok = all(abs(_rs.coords[k][i] - _want[k][i]) < 1e-6 for k in _want for i in (0, 1))
+    check("sketch: constrained rectangle solves to exact corners (1e-6)",
+          _rs.solved and _rs.dof == 0 and _corners_ok,
+          f"solved={_rs.solved} dof={_rs.dof} resid={_rs.residual_norm:.1e}")
+    check("sketch: under-constrained rectangle reports 2 remaining DoF",
+          _solve_sketch(_rect(False)).dof == 2, f"dof={_solve_sketch(_rect(False)).dof}")
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:
