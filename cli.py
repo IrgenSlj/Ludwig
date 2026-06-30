@@ -210,6 +210,27 @@ def selftest() -> int:
               g.is_valid(_st.geometry) and g.cylindrical_face_count(_st.geometry) == 0,
               f"valid={g.is_valid(_st.geometry)} cyl={g.cylindrical_face_count(_st.geometry)}")
 
+        # R20 — AD-K compliance critic (the verified-fabricability moat). A compliant general-access
+        # stair passes the panel; an over-pitch one fails it — deterministically, no loop change. And
+        # the new critic is NA for non-stairs, so pre-existing critiques are unaffected.
+        from agent.loop import Brief
+        from critic import panel as _panel
+        _ok_stair = _stair("ok_stair", rise=170, going=280, width=1000, riser_count=17)   # general-compliant
+        _bad_stair = _stair("bad_stair", rise=240, going=180, width=1000, riser_count=12)  # over-pitch / over-rise
+        _general = Brief(prompt="general access stair", use_class="general")
+        _ok_crit = _panel.evaluate(_ok_stair, _general)
+        check("compliant stair passes the panel (AD-K general)", _ok_crit.passed,
+              f"failures={[c.check for c in _ok_crit.failures]}")
+        _bad_crit = _panel.evaluate(_bad_stair, _general)
+        check("over-pitch stair FAILS the compliance critic",
+              not _bad_crit.passed and any(c.check in ("pitch", "rise") and c.status.value == "fail"
+                                           for c in _bad_crit.checks),
+              f"failures={[c.check for c in _bad_crit.failures]}")
+        _br_crit = _panel.evaluate(bracket, Brief(prompt="a bracket"))
+        check("compliance is NA for non-stairs (bracket panel unaffected)",
+              _br_crit.passed and any(c.check == "stair_compliance" and c.status.value == "n/a"
+                                      for c in _br_crit.checks))
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend

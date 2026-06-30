@@ -105,6 +105,7 @@ class Brief:
     named_dims: dict[str, float] = field(default_factory=dict)   # declared dims the critic enforces
     holes: Optional[int] = None                                  # None = unknown (bare prompt); skip the check
     units: str = "mm"
+    use_class: Optional[str] = None     # AD-K stair use class (private/general/institutional); compliance critic
 
     def __post_init__(self) -> None:
         # Auto-extract dims and holes from the prompt if not explicitly provided.
@@ -121,7 +122,8 @@ class Brief:
     @classmethod
     def from_dict(cls, d: dict) -> "Brief":
         return cls(prompt=d["prompt"], named_dims=dict(d.get("dims", {})),
-                   holes=(int(d["holes"]) if "holes" in d else None))
+                   holes=(int(d["holes"]) if "holes" in d else None),
+                   use_class=d.get("use_class"))
 
 
 @dataclass

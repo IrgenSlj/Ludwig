@@ -6,11 +6,11 @@ Adding a new critic/Sensor is `register(...)` — it must NOT require touching t
 """
 from __future__ import annotations
 
-from critic import dimensional, geometric, manufacturing, semantic
+from critic import compliance, dimensional, geometric, manufacturing, semantic
 from critic.base import Critique
 
 # Default panel for the Blender/CadQuery brep world. New sensors append here via register().
-_PANEL: list = [geometric, dimensional, semantic, manufacturing]
+_PANEL: list = [geometric, dimensional, semantic, manufacturing, compliance]
 
 
 def register(critic) -> None:

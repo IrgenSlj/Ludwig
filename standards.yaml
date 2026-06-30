@@ -113,6 +113,15 @@ ifc_map:
   Beam: IfcBeam
   Assembly: IfcElementAssembly
 
+# Approved Document K — stair geometry limits by use class (mm / degrees). The compliance critic reads
+# these per the brief's use_class (default: general). 2R+G band applies to all classes.
+stairs:
+  two_r_plus_g: [550, 700]          # 2*rise + going comfort band
+  use_classes:
+    private:       {rise_max: 220, going_min: 220, pitch_max: 42, width_min: 600}
+    general:       {rise_max: 190, going_min: 250, pitch_max: 38, width_min: 1000}
+    institutional: {rise_max: 180, going_min: 280, pitch_max: 38, width_min: 1200}
+
 # Inference policy (provider-blind; never sell inference). Model tiering per BRIEF §5.
 inference:
   codegen_tier: cheap        # bulk candidate generation

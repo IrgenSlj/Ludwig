@@ -6,8 +6,24 @@ import pytest
 pytest.importorskip("cadquery")
 
 from agent.loop import Brief, execute
-from critic import panel
+from critic import compliance, panel
 from critic.base import Critique
+
+
+def test_compliance_critic_ad_k_stairs():
+    from toolkit import box, stair
+    ok = compliance.evaluate(stair("ok", rise=170, going=280, width=1000, riser_count=17),
+                             Brief(prompt="general stair", use_class="general"))
+    assert ok.passed                                                       # general-compliant
+    bad = compliance.evaluate(stair("bad", rise=240, going=180, width=1000, riser_count=12),
+                              Brief(prompt="general stair", use_class="general"))
+    assert not bad.passed and {c.check for c in bad.failures} & {"rise", "pitch", "going"}
+    priv = compliance.evaluate(stair("p", rise=210, going=230, width=800, riser_count=14),
+                               Brief(prompt="private stair", use_class="private"))
+    assert priv.passed                                                     # private class is more permissive
+    na = compliance.evaluate(box("b", 80, 40, 6), Brief(prompt="bracket"))
+    assert na.passed and na.checks[0].status.value == "n/a"                # NA for non-stairs
+
 
 GOOD = """
 element = box("bracket", 80, 40, 6)
