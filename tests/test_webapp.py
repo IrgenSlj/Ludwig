@@ -120,6 +120,19 @@ def test_dims_deduped_by_name():
     assert [d["name"] for d in out] == ["length", "width"]  # each named dim once, last value wins
 
 
+def test_dim_binding_metadata_tags_axis_and_editable():
+    # R9: each dim carries axis (0/1/2 / null) + editable — the bridge a face-drag reads
+    from ir.elements import NamedDim
+    by = {d["name"]: d for d in service._dims(
+        [NamedDim("length", 80), NamedDim("width", 40), NamedDim("height", 6),
+         NamedDim("diameter", 10), NamedDim("M8_clearance_1", 9)])}
+    assert (by["length"]["axis"], by["length"]["editable"]) == (0, True)
+    assert (by["width"]["axis"], by["width"]["editable"]) == (1, True)
+    assert (by["height"]["axis"], by["height"]["editable"]) == (2, True)
+    assert (by["diameter"]["axis"], by["diameter"]["editable"]) == (None, True)  # editable, non-axis
+    assert by["M8_clearance_1"]["axis"] is None and by["M8_clearance_1"]["editable"] is False
+
+
 def test_assembly_children_each_get_their_own_mesh(tmp_path):
     from toolkit import assembly, box
     from agent.loop import LoopResult

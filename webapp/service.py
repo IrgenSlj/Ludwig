@@ -18,14 +18,23 @@ OUT = Path("out")
 
 # extent dims a slider can tweak deterministically, mapped to their bbox axis (x,y,z)
 _EXTENT_AXIS = {"length": 0, "width": 1, "thickness": 1, "height": 2}
+# dims the UI exposes as direct-edit controls (a slider / face-drag). Extents bind to a bbox axis;
+# diameter is editable but has no axis signature (its acceptance test is cylindrical, not bbox).
+_EDITABLE_DIMS = {"length", "width", "height", "thickness", "diameter"}
 
 
 def _dims(manifest) -> list[dict]:
     """Serialize a manifest to JSON, deduped by name (last value wins). Live codegen sometimes
-    register_dim's the same extent twice; the UI should show each named dim once."""
+    register_dim's the same extent twice; the UI should show each named dim once.
+
+    R9 — each dim also carries its binding metadata: `axis` (0/1/2 for an extent that maps to a bbox
+    axis via _EXTENT_AXIS, else null) and `editable` (a direct-edit control is offered). This is the
+    bridge a face-drag (R10) reads to map a picked face's world normal back to the dim it drives."""
     seen: dict[str, dict] = {}
     for d in manifest:
-        seen[d.name] = {"name": d.name, "value": d.value, "unit": d.unit}
+        seen[d.name] = {"name": d.name, "value": d.value, "unit": d.unit,
+                        "axis": _EXTENT_AXIS.get(d.name),
+                        "editable": d.name in _EDITABLE_DIMS}
     return list(seen.values())
 _NUM = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w.])")  # a standalone number literal (not M6, not 1.5e3)
 
