@@ -90,6 +90,30 @@ def test_preview_falls_back_to_substitution_when_not_graph_expressible():
     assert r["bbox"]["length"] == 3200.0
 
 
+def test_durable_span_edit_of_a_square_needs_no_llm(monkeypatch, tmp_path):
+    # R8: a 30×30 square's length is ambiguous for substitute-all (length == width), so today it falls
+    # to the LLM. The recorded node span lets the durable edit change exactly the length literal — no LLM.
+    monkeypatch.setattr(inference, "infer",
+                        lambda *a, **k: pytest.fail("LLM called — the span edit must be deterministic"))
+    service._GRAPH_CACHE.clear()
+    prog = 'element = box("square", 30, 30, 12)\n'
+    r = service.edit_to_result(prog, "make the length 40 mm",
+                               param={"name": "length", "old": 30, "new": 40}, out=tmp_path)
+    assert r["fast"] is True and r["passed"] is True
+    assert r["bbox"] == {"length": 40.0, "width": 30.0, "height": 12.0}   # only length moved
+    assert r["diff"]["added"] == 1 and r["diff"]["removed"] == 1          # one-token diff, not a rewrite
+    assert 'box("square", 40, 30, 12)' in r["program"]
+
+
+def test_node_spans_locate_box_extents():
+    # the AST span map targets each positional extent of a box independently
+    prog = 'element = box("s", 30, 30, 12)\n'
+    spans = service._node_spans(prog)
+    assert set(spans) == {("box#1", "length"), ("box#1", "width"), ("box#1", "height")}
+    a, b = spans[("box#1", "length")]
+    assert prog[a:b] == "30" and a < spans[("box#1", "width")][0]   # length is the FIRST 30
+
+
 def test_dims_deduped_by_name():
     from ir.elements import NamedDim
     out = service._dims([NamedDim("length", 80), NamedDim("length", 80), NamedDim("width", 40)])

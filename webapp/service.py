@@ -8,6 +8,7 @@ server is just another *frontend*, like the CLI — adding it does not touch the
 """
 from __future__ import annotations
 
+import ast
 import difflib
 import re
 from pathlib import Path
@@ -111,6 +112,97 @@ def _try_fast_edit(program: str, name: str, old: float, new: float, out: Path) -
     result = _assemble(res, out)
     diff = list(difflib.unified_diff(program.splitlines(), new_program.splitlines(), lineterm="", n=1))
     result["diff"] = {"added": 1, "removed": 1, "text": "\n".join(diff)}
+    result["fast"] = True
+    return result
+
+
+# R8: per-node source spans. box(id, length, width, height) → the char span of each positional extent
+# literal, recovered from the program AST and matched to graph node ids in source order. This lets a
+# durable edit substitute the NODE's literal directly, even when its value collides with another extent
+# (a 30×30 square's length == width), which the value-based substitute-all can't disambiguate.
+_OP_FUNC = {"box": "box", "hole": "hole", "clearance_hole": "hole", "anchor": "anchor",
+            "place": "place", "stack": "stack", "assembly": "assembly"}
+_BOX_PARAMS = ("length", "width", "height")   # box(id, length, width, height) — positional args 1..3
+
+
+def _node_spans(program: str) -> dict[tuple[str, str], tuple[int, int]]:
+    """{(node_id, param): (start, end)} char spans for box extent literals, by matching AST calls to
+    lineage-stable node ids (op#count) in source order — the same scheme FeatureGraph assigns. Returns
+    {} on a parse error or for fenced/non-straight-line programs (the caller then falls back)."""
+    try:
+        tree = ast.parse(program)
+    except SyntaxError:
+        return {}
+    starts = [0]
+    for line in program.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    off = lambda lineno, col: starts[lineno - 1] + col  # noqa: E731  (lineno is 1-based)
+    calls = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _OP_FUNC:
+            calls.append((node.lineno, node.col_offset, _OP_FUNC[node.func.id], node))
+    calls.sort(key=lambda c: (c[0], c[1]))
+    counts: dict[str, int] = {}
+    spans: dict[tuple[str, str], tuple[int, int]] = {}
+    for _ln, _col, op, node in calls:
+        counts[op] = counts.get(op, 0) + 1
+        node_id = f"{op}#{counts[op]}"
+        if op == "box":
+            for i, pname in enumerate(_BOX_PARAMS, start=1):
+                if i < len(node.args):
+                    a = node.args[i]
+                    if hasattr(a, "end_col_offset") and a.end_col_offset is not None:
+                        spans[(node_id, pname)] = (off(a.lineno, a.col_offset),
+                                                   off(a.end_lineno, a.end_col_offset))
+    return spans
+
+
+def _try_span_edit(program: str, name: str, old: float, new: float, out: Path) -> Optional[dict]:
+    """R8 durable minimal-diff edit by substituting exactly the recorded node's literal span — handles
+    the case `_substitute_all_literals` can't (a square's length == width), deterministically (no LLM).
+    Substitute the box-extent span, re-execute, and accept only if the target axis became `new` and no
+    other extent moved and the critic passes — otherwise return None to fall back to the LLM edit."""
+    axis = _EXTENT_AXIS.get(name)
+    if axis is None:
+        return None
+    entry = _graph_for(program)
+    if entry["graph"] is None or entry["el"] is None or entry["el"].children:
+        return None
+    spans = _node_spans(program)
+    targets = [spans[(nid, pname)] for (nid, pname) in _nodes_for_dim(entry["graph"], name, old)
+               if (nid, pname) in spans]
+    if not targets:
+        return None
+    from agent.loop import Brief, LoopResult, execute, verify
+    from geometry import GeometryService
+    from toolkit.standards import tol_linear
+    g = GeometryService()
+    orig = entry["el"]
+    if orig.geometry is None:
+        return None
+    orig_bb = g.bbox(orig.geometry)
+    lit = program[targets[0][0]:targets[0][1]]
+    txt = str(float(new)) if "." in lit else str(int(new))
+    new_program = program
+    for a, b in sorted(targets, reverse=True):   # right-to-left so earlier spans stay valid
+        new_program = new_program[:a] + txt + new_program[b:]
+    el, err = execute(new_program)
+    if err or el is None or el.geometry is None:
+        return None
+    bb, tol = g.bbox(el.geometry), max(tol_linear(), 1e-3)
+    for i in range(3):                            # target axis becomes `new`; every other extent holds
+        if abs(bb[i] - (new if i == axis else orig_bb[i])) > tol:
+            return None
+    crit = verify(el, Brief(prompt=""))
+    if not crit.passed:
+        return None
+    res = LoopResult(new_program, el, crit, True, 0, None)
+    result = _assemble(res, out)
+    diff = list(difflib.unified_diff(program.splitlines(), new_program.splitlines(), lineterm="", n=1))
+    result["diff"] = {
+        "added": sum(1 for ln in diff if ln.startswith("+") and not ln.startswith("+++")),
+        "removed": sum(1 for ln in diff if ln.startswith("-") and not ln.startswith("---")),
+        "text": "\n".join(diff)}
     result["fast"] = True
     return result
 
@@ -308,7 +400,10 @@ def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = No
     out = Path(out) if out is not None else OUT
     out.mkdir(parents=True, exist_ok=True)
     if param and {"name", "old", "new"} <= set(param):
-        fast = _try_fast_edit(program, param["name"], float(param["old"]), float(param["new"]), out)
+        n, o, v = param["name"], float(param["old"]), float(param["new"])
+        # value-based substitute-all first (handles echoed literals); then R8 span edit for the
+        # ambiguous case (a square's length == width) where substitute-all moves the wrong extent too.
+        fast = _try_fast_edit(program, n, o, v, out) or _try_span_edit(program, n, o, v, out)
         if fast is not None:
             fast["instruction"] = instruction
             return fast
