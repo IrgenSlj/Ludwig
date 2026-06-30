@@ -325,15 +325,115 @@ def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = No
     return result
 
 
+# R7: per-program FeatureGraph cache for the instant direct-manipulation path. Keyed by program text;
+# the graph (+ a shared EvalCache) is recovered once by executing the program under recording(), then
+# every slider tick reuses it so only the dirty subtree rebuilds — no whole-program re-exec, no LLM.
+_GRAPH_CACHE: dict[str, dict] = {}
+
+
+def _graph_for(program: str) -> dict:
+    """{graph, el, cache} for `program`, cached by text. graph is None when the program isn't
+    graph-expressible (raw-CadQuery closure, build error, or an assembly) — preview then falls back to
+    text substitution. The Element is kept for its manifest/type/features when wrapping the result."""
+    entry = _GRAPH_CACHE.get(program)
+    if entry is not None:
+        return entry
+    from agent.loop import execute
+    from geometry.evaluator import EvalCache, is_graph_expressible
+    el, err = execute(program, record=True)
+    if (err or el is None or el.graph is None or el.children
+            or not is_graph_expressible(el.graph)):
+        entry = {"graph": None, "el": None, "cache": None}
+    else:
+        entry = {"graph": el.graph, "el": el, "cache": EvalCache()}
+    if len(_GRAPH_CACHE) > 64:          # bound per-process growth across many distinct edits
+        _GRAPH_CACHE.clear()
+    _GRAPH_CACHE[program] = entry
+    return entry
+
+
+def _nodes_for_dim(graph, name: str, old: float, tol: float = 1e-6) -> list[tuple[str, str]]:
+    """(node_id, param) targets a slider edit on dim `name` drives: graph nodes carrying a numeric
+    param `name` whose value == `old` (box extents length/width/height; a hole/anchor diameter; …).
+    Matching on value mirrors the text path's substitute-all so shared edits (both holes) move together."""
+    out: list[tuple[str, str]] = []
+    for n in graph.nodes:
+        v = n.params.get(name)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and abs(float(v) - old) <= tol:
+            out.append((n.node_id, name))
+    return out
+
+
 def preview_edit(program: str, name: str, old: float, new: float) -> dict:
     """Geometry-only LIVE preview for a slider drag — the direct-manipulation path.
 
-    Substitute the literal, re-execute IN-PROCESS, tessellate, and return the mesh + critic. It writes
-    NO files and runs NO backends (no STEP/IFC/DXF/PNG) — that is what makes it instant, so the 3D
-    model updates continuously under the slider like a Grasshopper/Rhino parameter, instead of paying
-    the full fabrication-export cost on every tick. The real `edit_to_result` (with the fab gate +
-    minimal-diff provenance) runs once, on release. Returns {"ok": False, ...} when the change can't be
-    applied cleanly, so the UI simply keeps the last good mesh rather than flickering."""
+    Fast path (R7): if the program's recorded FeatureGraph drives this dim, rebuild only the dirty
+    subtree via the deterministic evaluator (set_param) — no re-exec of the whole program, no LLM.
+    Otherwise fall back to substituting the literal and re-executing (the original path). Either way it
+    writes NO files and runs NO backends — that is what makes it instant, so the 3D model updates
+    continuously under the slider. The real `edit_to_result` (fab gate + minimal-diff) runs once, on
+    release. Returns {"ok": False, ...} when the change can't be applied cleanly, so the UI keeps the
+    last good mesh rather than flickering."""
+    from toolkit.standards import tol_linear
+    tol = max(tol_linear(), 1e-3)
+    entry = _graph_for(program)
+    if entry["graph"] is not None:
+        nodes = _nodes_for_dim(entry["graph"], name, old)
+        if nodes:
+            fast = _preview_via_evaluator(entry, nodes, name, float(new), tol)
+            if fast is not None:
+                return fast
+    return _preview_via_substitution(program, name, old, new, tol)
+
+
+def _preview_via_evaluator(entry: dict, nodes, name: str, new: float, tol: float):
+    """Rebuild only the dirty subtree for a slider edit and return the preview payload — or None to
+    fall back. The evaluator gives geometry; dims/critic come from the recorded Element's manifest
+    (with the edited dim updated) wrapped around the new handle, so Ambient Correctness repaints live."""
+    from agent.loop import Brief, verify
+    from geometry import GeometryService
+    from geometry.evaluator import Evaluator
+    from ir.elements import Element, NamedDim
+
+    g = GeometryService()
+    ev = Evaluator(entry["graph"], cache=entry["cache"])
+    ev.build()                                       # warm against the shared cache (cheap when hot)
+    handle, rebuilt = None, set()
+    for nid, pname in nodes:
+        handle, rb = ev.set_param(nid, pname, new)
+        rebuilt |= rb
+    try:
+        length, width, height = g.bbox(handle)
+        mesh = g.tessellate(handle)
+    except Exception:
+        return None                                  # unbuildable → fall back to substitution
+    axis = _EXTENT_AXIS.get(name)
+    if axis is not None and abs((length, width, height)[axis] - new) > tol:
+        return None                                  # extent didn't land as expected → fall back
+    base = entry["el"]
+    dims = _dims(base.manifest)
+    for d in dims:
+        if d["name"] == name:
+            d["value"] = new
+    tmp = Element(id=base.id, type=base.type, name=base.name)
+    tmp.geometry = handle
+    tmp.manifest = [NamedDim(d["name"], d["value"], d.get("unit", "mm")) for d in dims]
+    tmp.features = base.features
+    crit = verify(tmp, Brief(prompt=""))
+    return {"ok": True, "id": base.id, "type": base.type, "dims": dims,
+            "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)},
+            "mesh": mesh, "children": [],
+            "critic": [
+                {"check": c.check, "status": c.status.value, "message": c.message,
+                 "element_id": getattr(c, "element_id", None),
+                 "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
+                for c in (crit.checks if crit else [])],
+            "engine": "evaluator", "rebuilt": sorted(rebuilt)}
+
+
+def _preview_via_substitution(program: str, name: str, old: float, new: float, tol: float) -> dict:
+    """The original preview path: substitute the literal, re-execute in-process, tessellate. Handles
+    everything the evaluator can't yet (raw-CadQuery closures, assemblies). Behavior unchanged."""
     new_program = _substitute_all_literals(program, old, new)
     if new_program is None:
         return {"ok": False, "reason": "literal-not-found"}
@@ -348,13 +448,11 @@ def preview_edit(program: str, name: str, old: float, new: float) -> dict:
     except Exception as e:
         return {"ok": False, "reason": f"{type(e).__name__}: {e}"}
     axis = _EXTENT_AXIS.get(name)  # for an extent dim, confirm the substitution drove the intended axis
-    if axis is not None:
-        from toolkit.standards import tol_linear
-        if abs((length, width, height)[axis] - new) > max(tol_linear(), 1e-3):
-            return {"ok": False, "reason": "axis-mismatch"}
+    if axis is not None and abs((length, width, height)[axis] - new) > tol:
+        return {"ok": False, "reason": "axis-mismatch"}
     out: dict = {"ok": True, "id": el.id, "type": el.type, "dims": _dims(el.manifest),
                  "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)},
-                 "mesh": None, "children": [], "critic": []}
+                 "mesh": None, "children": [], "critic": [], "engine": "substitution"}
     try:
         out["mesh"] = g.tessellate(el.geometry)
     except Exception as e:

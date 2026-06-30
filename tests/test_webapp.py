@@ -69,6 +69,27 @@ def test_fast_edit_does_not_call_the_llm(monkeypatch, tmp_path):
     assert r["diff"]["added"] == 1 and r["diff"]["removed"] == 1
 
 
+def test_preview_uses_evaluator_and_rebuilds_only_dirty_subtree():
+    # R7: a bracket length drag goes through the deterministic evaluator (no whole-program re-exec,
+    # no LLM), rebuilding only the dirty descendant subtree, with the /api/preview contract intact.
+    service._GRAPH_CACHE.clear()
+    r = service.preview_edit(GOOD, "length", 80, 120)
+    assert r["ok"] is True and r["engine"] == "evaluator"
+    assert set(r["rebuilt"]) == {"box#1", "hole#1", "hole#2"}            # the dirty descendant set
+    assert r["bbox"]["length"] == 120.0 and r["bbox"]["width"] == 40.0   # only length moved
+    assert r["mesh"]["positions"] and len(r["mesh"]["indices"]) % 3 == 0  # re-tessellated, JSON-safe
+    assert any(c["check"] == "watertight_manifold" and c["status"] == "pass" for c in r["critic"])
+    json.dumps(r)
+
+
+def test_preview_falls_back_to_substitution_when_not_graph_expressible():
+    # a panel() build isn't recorded → no FeatureGraph → preview uses the substitution path unchanged
+    service._GRAPH_CACHE.clear()
+    r = service.preview_edit('element = panel("wall", 3000, 200, 2000)\n', "length", 3000, 3200)
+    assert r["ok"] is True and r.get("engine") == "substitution"
+    assert r["bbox"]["length"] == 3200.0
+
+
 def test_dims_deduped_by_name():
     from ir.elements import NamedDim
     out = service._dims([NamedDim("length", 80), NamedDim("length", 80), NamedDim("width", 40)])

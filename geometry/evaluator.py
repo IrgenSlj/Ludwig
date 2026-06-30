@@ -153,11 +153,11 @@ class Evaluator:
     """
 
     def __init__(self, graph: FeatureGraph, *, geom: GeometryService | None = None,
-                 tol: float = 1e-6) -> None:
+                 tol: float = 1e-6, cache: EvalCache | None = None) -> None:
         self.graph = graph
         self.geom = geom or GeometryService()
         self.tol = tol
-        self.cache = EvalCache()
+        self.cache = cache if cache is not None else EvalCache()   # share across drag ticks (R7)
         self._overrides: dict[str, dict] = {}
 
     def build(self) -> tuple[BRepHandle, set[str]]:

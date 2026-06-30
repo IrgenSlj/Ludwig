@@ -216,11 +216,13 @@ def _strip_fences(src: str) -> str:
     return src.strip()
 
 
-def execute(program: str) -> tuple[Optional[Element], Optional[str]]:
+def execute(program: str, *, record: bool = False) -> tuple[Optional[Element], Optional[str]]:
     """Run a generated program in a toolkit namespace; return (element, error).
 
     The program is design-as-code — running it IS the compile step (as the mesh era exec'd bpy).
     Forces the lazy geometry to build so OCCT `StdFail_NotDone` surfaces here and feeds repair (§8).
+    `record=True` runs it under toolkit.recording() so the returned Element carries a FeatureGraph
+    (el.graph) for the deterministic evaluator — additive, the closure geometry path is unchanged ([H1]).
     """
     import cadquery
     import toolkit
@@ -233,7 +235,13 @@ def execute(program: str) -> tuple[Optional[Element], Optional[str]]:
         "assembly": toolkit.assembly, "place": toolkit.place, "stack": toolkit.stack,
     }
     try:
-        exec(compile(_strip_fences(program), "<ludwig-program>", "exec"), ns)
+        src = compile(_strip_fences(program), "<ludwig-program>", "exec")
+        if record:
+            from toolkit.elements import recording
+            with recording():
+                exec(src, ns)
+        else:
+            exec(src, ns)
     except SyntaxError as e:
         return None, f"{SyntaxError_.__name__}: {e}"
     except Exception as e:
