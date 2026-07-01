@@ -7,6 +7,7 @@ import backends.step  # noqa: F401
 import backends.ifc  # noqa: F401
 import backends.drawing  # noqa: F401
 import backends.shopdrawing  # noqa: F401
+import backends.section  # noqa: F401
 import backends.present  # noqa: F401
 import backends.render  # noqa: F401
 

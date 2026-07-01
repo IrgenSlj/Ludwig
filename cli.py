@@ -304,6 +304,29 @@ def selftest() -> int:
               and len(_zp["inners"]) == 2,
               f"outer {[round(g.loop_area(l), 1) for l in _zp['outer']]} inners {len(_zp['inners'])}")
 
+        # R30 — section DRAWING backend: a poché-hatched, dimensioned cut sheet (the moat's 2nd sheet).
+        # The default centroidal-longitudinal plane cuts the bracket through its thickness (XY plane),
+        # so the poché is the 80×40 plate with the two M8 holes punched as white voids (island hatch).
+        import ezdxf as _ezdxf
+        from backends import by_name as _by_name
+        _secb = _by_name("section")
+        check("section backend registered (added by import, no loop change)", _secb is not None)
+        with tempfile.TemporaryDirectory() as _td:
+            _sp = _secb.compile(bracket, _td)
+            _doc = _ezdxf.readfile(str(_sp))
+            _msp = _doc.modelspace()
+            _hatch = [e for e in _msp if e.dxftype() == "HATCH"]
+            _lyr = {ly.dxf.name for ly in _doc.layers}
+            _dims = [e for e in _msp if e.dxftype() == "DIMENSION"]
+            _cut = [e for e in _msp if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == "CUT"]
+            check("section DXF: ≥1 poché HATCH, CUT+POCHE layers, cut boundary + 2 hole voids",
+                  _sp.name == "bracket_section.dxf" and len(_hatch) >= 1
+                  and {"CUT", "POCHE"} <= _lyr and len(_cut) == 3,
+                  f"{len(_hatch)} hatch · layers {sorted(_lyr & {'CUT', 'POCHE', 'BEYOND'})} · {len(_cut)} cut loops")
+            check("section carries true-mm dimensions (DIMLFAC), preview PNG emitted",
+                  len(_dims) >= 2 and _sp.with_suffix(".png").exists(),
+                  f"{len(_dims)} dims")
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend
@@ -392,7 +415,7 @@ def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2) -> int:
         artifacts = compile_all(res.ir, out)
         parts = [f"wrote recipe {recipe}"]
         _LABELS = {"step": "STEP", "ifc": "IFC", "drawing": "SVG preview",
-                   "shop_drawing": "shop drawing", "render": "render"}
+                   "shop_drawing": "shop drawing", "section": "section", "render": "render"}
         for name, value in artifacts.items():
             if name.endswith("_error"):
                 label = _LABELS.get(name.removesuffix("_error"), name)

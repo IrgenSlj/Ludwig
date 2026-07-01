@@ -96,6 +96,36 @@ def test_section_and_void_aware_profile():
     assert len(thru["outer"]) == 2 and not thru["inners"]
 
 
+def test_section_backend_draws_a_poche_hatched_cut_sheet(tmp_path):
+    # R30: the section DRAWING backend — a poché-hatched, dimensioned DXF a fabricator reads.
+    import ezdxf
+    from backends import by_name
+    from toolkit import box, clearance_hole
+
+    br = box("bracket", 80, 40, 6)
+    clearance_hole(br, "M8", (-25, 0))
+    clearance_hole(br, "M8", (25, 0))
+    sec = by_name("section")
+    assert sec is not None and sec.name == "section" and sec.fabrication is False   # a view, not gated
+
+    path = sec.compile(br, tmp_path)
+    assert path.name == "bracket_section.dxf" and path.exists()
+    assert path.with_suffix(".png").exists()                     # best-effort preview emitted
+
+    doc = ezdxf.readfile(str(path))
+    msp = doc.modelspace()
+    layers = {ly.dxf.name for ly in doc.layers}
+    assert {"CUT", "POCHE", "BEYOND"} <= layers                  # the section convention layers
+    hatches = [e for e in msp if e.dxftype() == "HATCH"]
+    assert len(hatches) >= 1 and hatches[0].dxf.layer == "POCHE"  # cut material is hatched
+    cut_loops = [e for e in msp if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == "CUT"]
+    assert len(cut_loops) == 3                                    # plate outline + two hole voids
+    hole_loops = [e for e in cut_loops if len(list(e.get_points())) > 5]
+    assert len(hole_loops) == 2                                   # the M8 rims discretized as curves
+    dims = [e for e in msp if e.dxftype() == "DIMENSION"]
+    assert len(dims) >= 2                                         # overall extents dimensioned
+
+
 def test_harness_discriminates_a_wrong_build():
     # an off-by-5mm height build must FAIL the gate — proves the instrument has real signal
     def bad(b):

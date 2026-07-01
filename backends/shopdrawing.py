@@ -530,9 +530,18 @@ def _render_preview(dxf_path: Path, doc) -> Path | None:
         fig = plt.figure(figsize=(16.54, 11.69))   # A3 in inches
         ax = fig.add_axes([0, 0, 1, 1])
         ax.set_axis_off()
+        # This runs AFTER the DXF is saved, so recolouring here can't corrupt the deliverable — it only
+        # tunes the raster preview. ACI-7 layers (VISIBLE/CUT/BORDER) render white-on-white otherwise;
+        # force them to black ink so the sheet reads on a white page.
+        for layer in doc.layers:
+            try:
+                if layer.color == 7:
+                    layer.rgb = (0, 0, 0)
+            except Exception:
+                pass
         Frontend(RenderContext(doc), MatplotlibBackend(ax)).draw_layout(doc.modelspace(), finalize=True)
         png = dxf_path.with_suffix(".png")
-        fig.savefig(str(png), dpi=96, facecolor="white")
+        fig.savefig(str(png), dpi=110, facecolor="white")
         plt.close(fig)
         return png
     except Exception:

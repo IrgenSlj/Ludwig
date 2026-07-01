@@ -277,7 +277,7 @@ def _assemble(res, out: Path, on_event=None) -> dict:
     if res.passed:
         from backends import all as all_backends
         for b in all_backends():
-            label = {"drawing": "svg", "shop_drawing": "dxf"}.get(b.name, b.name)
+            label = {"drawing": "svg", "shop_drawing": "dxf", "section": "section-dxf"}.get(b.name, b.name)
             emit(stage="derive", status="running", backend=label)
             try:
                 result["artifacts"][label] = b.compile(el, out).name
