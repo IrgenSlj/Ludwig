@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import ast
 import difflib
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -38,54 +37,15 @@ def _dims(manifest) -> list[dict]:
                         "axis": _EXTENT_AXIS.get(d.name),
                         "editable": d.name in _EDITABLE_DIMS}
     return list(seen.values())
-_NUM = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w.])")  # a standalone number literal (not M6, not 1.5e3)
 
 
-def _comment_regions(program: str) -> list[tuple[int, int]]:
-    """Char ranges that are `#` comments, so a literal echoed in a comment (e.g. the codegen's own
-    `# 80 (length) × 40 …`) doesn't defeat the uniqueness check."""
-    regions, off = [], 0
-    for line in program.splitlines(keepends=True):
-        h = line.find("#")
-        if h != -1:
-            regions.append((off + h, off + len(line)))
-        off += len(line)
-    return regions
-
-
-def _substitute_unique_literal(program: str, old: float, new: float) -> Optional[str]:
-    """Replace the program's literal `old` with `new` — but ONLY if `old` occurs exactly once as a
-    number in CODE (comments excluded). Ambiguous (0 or >1 matches, e.g. a 30×30 square) → None, so
-    the caller falls back to the LLM edit. Preserves int/float spelling so the diff is one token."""
-    comments = _comment_regions(program)
-    in_comment = lambda pos: any(a <= pos < b for a, b in comments)  # noqa: E731
-    spans = [m for m in _NUM.finditer(program)
-             if abs(float(m.group()) - old) < 1e-9 and not in_comment(m.start())]
-    if len(spans) != 1:
-        return None
-    m = spans[0]
-    txt = str(float(new)) if "." in m.group() else str(int(new))
-    return program[:m.start()] + txt + program[m.end():]
-
-
-def _substitute_all_literals(program: str, old: float, new: float) -> Optional[str]:
-    """Replace EVERY standalone code occurrence of `old` with `new` (comments excluded).
-
-    Unlike `_substitute_unique_literal`, this handles the common case where one physical extent is
-    echoed — `box(..., 120, ...)` AND `register_dim("plate_length", 120)` — which must move together.
-    The caller guards against a coincidental same-valued literal by re-measuring the intended axis
-    after the rebuild. Returns None if `old` never occurs in code. Preserves int/float spelling."""
-    comments = _comment_regions(program)
-    in_comment = lambda pos: any(a <= pos < b for a, b in comments)  # noqa: E731
-    spans = [m for m in _NUM.finditer(program)
-             if abs(float(m.group()) - old) < 1e-9 and not in_comment(m.start())]
-    if not spans:
-        return None
-    out = program
-    for m in reversed(spans):  # right-to-left so earlier spans' offsets stay valid
-        txt = str(float(new)) if "." in m.group() else str(int(new))
-        out = out[:m.start()] + txt + out[m.end():]
-    return out
+# The deterministic text-substitution spine now lives in agent/ops.py (below the web layer, R14);
+# service imports it so the editing primitives have a single owner shared with the Op-API.
+from agent.ops import (  # noqa: E402
+    _substitute_all_literals,
+    _substitute_constraint_value,
+    _substitute_hole_pos,
+)
 
 
 def _try_fast_edit(program: str, name: str, old: float, new: float, out: Path) -> Optional[dict]:
@@ -576,41 +536,6 @@ def preview_edit(program: str, name: str, old: float, new: float) -> dict:
             if fast is not None:
                 return fast
     return _preview_via_substitution(program, name, old, new, tol)
-
-
-# regex for a specific sketch constraint's value: constrain("distance", "L0", value=80) — targets ONLY
-# that literal, never the point seed coords that share the number (R34).
-_CONSTRAINT_VALUE = (
-    r'(constrain\(\s*["\']{kind}["\']\s*,\s*["\']{ref}["\']\s*,\s*value\s*=\s*)(-?\d+(?:\.\d+)?)')
-
-
-def _substitute_constraint_value(program: str, kind: str, ref: str, old: float, new: float) -> Optional[str]:
-    """Replace the value of one sketch constraint (distance/radius on a given line/circle id), leaving
-    every other literal — including the point seed coords that happen to share the number — untouched."""
-    pat = re.compile(_CONSTRAINT_VALUE.format(kind=re.escape(kind), ref=re.escape(ref)))
-    hits = [m for m in pat.finditer(program) if abs(float(m.group(2)) - old) <= 1e-6]
-    if len(hits) != 1:
-        return None                                         # 0 → not found; >1 → ambiguous, bail safely
-    m = hits[0]
-    return program[:m.start(2)] + f"{new:g}" + program[m.end(2):]
-
-
-# a hole/anchor position tuple in the program text: clearance_hole(el, "M8", (-25, 0)) — the (x, y)
-# literal pair, matched by exact old value so only the dragged hole moves (R13).
-_POS_TUPLE = re.compile(r'\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)')
-
-
-def _substitute_hole_pos(program: str, old_xy, new_xy) -> Optional[str]:
-    """Replace one hole's position literal `(ox, oy)` with `(nx, ny)`, leaving every other literal
-    untouched. Matches by the exact old coordinates, so with distinct hole positions it is unambiguous
-    (0 or >1 matches → None, and the caller keeps the last good geometry)."""
-    ox, oy = float(old_xy[0]), float(old_xy[1])
-    hits = [m for m in _POS_TUPLE.finditer(program)
-            if abs(float(m.group(1)) - ox) <= 1e-6 and abs(float(m.group(2)) - oy) <= 1e-6]
-    if len(hits) != 1:
-        return None
-    m = hits[0]
-    return program[:m.start()] + f"({float(new_xy[0]):g}, {float(new_xy[1]):g})" + program[m.end():]
 
 
 def preview_hole_move(program: str, old_xy, new_xy) -> dict:

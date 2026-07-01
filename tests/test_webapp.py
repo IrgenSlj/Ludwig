@@ -48,7 +48,7 @@ def test_edit_to_result_is_minimal_and_real(monkeypatch, tmp_path):
 
 
 def test_substitute_unique_literal_guards_ambiguity():
-    sub = service._substitute_unique_literal
+    from agent.ops import _substitute_unique_literal as sub   # hoisted into the Op-API spine (R14)
     assert sub('box("b", 80, 40, 6)', 80, 143).startswith('box("b", 143,')  # unique → substitute
     assert sub('box("s", 30, 30, 12)', 30, 40) is None                       # 30 twice → ambiguous
     assert sub('L = 80.0', 80, 143) == "L = 143.0"                           # float spelling preserved

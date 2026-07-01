@@ -46,7 +46,6 @@ def selftest() -> int:
 
     # Feature graph recorder — R2 gate (pure-Python, kernel-free).
     # Builds the bracket recipe under recording() and asserts stable node ids + correct params.
-    from ir.feature import FeatureGraph, FeatureNode
     from toolkit.elements import recording as _recording
     from toolkit import clearance_hole as _clearance_hole
 
@@ -134,6 +133,23 @@ def selftest() -> int:
           f"{_bad.status.value}/{_bad.severity.name} · {_bad.message}")
     check("R32: the sketch critic is registered in the panel (no loop change)",
           any(getattr(c, "name", "") == "sketch" for c in _critics()))
+
+    # R14 — Op vocabulary: a plan of typed Ops (DATA, never exec'd) renders to source byte-identical to a
+    # hand-written recipe, and a SetParam edit is invertible (undo) — the reviewable edit spine for the Op-API.
+    from agent.ops import AddElement, AddFeature, Plan, SetParam
+    _bp = Plan((AddElement("box", "bracket", (80, 40, 6)),
+                AddFeature("clearance_hole", ("M8", (-25, 0))),
+                AddFeature("clearance_hole", ("M8", (25, 0)))))
+    _expected = ('element = box("bracket", 80, 40, 6)\n'
+                 'clearance_hole(element, "M8", (-25, 0))\n'
+                 'clearance_hole(element, "M8", (25, 0))\n')
+    check("R14: a 3-op plan renders byte-identical to the bracket recipe",
+          _bp.render() == _expected, repr(_bp.render()[:38]))
+    _edited, _inv = Plan((SetParam("length", 80, 120),)).apply_to(_expected)
+    _restored, _ = _inv.apply_to(_edited)
+    check("R14: a SetParam edit applies then inverts back to the original (undo)",
+          "120" in _edited and _restored == _expected,
+          f"has-120={'120' in _edited} restored-ok={_restored == _expected}")
 
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
