@@ -214,6 +214,71 @@ class Plan:
         return out, Plan(tuple(reversed(inverse)))
 
 
+# --------------------------------------------------------------------------- #
+# parse + validate JSON ops (R16) — the security boundary: data in, never code exec'd
+# --------------------------------------------------------------------------- #
+
+import dataclasses  # noqa: E402
+import json as _json  # noqa: E402
+
+
+def parse_plan(data) -> Plan:
+    """Strictly validate JSON op-data into a Plan. Accepts a list of op dicts or `{"ops": [...]}`.
+
+    This is the security boundary of the Op-API: the planner (R16) emits DATA, and we construct only
+    known Ops with exactly their declared fields — an unknown `op` kind, an unexpected field, a missing
+    required field, or a malformed shape RAISES, and nothing the model wrote is ever exec'd. JSON arrays
+    become tuples so the frozen Ops stay hashable."""
+    if isinstance(data, dict) and "ops" in data:
+        data = data["ops"]
+    if not isinstance(data, list):
+        raise ValueError("plan must be a JSON list of ops (or an object with an 'ops' list)")
+
+    def _tuplify(v):
+        return tuple(_tuplify(x) for x in v) if isinstance(v, list) else v
+
+    ops = []
+    for i, raw in enumerate(data):
+        if not isinstance(raw, dict) or "op" not in raw:
+            raise ValueError(f"op[{i}] must be an object with an 'op' kind")
+        cls = _OP_KINDS.get(raw["op"])
+        if cls is None:
+            raise ValueError(f"op[{i}]: unknown op kind {raw['op']!r} (allowed: {sorted(_OP_KINDS)})")
+        fields = dataclasses.fields(cls)
+        names = {f.name for f in fields}
+        given = {k: v for k, v in raw.items() if k != "op"}
+        extra = set(given) - names
+        if extra:
+            raise ValueError(f"op[{i}] ({raw['op']}): unexpected field(s) {sorted(extra)}")
+        required = {f.name for f in fields
+                    if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING}
+        missing = required - set(given)
+        if missing:
+            raise ValueError(f"op[{i}] ({raw['op']}): missing field(s) {sorted(missing)}")
+        try:
+            ops.append(cls(**{k: _tuplify(v) for k, v in given.items()}))
+        except TypeError as e:
+            raise ValueError(f"op[{i}] ({raw['op']}): {e}") from e
+    return Plan(tuple(ops))
+
+
+def extract_json(text: str):
+    """Pull the JSON plan out of an LLM reply — a fenced ```json block if present, else the outermost
+    array/object. Raises if none parses (so a non-JSON reply fails loud, never runs)."""
+    m = re.search(r"```(?:json)?\s*(\[.*\]|\{.*\})\s*```", text, re.DOTALL)
+    if m:
+        return _json.loads(m.group(1))
+    for open_c, close_c in (("[", "]"), ("{", "}")):
+        i, j = text.find(open_c), text.rfind(close_c)
+        if i != -1 and j > i:
+            try:
+                return _json.loads(text[i:j + 1])
+            except ValueError:
+                continue
+    raise ValueError("no JSON plan found in the response")
+
+
 __all__ = ["AddElement", "AddFeature", "Place", "Assemble", "SetParam", "Plan",
+           "parse_plan", "extract_json",
            "_substitute_unique_literal", "_substitute_all_literals", "_comment_regions",
            "_substitute_constraint_value", "_substitute_hole_pos", "_NUM"]

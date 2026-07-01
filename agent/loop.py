@@ -202,6 +202,25 @@ def _edit_prompt(program: str, instruction: str) -> str:
     )
 
 
+def _plan_prompt(instruction: str, program: str, brief: Optional[Brief]) -> str:
+    cur = f"## The current program (edit it with SetParam)\n{program}\n\n" if program else ""
+    b = f"## Brief context\n{brief.prompt}\n\n" if brief and brief.prompt else ""
+    return f"{_read('plan.md')}\n\n{cur}{b}## The request\n{instruction}\n\nReturn ONLY the JSON plan."
+
+
+def plan(instruction: str, *, program: str = "", brief: Optional[Brief] = None,
+         model: Optional[str] = None):
+    """Ask the model for a PLAN — a JSON array of typed ops — and return a validated `ops.Plan`. One
+    inference call on the best tier; the reply is parsed as DATA (ops.parse_plan strict-validates and
+    NEVER exec's it). Unknown op kinds / malformed shapes raise. This is the reviewable-edit seam that
+    replaces exec'ing model-authored Python (R16)."""
+    from agent.ops import extract_json, parse_plan
+
+    reply = inference.infer(_plan_prompt(instruction, program, brief),
+                            model=model or _tier_model("critic"))   # planning is best-tier reasoning
+    return parse_plan(extract_json(reply))
+
+
 # --------------------------------------------------------------------------- #
 # execute + verify
 # --------------------------------------------------------------------------- #

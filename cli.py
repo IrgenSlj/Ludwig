@@ -151,6 +151,30 @@ def selftest() -> int:
           "120" in _edited and _restored == _expected,
           f"has-120={'120' in _edited} restored-ok={_restored == _expected}")
 
+    # R16 — the planner emits JSON ops (DATA, never exec'd): parse_plan strict-validates a bracket plan to
+    # a Plan that renders byte-identical, and REJECTS an unknown op kind / unexpected field — the security
+    # boundary that replaces exec'ing model-authored Python.
+    from agent.ops import parse_plan as _parse
+    _json_plan = [{"op": "AddElement", "kind": "box", "id": "bracket", "args": [80, 40, 6]},
+                  {"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [-25, 0]]},
+                  {"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [25, 0]]}]
+    check("R16: a JSON op-plan parses + renders byte-identical to the bracket recipe",
+          _parse(_json_plan).render() == _expected, repr(_parse(_json_plan).render()[:38]))
+
+    def _raises(fn):
+        try:
+            fn()
+            return False
+        except (ValueError, TypeError):
+            return True
+
+    check("R16: parse_plan rejects an unknown op kind AND an unexpected field (nothing exec'd)",
+          _raises(lambda: _parse([{"op": "RunShell", "cmd": "rm -rf /"}]))
+          and _raises(lambda: _parse([{"op": "AddElement", "kind": "box", "id": "b",
+                                       "args": [1, 1, 1], "evil": 1}]))
+          and _raises(lambda: _parse([{"op": "AddElement", "kind": "box"}])),   # missing required id/args
+          "strict validation")
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:
@@ -452,6 +476,10 @@ def selftest() -> int:
                   _edit.get("passed") is True and _edit["bbox"]["length"] == 120
                   and _edit["inverse"] and _edit["inverse"][0]["new"] == 80,
                   f"len={_edit.get('bbox', {}).get('length')} inverse={_edit.get('inverse')}")
+            # R16 (kernel half): a PARSED JSON plan builds a verified solid — parse → render → execute → verify
+            _pb = _build("", _parse(_json_plan), out=_td)
+            check("R16: a parsed JSON plan builds a verified solid (parse → build → verify)",
+                  _pb.get("passed") is True and "step" in _pb["artifacts"], f"passed={_pb.get('passed')}")
 
         # R13 — hole-position edit: move a hole deterministically (substitute its literal + re-bore),
         # gated by a cylindrical-centre re-measure — token-free, the plan-drag analogue of face-drag.
