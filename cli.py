@@ -175,6 +175,13 @@ def selftest() -> int:
           and _raises(lambda: _parse([{"op": "AddElement", "kind": "box"}])),   # missing required id/args
           "strict validation")
 
+    # R17 — reviewable edits: each op reads as a one-line summary for `cli --plan` before `--apply`.
+    from agent.ops import summarize as _summ
+    _ops = _parse(_json_plan).ops
+    check("R17: op plans summarize for review (--plan prints, --apply builds)",
+          _summ(_ops[0]).startswith("add box 'bracket'") and "add clearance_hole" in _summ(_ops[1]),
+          f"{_summ(_ops[0])} | {_summ(_ops[1])}")
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:
@@ -638,6 +645,36 @@ def edit_recipe(path: str, instruction: str, *, rounds: int = 1) -> int:
     return 1
 
 
+def plan_recipe(path: str, instruction: str, *, do_apply: bool = False) -> int:
+    """--plan: propose a REVIEWABLE op-plan for a change to a recipe (prints the ops, writes nothing).
+    --apply: build the plan (fab-gated — STEP only on an all-pass critic) + write the minimal diff.
+    The model emits validated JSON ops we render, never code we exec() (R17)."""
+    from pathlib import Path
+
+    from agent import loop
+    from agent.ops import summarize
+    program = Path(path).read_text() if path and Path(path).exists() else ""
+    plan = loop.plan(instruction, program=program)
+    print(f"plan ({len(plan.ops)} op{'' if len(plan.ops) == 1 else 's'}):")
+    for op in plan.ops:
+        print(f"  · {summarize(op)}")
+    if not do_apply:
+        return 0
+
+    from webapp.service import build_to_result
+    out = Path("out")
+    out.mkdir(exist_ok=True)
+    res = build_to_result(program, plan, out=out)
+    d = res.get("diff", {})
+    if res.get("passed"):
+        arts = " · ".join(f"{k} {v}" for k, v in res["artifacts"].items()
+                          if k in ("step", "ifc", "dxf", "section-dxf"))
+        print(f"applied · +{d.get('added', 0)}/−{d.get('removed', 0)} line(s) · {arts}")
+        return 0
+    print(f"NOT applied — critic not all-pass, STEP withheld · +{d.get('added', 0)}/−{d.get('removed', 0)} line(s)")
+    return 1
+
+
 def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         return selftest()
@@ -666,6 +703,10 @@ def main(argv: list[str]) -> int:
                 pass
 
     pos = [a for a in argv if not a.startswith("--")]
+    if "--plan" in argv or "--apply" in argv:   # reviewable op-plan (R17), routed before positional/--edit
+        if len(pos) < 2:
+            raise SystemExit('Usage: cli.py --plan <recipe.py> "<change>"  |  --apply <recipe.py> "<change>"')
+        return plan_recipe(pos[0], pos[1], do_apply="--apply" in argv)
     if "--edit" in argv:
         if len(pos) < 2:
             raise SystemExit('Usage: cli.py --edit <recipe.py> "<change>"')
@@ -673,7 +714,8 @@ def main(argv: list[str]) -> int:
     if pos:
         return compile_prompt(pos[0], candidates=candidates)
     raise SystemExit(
-        'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  --serve [port]  |  --selftest  |  --eval [--live] [--repair].'
+        'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  '
+        '--plan/--apply <recipe.py> "<change>"  |  --serve [port]  |  --selftest  |  --eval [--live] [--repair].'
     )
 
 

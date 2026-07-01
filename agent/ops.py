@@ -262,6 +262,21 @@ def parse_plan(data) -> Plan:
     return Plan(tuple(ops))
 
 
+def summarize(op) -> str:
+    """A one-line human summary of an Op — what `cli --plan` prints for review before `--apply`."""
+    if isinstance(op, AddElement):
+        return f"add {op.kind} '{op.id}' " + "×".join(_fmt(a) for a in op.args)
+    if isinstance(op, AddFeature):
+        return f"add {op.func} " + ", ".join(_fmt(a) for a in op.args)
+    if isinstance(op, SetParam):
+        return f"set {op.name}: {_fmt(op.old)} → {_fmt(op.new)}"
+    if isinstance(op, Place):
+        return f"place {op.target} by {_fmt(tuple(op.offset))}"
+    if isinstance(op, Assemble):
+        return f"assemble '{op.id}' from {', '.join(op.parts)}"
+    return type(op).__name__
+
+
 def extract_json(text: str):
     """Pull the JSON plan out of an LLM reply — a fenced ```json block if present, else the outermost
     array/object. Raises if none parses (so a non-JSON reply fails loud, never runs)."""
@@ -279,6 +294,6 @@ def extract_json(text: str):
 
 
 __all__ = ["AddElement", "AddFeature", "Place", "Assemble", "SetParam", "Plan",
-           "parse_plan", "extract_json",
+           "parse_plan", "extract_json", "summarize",
            "_substitute_unique_literal", "_substitute_all_literals", "_comment_regions",
            "_substitute_constraint_value", "_substitute_hole_pos", "_NUM"]

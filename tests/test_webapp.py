@@ -238,6 +238,38 @@ def test_substitute_constraint_value_targets_only_the_constraint():
     assert service._substitute_constraint_value(prog, "distance", "NOPE", 80, 130) is None
 
 
+def test_plan_apply_undo_round_trips_with_mocked_inference(monkeypatch, tmp_path):
+    # R17: propose (mocked LLM) → apply builds a +1-line diff + passing critic → the inverse plan undoes.
+    from agent import inference, loop
+    from agent.ops import parse_plan
+    monkeypatch.setattr(inference, "infer",
+                        lambda *a, **k: '[{"op": "SetParam", "name": "height", "old": 6, "new": 18}]')
+    plan = loop.plan("make it 18 mm tall", program=GOOD)
+    assert [type(o).__name__ for o in plan.ops] == ["SetParam"]      # DATA, parsed not exec'd
+
+    built = service.build_to_result(GOOD, plan, out=tmp_path)
+    assert built["passed"] and built["bbox"]["height"] == pytest.approx(18.0)
+    assert built["diff"]["added"] == 1 and built["diff"]["removed"] == 1   # minimal diff
+
+    undone = service.build_to_result(built["program"], parse_plan(built["inverse"]), out=tmp_path)
+    assert undone["bbox"]["height"] == pytest.approx(6.0)            # inverse plan is the undo
+
+
+def test_cli_plan_prints_ops_and_apply_builds(monkeypatch, tmp_path, capsys):
+    # R17: cli --plan prints the reviewable ops (writes nothing); --apply builds + reports the diff.
+    import cli
+    from agent import inference
+    recipe = tmp_path / "bracket.py"
+    recipe.write_text(GOOD)
+    monkeypatch.setattr(inference, "infer",
+                        lambda *a, **k: '[{"op": "SetParam", "name": "width", "old": 40, "new": 52}]')
+    monkeypatch.chdir(tmp_path)
+    assert cli.plan_recipe(str(recipe), "wider", do_apply=False) == 0
+    assert "set width: 40 → 52" in capsys.readouterr().out            # printed for review, nothing built
+    assert cli.plan_recipe(str(recipe), "wider", do_apply=True) == 0
+    assert "applied · +1/−1" in capsys.readouterr().out
+
+
 def test_build_to_result_renders_a_plan_to_verified_artifacts(tmp_path):
     # R15: the Op-API build path — render a reviewed Plan → execute → verify → assemble (fab gate intact).
     from agent.ops import AddElement, AddFeature, Plan, SetParam
