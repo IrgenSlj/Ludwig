@@ -238,6 +238,19 @@ def test_substitute_constraint_value_targets_only_the_constraint():
     assert service._substitute_constraint_value(prog, "distance", "NOPE", 80, 130) is None
 
 
+def test_adopt_writes_the_downloadable_fabrication_export_set(tmp_path):
+    # The studio's "Fabrication exports" chips link to these files under /out/ — the verified-fabricability
+    # payoff made tangible. On a passing critic the full set is written to disk; the fab gate withholds
+    # them otherwise. Guards the contract the export UI depends on.
+    r = service.adopt_to_result(GOOD, out=tmp_path)
+    assert r["passed"] is True
+    art = r["artifacts"]
+    for key in ("step", "ifc", "dxf", "section-dxf", "recipe"):        # the chips: STEP · IFC · shop · section · recipe
+        assert key in art, key
+        assert (tmp_path / art[key]).exists()                          # actually written, downloadable from /out/
+    assert art["section-dxf"] == "bracket_section.dxf"                 # R30 section sheet included
+
+
 def test_face_drag_write_back_contract_is_token_free_and_axis_bound(tmp_path):
     # R10 (face-drag) backend contract: the studio binds a picked face's world axis to the extent dim
     # via R9 metadata (length=0/width=1/height=2), streams a live preview, and commits on release — all

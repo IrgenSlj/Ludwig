@@ -122,6 +122,15 @@
     background:rgba(255,255,255,.4); font-size:11.5px; line-height:1.5;}
   .verdict .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;}
   .verdict .mono{font-family:var(--mono);}
+  .exports{margin-top:14px; border-top:1px solid var(--hair); padding-top:12px;}
+  .exhead{font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); margin-bottom:8px;}
+  .exhead .exok{color:var(--ok);}
+  .exgrid{display:flex; flex-wrap:wrap; gap:6px;}
+  .exchip{display:flex; flex-direction:column; gap:1px; padding:6px 10px; border:1px solid var(--hair2);
+    border-radius:6px; text-decoration:none; color:var(--ink); background:var(--paper); min-width:66px;}
+  .exchip:hover{border-color:var(--accent); background:rgba(138,90,43,.06);}
+  .exchip b{font-size:12px; font-weight:600;}
+  .exchip span{font-family:var(--mono); font-size:9px; color:var(--muted); letter-spacing:.04em;}
 
   /* ---------- viewport ---------- */
   .stage{position:relative; min-width:0; background:
@@ -619,6 +628,31 @@ function buildProps(d) {
           + `${c.message ? " — " + c.message : ""}</div>`).join("");
   }
   props.appendChild(v);
+  const ex = buildExports(d); if (ex) props.appendChild(ex);   // the verified fab files, downloadable
+}
+
+// The moat, made tangible: once the critic passes, the derived fabrication files are downloadable
+// straight from the viewport — STEP for CAM, IFC for BIM, dimensioned shop + section DXF a fabricator
+// builds from, and the re-promptable recipe. Written server-side on load/commit (never on a failing
+// critic — the fab gate), served from /out/. This is the whole "verified fabricability" thesis on screen.
+function buildExports(d) {
+  const a = d.artifacts || {};
+  const fails = (d.critic || []).filter(c => c.status === "fail");
+  if (fails.length || !(a.step || a.dxf)) return null;         // no files leave on a failing critic
+  const files = [
+    ["STEP", a.step, "exact solid · CAD/CAM"],
+    ["IFC", a.ifc, "BIM exchange"],
+    ["Shop DXF", a.dxf, "dimensioned drawing"],
+    ["Section", a["section-dxf"], "poché cut sheet"],
+    ["Recipe", a.recipe, "re-promptable program"],
+  ].filter(f => f[1]);
+  if (!files.length) return null;
+  const wrap = document.createElement("div"); wrap.className = "exports";
+  wrap.innerHTML = `<div class="exhead">Fabrication exports · <span class="exok">verified</span></div>`
+    + `<div class="exgrid">` + files.map(([label, file, desc]) =>
+        `<a class="exchip" href="/out/${file}" download title="${desc}">`
+        + `<b>${label}</b><span>${file.split(".").pop().toUpperCase()}</span></a>`).join("") + `</div>`;
+  return wrap;
 }
 
 // Live direct-manipulation: a slider drag previews geometry in real time (no LLM, no files). Calls
