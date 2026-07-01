@@ -406,6 +406,28 @@ def _ops_json(ops) -> list:
     return [{"op": type(o).__name__, **asdict(o)} for o in ops]
 
 
+def plan_to_result(instruction: str, *, program: str = "", brief=None) -> dict:
+    """Propose a reviewable plan (R18): one best-tier inference call → a validated ops.Plan, serialized to
+    JSON with per-op summaries. Writes NOTHING and builds nothing — the review step before /api/build.
+    Mirrors explore→adopt: propose is cheap and side-effect-free; the human (or the UI) approves, then
+    build_to_result applies it."""
+    from agent.loop import plan as _plan
+    from agent.ops import summarize
+
+    plan = _plan(instruction, program=program, brief=brief)
+    return {"ok": True, "instruction": instruction,
+            "ops": _ops_json(plan.ops),
+            "summary": [summarize(op) for op in plan.ops]}
+
+
+def build_from_ops(program: str, ops_json, *, out: Optional[Path] = None) -> dict:
+    """Build a client-reviewed plan given as JSON op-dicts (R18): strict-validate to a Plan (unknown op /
+    bad shape → raise, never exec) then run the deterministic build path. Token-free."""
+    from agent.ops import parse_plan
+
+    return build_to_result(program, parse_plan(ops_json), out=out)
+
+
 def section_to_result(program: str, *, axis: Optional[str] = None,
                       offset: Optional[float] = None) -> dict:
     """A live, re-promptable cut plane (R33). Execute the program token-free, slice the solid at the
@@ -786,5 +808,5 @@ def _preview_via_substitution(program: str, name: str, old: float, new: float, t
 
 
 __all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
-           "build_to_result", "section_to_result", "preview_hole_move", "hole_move_to_result",
-           "preview_edit", "_variant_payload", "OUT"]
+           "build_to_result", "plan_to_result", "build_from_ops", "section_to_result",
+           "preview_hole_move", "hole_move_to_result", "preview_edit", "_variant_payload", "OUT"]

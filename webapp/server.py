@@ -145,7 +145,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt",
-                             "/api/preview", "/api/section", "/api/hole"):
+                             "/api/preview", "/api/section", "/api/hole", "/api/plan", "/api/build"):
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -158,11 +158,22 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             req = json.loads(self.rfile.read(n) or b"{}")
-            if self.path in ("/api/compile", "/api/explore"):
-                if DEMO:  # generation needs inference + would exec model-written code — off in the demo
+            if self.path in ("/api/compile", "/api/explore", "/api/plan", "/api/build"):
+                if DEMO:  # generation/planning needs inference (and building runs a fresh plan) — off in demo
                     raise PermissionError("generation is disabled in the public demo. Bring your own AI "
                                           "key and run Ludwig locally; direct manipulation of the gallery "
                                           "parts (drag dimensions → STEP/IFC/DXF) is free here.")
+                if self.path == "/api/plan":       # propose a reviewable op-plan (writes nothing)
+                    from webapp.service import plan_to_result
+                    result = plan_to_result((req.get("instruction") or "").strip(),
+                                            program=req.get("program") or "")
+                    self._send(200, json.dumps(result).encode(), "application/json")
+                    return
+                if self.path == "/api/build":      # build a client-reviewed plan (validated ops, never exec'd)
+                    from webapp.service import build_from_ops
+                    result = build_from_ops(req.get("program") or "", req.get("ops") or [])
+                    self._send(200, json.dumps(result).encode(), "application/json")
+                    return
                 prompt = (req.get("prompt") or "").strip()
                 if not prompt:
                     raise ValueError("empty prompt")

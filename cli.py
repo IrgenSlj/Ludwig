@@ -487,6 +487,12 @@ def selftest() -> int:
             _pb = _build("", _parse(_json_plan), out=_td)
             check("R16: a parsed JSON plan builds a verified solid (parse → build → verify)",
                   _pb.get("passed") is True and "step" in _pb["artifacts"], f"passed={_pb.get('passed')}")
+            # R18: /api/build's service path — build a client-reviewed plan from raw JSON ops, token-free
+            from webapp.service import build_from_ops as _bfo
+            _wb = _bfo("", _json_plan, out=_td)
+            check("R18: build_from_ops builds a verified solid from client JSON ops (token-free)",
+                  _wb.get("passed") is True and _wb.get("diff", {}).get("added") == 3
+                  and "step" in _wb["artifacts"], f"passed={_wb.get('passed')}")
 
         # R13 — hole-position edit: move a hole deterministically (substitute its literal + re-bore),
         # gated by a cylindrical-centre re-measure — token-free, the plan-drag analogue of face-drag.

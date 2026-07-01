@@ -238,6 +238,27 @@ def test_substitute_constraint_value_targets_only_the_constraint():
     assert service._substitute_constraint_value(prog, "distance", "NOPE", 80, 130) is None
 
 
+def test_plan_and_build_endpoints_service_layer(monkeypatch, tmp_path):
+    # R18: /api/plan proposes ops (writes nothing); /api/build builds a client-reviewed plan token-free.
+    from agent import inference
+    monkeypatch.setattr(inference, "infer",
+                        lambda *a, **k: '[{"op": "AddElement", "kind": "box", "id": "bracket", "args": [80, 40, 6]},'
+                                        '{"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [-25, 0]]},'
+                                        '{"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [25, 0]]}]')
+    proposed = service.plan_to_result("a bracket with two M8 holes")
+    assert proposed["ok"] and len(proposed["ops"]) == 3
+    assert proposed["summary"][0].startswith("add box 'bracket'")   # human review lines
+    assert not (tmp_path / "bracket.step").exists()                 # propose writes nothing
+
+    built = service.build_from_ops("", proposed["ops"], out=tmp_path)   # client-reviewed ops → build
+    assert built["passed"] and built["program"] == GOOD
+    assert (tmp_path / built["artifacts"]["step"]).exists()
+
+    import pytest
+    with pytest.raises(ValueError):                                 # a malformed client plan is rejected, never exec'd
+        service.build_from_ops("", [{"op": "RunShell", "cmd": "rm -rf /"}], out=tmp_path)
+
+
 def test_plan_apply_undo_round_trips_with_mocked_inference(monkeypatch, tmp_path):
     # R17: propose (mocked LLM) → apply builds a +1-line diff + passing critic → the inverse plan undoes.
     from agent import inference, loop

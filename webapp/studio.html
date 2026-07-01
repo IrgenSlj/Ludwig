@@ -933,6 +933,7 @@ window.LUDWIG = {
   moveHole: (from, to, commit)=> commit ? commitHole(from, to) : liveHole(from, to),
   get holeRings(){ return holeHandles ? holeHandles.children.map(g=>g.userData.hole.at) : []; },
   get dragging(){ return HOLE ? "hole" : DRAG ? "face" : null; },
+  propose: proposePlan, build: buildPlan, get pending(){ return PENDING; },   // R18 Plan/Build seam
   // project a world point to canvas client (x,y) — headless helper for synthetic-pointer drag tests
   _screenOf(x,y,z){ const r=canvas.getBoundingClientRect();
     const p=new THREE.Vector3(x,y,z).project(cam);
@@ -1018,6 +1019,36 @@ function setCam(which){
   $("#cam-ortho").classList.toggle("on", which==="ortho");
   frame(); controls.update();
 }
+/* R18 — reviewable agent edits: in PLAN mode a request is proposed as validated ops (data, never
+   exec'd) you can read before committing; in BUILD mode the pending plan is applied through the fab
+   gate. Generation is off in the public demo (the endpoints return a clear notice). */
+let PENDING = null;
+const agentIsPlan = () => $("#agentmode").textContent.includes("Plan");
+async function proposePlan(instruction){
+  try{
+    const r = await fetch("/api/plan", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ instruction, program: STATE.program || "" }) });
+    const d = await r.json();
+    if(d.fatal){ log("sys", d.fatal, "warn"); return; }
+    PENDING = { program: STATE.program || "", ops: d.ops };
+    log("sys", `plan · ${d.summary.length} op(s) — review, then switch to Build to apply:`, "ok");
+    d.summary.forEach(x => log("sys", "  · " + x));
+  }catch(e){ log("sys", "plan failed: " + e, "err"); }
+}
+async function buildPlan(){
+  if(!PENDING){ log("sys", "nothing to build — describe a change in Plan mode first.", "warn"); return; }
+  try{
+    const r = await fetch("/api/build", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ program: PENDING.program, ops: PENDING.ops }) });
+    const d = await r.json();
+    if(d.fatal){ log("sys", "build failed: " + d.fatal, "err"); return; }
+    render(d);
+    const df = d.diff || {};
+    log("sys", d.passed ? `built · +${df.added}/−${df.removed} line(s) · verified`
+                        : "built, but the critic failed — STEP withheld", d.passed ? "ok" : "warn");
+    PENDING = null;
+  }catch(e){ log("sys", "build failed: " + e, "err"); }
+}
 function runCommand(raw){
   const s=raw.trim(); if(!s) return;
   const [cmd,...rest]=s.split(/\s+/); const k=cmd.toLowerCase();
@@ -1026,12 +1057,14 @@ function runCommand(raw){
   if(k==="fit"||k==="home"){ log("you",s); userMoved=false; frame(); log("sys","framed"); return; }
   if(k==="help"){ log("you",s);
     log("sys","view: iso · top · front · back · right · left · bottom · ortho · persp · fit");
-    log("sys","anything else is a change request → routed through the real edit loop (/api/edit).");
+    log("sys","Plan mode: describe a change → reviewable ops · Build mode: apply the plan (/api/plan · /api/build).");
     return;
   }
-  // anything else is a change request — route it through the real edit loop (minimal-diff, fab-gated).
-  if(!STATE.program){ log("you",s); log("sys","load a model first.","warn"); return; }
-  applyEdit(s, null);
+  log("you",s);
+  if(agentIsPlan()){ proposePlan(s); return; }          // PLAN → propose reviewable ops
+  if(PENDING){ buildPlan(); return; }                   // BUILD with a pending plan → apply it
+  if(!STATE.program){ log("sys","load a model first, or switch to Plan to describe one.","warn"); return; }
+  applyEdit(s, null);                                   // BUILD, no plan → the free-text edit fallback
 }
 
 /* ===================== wiring ===================== */
