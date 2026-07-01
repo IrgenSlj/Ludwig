@@ -18,7 +18,11 @@ RUN pip install --no-cache-dir \
         "cadquery>=2.8" \
         "ezdxf>=1.1" \
         "ifcopenshell>=0.8" \
+        "matplotlib>=3.7" \
         "PyYAML>=6.0"
+# matplotlib renders the conventioned shop-drawing + section PNG previews the studio shows (best-effort;
+# the DXF/STEP/IFC deliverables generate without it). The sketch solver uses its pure-Python Gauss-Newton
+# fallback here — scipy/numpy are intentionally NOT installed (the demo needs neither).
 
 COPY . .
 

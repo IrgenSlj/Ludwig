@@ -131,6 +131,10 @@
   .exchip:hover{border-color:var(--accent); background:rgba(138,90,43,.06);}
   .exchip b{font-size:12px; font-weight:600;}
   .exchip span{font-family:var(--mono); font-size:9px; color:var(--muted); letter-spacing:.04em;}
+  .exdraw{display:block; margin-top:9px; border:1px solid var(--hair2); border-radius:6px; overflow:hidden; background:#fff;}
+  .exdraw:hover{border-color:var(--accent);}
+  .exdraw img{display:block; width:100%; height:auto;}
+  .exdraw .cap{font-size:9.5px; color:var(--muted); padding:3px 7px; border-top:1px solid var(--hair); background:var(--paper);}
 
   /* ---------- viewport ---------- */
   .stage{position:relative; min-width:0; background:
@@ -652,6 +656,12 @@ function buildExports(d) {
     + `<div class="exgrid">` + files.map(([label, file, desc]) =>
         `<a class="exchip" href="/out/${file}" download title="${desc}">`
         + `<b>${label}</b><span>${file.split(".").pop().toUpperCase()}</span></a>`).join("") + `</div>`;
+  if (a.drawing_preview) {                                     // the conventioned shop drawing — the moat, visible
+    wrap.innerHTML += `<a class="exdraw" href="/out/${a.drawing_preview}" target="_blank" rel="noopener"`
+      + ` title="conventioned multi-view shop drawing — click to open full size">`
+      + `<img src="/out/${a.drawing_preview}?v=${Date.now()}" alt="shop drawing preview">`
+      + `<div class="cap">conventioned shop drawing · third-angle · click to enlarge</div></a>`;
+  }
   return wrap;
 }
 
