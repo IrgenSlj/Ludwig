@@ -76,6 +76,33 @@ def test_dimensional_critic_reads_registered_dims():
     assert any(c.check == "dim:bore" for c in bad.failures)
 
 
+def test_sketch_dof_critic_passes_fully_constrained_warns_under_constrained():
+    # R32: the sketch DoF critic. A fully-constrained profile passes; an under-constrained one is a
+    # WARNING-severity fail (amber/below-spec); a non-sketch element is NA (never disturbs the panel).
+    from critic import sketch as sketch_critic
+    from eval import reference
+    from eval.briefs import BRIEFS
+
+    lp = reference.build(next(b for b in BRIEFS if b["id"] == "l_profile"))
+    lp_checks = sketch_critic.evaluate(lp, _brief()).checks
+    assert len(lp_checks) == 1 and lp_checks[0].status.value == "pass"     # 0 DoF, no redundancy
+
+    under = ('s = sketch("u")\n'
+             's.point("p0", 0, 0, fixed=True)\ns.point("p1", 40, 0)\ns.point("p2", 40, 20)\ns.point("p3", 0, 20)\n'
+             's.line("L0", "p0", "p1")\ns.line("L1", "p1", "p2")\ns.line("L2", "p2", "p3")\ns.line("L3", "p3", "p0")\n'
+             's.constrain("horizontal", "L0")\ns.constrain("vertical", "L1")\n'
+             'element = extrude(s, 10, element_id="u")\n')
+    el, err = execute(under)
+    assert err is None
+    w = sketch_critic.evaluate(el, _brief()).checks[0]
+    assert w.status.value == "fail" and w.severity.name == "WARNING" and "under-constrained" in w.message
+
+    bracket, _ = execute(GOOD)                                            # no sketch → NA, and the panel still passes
+    na = sketch_critic.evaluate(bracket, _brief()).checks[0]
+    assert na.status.value == "n/a"
+    assert panel.evaluate(bracket, _brief()).passed
+
+
 def test_assembly_builds_through_the_loop():
     """assembly() must be reachable from a generated program (S12 deliverable); it was missing from
     the execute() namespace, so any codegen calling it died with NameError."""

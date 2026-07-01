@@ -28,6 +28,14 @@ class SolveResult:
     residual_norm: float               # max |residual| at the solution
     solved: bool                       # residual_norm within tolerance
     dims: list = field(default_factory=list)   # distance/radius NamedDims
+    n_equations: int = 0               # scalar constraint equations (residual rows)
+    rank: int = 0                      # independent constraints at the solution (rank of the Jacobian)
+
+    @property
+    def redundant(self) -> int:
+        """How many constraints are dependent (over-constrained). >0 with solved ⇒ redundant;
+        with unsolved ⇒ conflicting."""
+        return max(0, self.n_equations - self.rank)
 
 
 @runtime_checkable
@@ -211,7 +219,8 @@ class NumericSolver:
         rank = _rank(_jacobian(f, x, r)) if (x and r) else 0
         dof = len(x) - rank
         return SolveResult(coords=coords, dof=dof, residual_norm=res_norm,
-                           solved=res_norm < tol, dims=sketch.dims())
+                           solved=res_norm < tol, dims=sketch.dims(),
+                           n_equations=len(r), rank=rank)
 
 
 def solve(sketch, *, solver: SketchSolver | None = None, tol: float = 1e-6) -> SolveResult:

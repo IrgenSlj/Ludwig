@@ -223,13 +223,18 @@ def extrude(sk, depth: float, *, element_id: str | None = None, name: str = "") 
     into a Part — the deterministic 2D→3D compiler. The sketch's distance/radius dims and the extrude
     depth register as named dims; a non-simple loop surfaces as a kernel error via execute()."""
     from geometry.sketch_solver import solve as _solve
-    _solve(sk)
+    res = _solve(sk)
     loop = [(sk.points[ln.p1].x, sk.points[ln.p1].y) for ln in sk.lines.values()]
     el = part(element_id or sk.id, name=name)
     el.geometry = _geom.extrude(loop, depth)
     for d in sk.dims():
         el.manifest.append(d)
     el.register_dim("depth", float(depth))
+    # Record the sketch's constraint state as design intent (grow-the-IR) so the sketch DoF critic
+    # (R32) can flag an under- / over-constrained profile without re-solving.
+    el.features.append({"kind": "sketch", "dof": int(res.dof), "solved": bool(res.solved),
+                        "residual": float(res.residual_norm), "redundant": int(res.redundant),
+                        "n_points": len(sk.points), "n_constraints": len(sk.constraints)})
     return el
 
 

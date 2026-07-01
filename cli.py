@@ -107,6 +107,34 @@ def selftest() -> int:
     check("sketch: under-constrained rectangle reports 2 remaining DoF",
           _solve_sketch(_rect(False)).dof == 2, f"dof={_solve_sketch(_rect(False)).dof}")
 
+    # R32 — sketch DoF critic in the deterministic panel. The solver's DoF/redundancy feeds a critic
+    # that WARNs on under-constrained and ERRORs on conflicting/over-constrained — added via
+    # critic.panel.register with NO agent/loop.py change ([H4]).
+    from types import SimpleNamespace as _NS
+
+    from critic import sketch as _sk_critic
+    from critic.panel import critics as _critics
+
+    def _feat(res):    # exactly what toolkit.extrude records on the element
+        return {"kind": "sketch", "dof": int(res.dof), "solved": bool(res.solved),
+                "residual": float(res.residual_norm), "redundant": int(res.redundant)}
+
+    _full = _sk_critic.evaluate(_NS(id="r", features=[_feat(_solve_sketch(_rect(True)))]), None).checks[0]
+    check("R32: a fully-constrained sketch PASSES the DoF critic",
+          _full.status.value == "pass", f"{_full.status.value} · {_full.message}")
+
+    def _conflict():   # two different lengths on one line → unsatisfiable
+        s = Sketch("x"); s.point("a", 0, 0, fixed=True); s.point("b", 40, 0); s.line("L0", "a", "b")
+        s.constrain("distance", "L0", value=40); s.constrain("distance", "L0", value=55)
+        return s
+
+    _bad = _sk_critic.evaluate(_NS(id="x", features=[_feat(_solve_sketch(_conflict()))]), None).checks[0]
+    check("R32: a conflicting (over-constrained) sketch FAILS as ERROR",
+          _bad.status.value == "fail" and _bad.severity.name == "ERROR" and "conflict" in _bad.message.lower(),
+          f"{_bad.status.value}/{_bad.severity.name} · {_bad.message}")
+    check("R32: the sketch critic is registered in the panel (no loop change)",
+          any(getattr(c, "name", "") == "sketch" for c in _critics()))
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:
