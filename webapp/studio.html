@@ -456,8 +456,69 @@ function showFaceGizmo(hit){
   scene.add(g); faceGizmo = g;
 }
 
+/* R13 — plan-drag a hole: rings mark the editable hole positions; grab one and slide it across the top
+   face (cursor ray ∩ the top-face plane), streaming /api/hole (re-bore, no LLM/files); release commits
+   (+1/−1 diff), the fab gate refusing a hole off the part. The plan-view sibling of face-drag. */
+let holeHandles = null, HOLE = null;
+function clearHoleHandles(){ if(holeHandles){ scene.remove(holeHandles); holeHandles = null; } }
+function ndc(e){ const r = canvas.getBoundingClientRect();
+  return new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1); }
+function planeXY(e, z){ const {O,D} = rayOD(e); if(Math.abs(D.z) < 1e-9) return null;
+  const t = (z - O.z)/D.z; return [O.x + t*D.x, O.y + t*D.y]; }               // cursor ray ∩ plane z=const
+function buildHoleHandles(d){
+  clearHoleHandles();
+  const holes = (d && d.holes) || [];
+  if(REP!=="3d" || SECTION.on || !model || !holes.length) return;
+  const z = new THREE.Box3().setFromObject(model).max.z;
+  const grp = new THREE.Group();
+  for(const h of holes){
+    const r = Math.max(h.diameter/2, 1.2);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r*1.15, r*0.16, 10, 26),
+      new THREE.MeshBasicMaterial({ color:0x8a5a2b, depthTest:false, transparent:true, opacity:0.85 }));
+    const grab = new THREE.Mesh(new THREE.SphereGeometry(Math.max(r*1.4, 2.2), 12, 10),   // robust grab target
+      new THREE.MeshBasicMaterial({ color:0x8a5a2b, transparent:true, opacity:0.001, depthTest:false }));
+    const g = new THREE.Group(); g.add(ring); g.add(grab);
+    g.position.set(h.at[0], h.at[1], z + 0.05); g.renderOrder = 998;
+    g.userData.hole = { at:[...h.at], z };
+    grp.add(g);
+  }
+  scene.add(grp); holeHandles = grp;
+}
+let _holeInFlight=false, _holePending=null;
+function liveHole(from, to){ _holePending={from,to}; if(!_holeInFlight) pumpHole(); }
+async function pumpHole(){
+  if(_holePending==null){ _holeInFlight=false; return; }
+  _holeInFlight=true; const {from,to}=_holePending; _holePending=null;
+  try{
+    const r = await fetch("/api/hole", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ program:STATE.program, from, to }) });
+    const d = await r.json(); if(d && d.ok) showGeometry(d, { refit:false });   // swap the re-bored solid, camera fixed
+  }catch(e){ /* keep the last good mesh */ }
+  pumpHole();
+}
+async function commitHole(from, to){
+  if(from[0]===to[0] && from[1]===to[1]) return;
+  log("you", `move hole (${from}) → (${to})`);
+  try{
+    const r = await fetch("/api/hole", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ program:STATE.program, from, to, commit:true }) });
+    const d = await r.json();
+    if(d.fatal){ log("sys", "hole move refused: " + d.fatal, "err"); if(STATE.payload) render(STATE.payload); return; }
+    render(d);
+    if(d.diff) log("sys", "hole re-bored · +" + d.diff.added + " / −" + d.diff.removed + " line(s)", "ok");
+  }catch(e){ log("sys", "hole move failed: " + e, "err"); }
+}
+
 canvas.addEventListener("pointerdown", e=>{
   _downXY=[e.clientX, e.clientY];
+  if(holeHandles && holeHandles.children.length){          // grabbing a hole ring starts a plan-drag
+    holeHandles.updateMatrixWorld(true);                   // rAF (hence matrices) can be paused off-screen
+    _ray.setFromCamera(ndc(e), cam);
+    const hit = _ray.intersectObjects(holeHandles.children, true)[0];
+    if(hit){ let o = hit.object; while(o && !o.userData.hole) o = o.parent;
+      if(o){ HOLE = { from:[...o.userData.hole.at], to:[...o.userData.hole.at], z:o.userData.hole.z, ring:o };
+        controls.enabled = false; return; } }
+  }
   if(faceGizmo){                                         // grabbing the arrow starts a face-drag, not an orbit
     _ray.setFromCamera(new THREE.Vector2(
       ((e.clientX-canvas.getBoundingClientRect().left)/canvas.getBoundingClientRect().width)*2-1,
@@ -470,6 +531,13 @@ canvas.addEventListener("pointerdown", e=>{
   }
 });
 window.addEventListener("pointermove", e=>{
+  if(HOLE){                                              // slide the hole across the top-face plane
+    const p = planeXY(e, HOLE.z); if(!p) return;
+    const to = [Math.round(p[0]), Math.round(p[1])]; HOLE.to = to;
+    liveHole(HOLE.from, to);
+    if(HOLE.ring) HOLE.ring.position.set(to[0], to[1], HOLE.ring.position.z);   // ring tracks the cursor
+    return;
+  }
   if(!DRAG) return;
   const {O,D} = rayOD(e);
   const val = Math.max(1, Math.round(DRAG.old + 2*(closestTOnAxis(DRAG.C, DRAG.A, O, D) - DRAG.t0)));
@@ -478,6 +546,12 @@ window.addEventListener("pointermove", e=>{
   if(faceGizmo) faceGizmo.position.copy(DRAG.C).addScaledVector(DRAG.A, val/2);   // arrow tracks the face
 });
 window.addEventListener("pointerup", e=>{
+  if(HOLE){                                              // release → commit the re-bored hole (+1/−1 diff)
+    controls.enabled = true;
+    const h = HOLE; HOLE = null; _downXY = null;
+    commitHole(h.from, h.to);
+    return;
+  }
   if(DRAG){                                              // release → commit the new extent (+1/−1 diff)
     controls.enabled = true;
     const d = DRAG; DRAG = null; _downXY = null;
@@ -552,6 +626,7 @@ function render(payload) {
   STATE.program = payload.program || null;
   if (payload.sketch2d !== undefined) STATE.sketch2d = payload.sketch2d;   // R34: the solved 2D profile
   if (REP === "2d") renderSketch2d(STATE.sketch2d);
+  buildHoleHandles(payload);                      // R13: draggable rings on every hole (3D mode)
 
   const id   = payload.id   || "model";
   const type = payload.type || "";
@@ -753,7 +828,7 @@ function toggleSection(){
   }
   if(!STATE.program){ log("sys","load a model first.","warn"); return; }
   SECTION.on=true; if(btn) btn.classList.add("on");
-  clearFaceGizmo();                                            // face-drag arrow doesn't belong on a slice
+  clearFaceGizmo(); clearHoleHandles();                        // drag handles don't belong on a slice
   buildSectionControls();
   liveSection(null, null, true);                               // default centroidal-longitudinal plane
   log("sys","section — live cut plane (token-free). Drag to sweep; pick X/Y/Z for the cut normal.","ok");
@@ -799,7 +874,8 @@ function setRep(rep){
   // HTMLElement does — so toggle the attribute explicitly, or the [hidden]{display:none} rule sticks.
   if(on2d) svg.removeAttribute("hidden"); else svg.setAttribute("hidden","");
   canvas.style.visibility = on2d ? "hidden" : "visible";
-  if(on2d){ clearFaceGizmo(); renderSketch2d(STATE.sketch2d); }   // face-drag is a 3D-only tool (R10)
+  if(on2d){ clearFaceGizmo(); clearHoleHandles(); renderSketch2d(STATE.sketch2d); }   // 3D-only tools (R10/R13)
+  else buildHoleHandles(STATE.payload);                                                // back to 3D → restore hole rings
 }
 function renderSketch2d(loop){
   const svg = $("#sketch2d");
@@ -853,6 +929,10 @@ window.LUDWIG = {
     return { dim:dim.name, old:dim.value };
   },
   get gizmo(){ return faceGizmo ? faceGizmo.userData.face : null; },
+  // R13 hole-drag headless seam: preview or commit a hole move (from[x,y] → to[x,y])
+  moveHole: (from, to, commit)=> commit ? commitHole(from, to) : liveHole(from, to),
+  get holeRings(){ return holeHandles ? holeHandles.children.map(g=>g.userData.hole.at) : []; },
+  get dragging(){ return HOLE ? "hole" : DRAG ? "face" : null; },
   // project a world point to canvas client (x,y) — headless helper for synthetic-pointer drag tests
   _screenOf(x,y,z){ const r=canvas.getBoundingClientRect();
     const p=new THREE.Vector3(x,y,z).project(cam);

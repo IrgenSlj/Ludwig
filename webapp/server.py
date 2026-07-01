@@ -145,7 +145,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt",
-                             "/api/preview", "/api/section"):
+                             "/api/preview", "/api/section", "/api/hole"):
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -197,6 +197,22 @@ class Handler(BaseHTTPRequestHandler):
                         raise PermissionError("section offset out of range — keep it within a sane size.")
                 from webapp.service import section_to_result
                 result = section_to_result(program, axis=axis, offset=offset)
+            elif self.path == "/api/hole":     # drag a hole in plan: re-bore live, deterministic + token-free
+                program = self._program(req)
+                frm, to = req.get("from"), req.get("to")
+                if not (isinstance(frm, list) and isinstance(to, list) and len(frm) == 2 and len(to) == 2):
+                    raise ValueError("hole move needs from[x,y] and to[x,y]")
+                to = [float(to[0]), float(to[1])]
+                if DEMO:                        # the new centre reaches the kernel — bound both coords
+                    from webapp import safety
+                    if not all(safety.value_in_envelope(v) for v in to):
+                        raise PermissionError("hole position out of range — keep it within a sane size.")
+                if req.get("commit"):
+                    from webapp.service import hole_move_to_result
+                    result = hole_move_to_result(program, [float(frm[0]), float(frm[1])], to)
+                else:
+                    from webapp.service import preview_hole_move
+                    result = preview_hole_move(program, [float(frm[0]), float(frm[1])], to)
             else:  # /api/edit — re-prompt an existing program into a minimal diff (S6)
                 program = self._program(req)
                 param = req.get("param")

@@ -238,6 +238,30 @@ def test_substitute_constraint_value_targets_only_the_constraint():
     assert service._substitute_constraint_value(prog, "distance", "NOPE", 80, 130) is None
 
 
+def test_hole_move_re_bores_and_commits_token_free(tmp_path):
+    # R13: dragging a hole re-bores deterministically — substitute just that hole's position literal,
+    # re-bore, and ACCEPT only if a cylindrical feature landed at the new centre (the plan-drag analogue
+    # of the extent fast-edit). Preview writes nothing; commit is a +1/−1 diff; off-part is refused.
+    from webapp import gallery
+    prog = gallery.program_for("bracket")                       # holes at (-25,0) and (25,0)
+
+    pv = service.preview_hole_move(prog, (-25, 0), (-30, 8))
+    assert pv["ok"] and pv["engine"] == "hole-move" and len(pv["mesh"]["indices"]) >= 3
+    assert any(abs(h["at"][0] + 30) < 0.5 and abs(h["at"][1] - 8) < 0.5 for h in pv["holes"])   # moved
+    assert any(h["at"] == [25.0, 0.0] for h in pv["holes"])                                       # other intact
+
+    commit = service.hole_move_to_result(prog, (-25, 0), (-30, 8), out=tmp_path)
+    assert commit["fast"] is True and commit["diff"]["added"] == 1 and "fatal" not in commit
+
+    off = service.hole_move_to_result(prog, (-25, 0), (-500, 0), out=tmp_path)   # off the part
+    assert off.get("fast") is not True and "fatal" in off                        # fab gate refuses it
+
+    # the substitution edits only the dragged hole's literal
+    out = service._substitute_hole_pos(prog, (25, 0), (40, -5))
+    assert out.count("(40, -5)") == 1 and "(-25, 0)" in out
+    assert service._substitute_hole_pos(prog, (99, 99), (0, 0)) is None           # absent → safe None
+
+
 def test_adopt_writes_the_downloadable_fabrication_export_set(tmp_path):
     # The studio's "Fabrication exports" chips link to these files under /out/ — the verified-fabricability
     # payoff made tangible. On a passing critic the full set is written to disk; the fab gate withholds

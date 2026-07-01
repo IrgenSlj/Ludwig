@@ -277,6 +277,7 @@ def _assemble(res, out: Path, on_event=None) -> dict:
         except Exception as e:
             result["mesh_error"] = f"{type(e).__name__}: {e}"
         result["sketch2d"] = _sketch_loop_2d(el, g)   # R34: the solved 2D profile for the 2D view (None if not a sketch)
+    result["holes"] = _hole_features(el)               # R13: hole positions, so a picked hole maps to its literal
     # An Assembly's children, each tessellated separately so the viewport can select/highlight one
     # solid at a time — "geometry is the index into the program" for multi-part models.
     for c in getattr(el, "children", []) or []:
@@ -594,6 +595,93 @@ def _substitute_constraint_value(program: str, kind: str, ref: str, old: float, 
     return program[:m.start(2)] + f"{new:g}" + program[m.end(2):]
 
 
+# a hole/anchor position tuple in the program text: clearance_hole(el, "M8", (-25, 0)) — the (x, y)
+# literal pair, matched by exact old value so only the dragged hole moves (R13).
+_POS_TUPLE = re.compile(r'\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)')
+
+
+def _substitute_hole_pos(program: str, old_xy, new_xy) -> Optional[str]:
+    """Replace one hole's position literal `(ox, oy)` with `(nx, ny)`, leaving every other literal
+    untouched. Matches by the exact old coordinates, so with distinct hole positions it is unambiguous
+    (0 or >1 matches → None, and the caller keeps the last good geometry)."""
+    ox, oy = float(old_xy[0]), float(old_xy[1])
+    hits = [m for m in _POS_TUPLE.finditer(program)
+            if abs(float(m.group(1)) - ox) <= 1e-6 and abs(float(m.group(2)) - oy) <= 1e-6]
+    if len(hits) != 1:
+        return None
+    m = hits[0]
+    return program[:m.start()] + f"({float(new_xy[0]):g}, {float(new_xy[1]):g})" + program[m.end():]
+
+
+def preview_hole_move(program: str, old_xy, new_xy) -> dict:
+    """Live preview for dragging a hole (R13): substitute just that hole's position literal, re-bore and
+    tessellate in-process (no files, no LLM), and ACCEPT only if a cylindrical feature actually landed at
+    the new centre — the deterministic acceptance gate (the plan analogue of the bbox-extent check)."""
+    from geometry import GeometryService
+    from toolkit.standards import tol_linear
+
+    new_program = _substitute_hole_pos(program, old_xy, new_xy)
+    if new_program is None:
+        return {"ok": False, "reason": "hole-position-not-found"}
+    from agent.loop import execute
+    el, err = execute(new_program)
+    if err or el is None or el.geometry is None:
+        return {"ok": False, "reason": err or "no-geometry"}
+    g = GeometryService()
+    try:
+        centers = g.cylindrical_face_centers(el.geometry)
+        mesh = g.tessellate(el.geometry)
+    except Exception as e:
+        return {"ok": False, "reason": f"{type(e).__name__}: {e}"}
+    tol = max(tol_linear(), 0.5)
+    if not any(abs(cx - float(new_xy[0])) <= tol and abs(cy - float(new_xy[1])) <= tol for cx, cy in centers):
+        return {"ok": False, "reason": "hole-did-not-move"}          # rejects a wrong substitution
+    length, width, height = g.bbox(el.geometry)
+    return {"ok": True, "id": el.id, "type": el.type, "engine": "hole-move", "program": new_program,
+            "mesh": mesh, "children": [], "dims": _dims(el.manifest), "holes": _hole_features(el),
+            "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)}}
+
+
+def hole_move_to_result(program: str, old_xy, new_xy, *, out: Optional[Path] = None) -> dict:
+    """Commit a hole move (R13 release): substitute the position literal, re-bore, verify + assemble
+    (artifacts + fab gate) and return the +1/−1 diff. Deterministic and token-free — the plan-drag
+    analogue of the extent fast-edit; the new centre is confirmed by cylindrical re-measure, not the LLM."""
+    from agent.loop import Brief, LoopResult, execute, verify
+    from geometry import GeometryService
+
+    out = Path(out) if out is not None else OUT
+    out.mkdir(parents=True, exist_ok=True)
+    new_program = _substitute_hole_pos(program, old_xy, new_xy)
+    if new_program is None:
+        return {"fatal": "could not locate that hole's position in the program", "fast": False}
+    el, err = execute(new_program)
+    if err or el is None or el.geometry is None:
+        return {"fatal": err or "no geometry", "fast": False}
+    g = GeometryService()
+    from toolkit.standards import tol_linear
+    tol = max(tol_linear(), 0.5)
+    if not any(abs(cx - float(new_xy[0])) <= tol and abs(cy - float(new_xy[1])) <= tol
+               for cx, cy in g.cylindrical_face_centers(el.geometry)):
+        return {"fatal": "the hole did not land at the requested centre", "fast": False}
+    crit = verify(el, Brief(prompt=""))
+    if not crit.passed:
+        return {"fatal": "the moved hole fails the critic (off the part / too close to an edge)", "fast": False}
+    res = LoopResult(new_program, el, crit, True, 0, None)
+    result = _assemble(res, out)
+    diff = list(difflib.unified_diff(program.splitlines(), new_program.splitlines(), lineterm="", n=1))
+    result["diff"] = {"added": 1, "removed": 1, "text": "\n".join(diff)}
+    result["fast"] = True
+    return result
+
+
+def _hole_features(el) -> list:
+    """Hole/anchor positions (+ diameter) for the studio — so a picked cylindrical face maps back to the
+    program literal to drag. Design intent from el.features, never a kernel handle ([H2])."""
+    return [{"at": [float(f["at"][0]), float(f["at"][1])], "diameter": float(f.get("diameter", 0)),
+             "kind": f.get("kind")} for f in getattr(el, "features", [])
+            if isinstance(f, dict) and f.get("kind") in ("hole", "anchor") and f.get("at")]
+
+
 def _sketch_loop_2d(el, g) -> Optional[list]:
     """The solved sketch's outer profile as 2D (u, v) points — recovered by sectioning ⟂ the extrude
     axis (R31's insight), so the studio's 2D view draws the real constrained sketch, not a stored copy."""
@@ -735,4 +823,5 @@ def _preview_via_substitution(program: str, name: str, old: float, new: float, t
 
 
 __all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
-           "section_to_result", "preview_edit", "_variant_payload", "OUT"]
+           "section_to_result", "preview_hole_move", "hole_move_to_result", "preview_edit",
+           "_variant_payload", "OUT"]

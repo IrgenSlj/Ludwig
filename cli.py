@@ -410,6 +410,22 @@ def selftest() -> int:
               _cm.get("fast") is True and _cm.get("diff", {}).get("added") == 1 and "fatal" not in _cm,
               f"fast={_cm.get('fast')} · +{_cm.get('diff', {}).get('added')} line · id {_cm.get('id')}")
 
+        # R13 — hole-position edit: move a hole deterministically (substitute its literal + re-bore),
+        # gated by a cylindrical-centre re-measure — token-free, the plan-drag analogue of face-drag.
+        from webapp.service import hole_move_to_result as _hmr
+        from webapp.service import preview_hole_move as _phm
+        _hp = _phm(_gal.program_for("bracket"), (-25, 0), (-30, 8))
+        check("R13: a hole move re-bores live and confirms the new centre (token-free)",
+              bool(_hp.get("ok")) and _hp.get("engine") == "hole-move" and len(_hp["mesh"]["indices"]) >= 3
+              and any(abs(h["at"][0] + 30) < 0.5 and abs(h["at"][1] - 8) < 0.5 for h in _hp.get("holes", [])),
+              f"holes {[h['at'] for h in _hp.get('holes', [])]}")
+        with tempfile.TemporaryDirectory() as _td:
+            _hc = _hmr(_gal.program_for("bracket"), (-25, 0), (-30, 8), out=_td)
+        check("R13: the hole-move commit is a +1/−1 diff; a hole dragged off the part is refused",
+              _hc.get("fast") is True and _hc.get("diff", {}).get("added") == 1
+              and _phm(_gal.program_for("bracket"), (-25, 0), (-500, 0)).get("ok") is False,
+              f"fast={_hc.get('fast')} · off-part refused")
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend

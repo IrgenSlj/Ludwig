@@ -243,6 +243,22 @@ class GeometryService:
                         min_d = d
         return min_d if min_d != float("inf") else 0.0
 
+    def cylindrical_face_centers(self, handle: BRepHandle) -> list[tuple[float, float]]:
+        """The (x, y) axis centres of every cylindrical face — hole/bore positions in plan. The
+        deterministic acceptance signal for a hole-position edit (R13): confirm a hole actually landed
+        at the new centre, the way bbox extents gate an extent edit. Deduped to ~0.1 mm."""
+        centers: list[tuple[float, float]] = []
+        for f in handle.solid().val().Faces():
+            try:
+                if f.geomType() == "CYLINDER":
+                    c = f.Center().toTuple()
+                    xy = (round(c[0], 3), round(c[1], 3))
+                    if not any(abs(xy[0] - e[0]) < 0.1 and abs(xy[1] - e[1]) < 0.1 for e in centers):
+                        centers.append(xy)
+            except Exception:  # pragma: no cover - geomType can throw on exotic surfaces
+                pass
+        return centers
+
     def cylindrical_face_count(self, handle: BRepHandle) -> int:
         """Count cylindrical faces — for the fillet-free frozen brief set this equals hole count.
         (A full hole-topology check is S4 critic work; this is the cheap S2 gate signal.)"""
