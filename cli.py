@@ -327,6 +327,22 @@ def selftest() -> int:
                   len(_dims) >= 2 and _sp.with_suffix(".png").exists(),
                   f"{len(_dims)} dims")
 
+        # R33 — a live, re-promptable cut plane. ONE plane resolver: a DECLARED section (toolkit.section)
+        # is honoured identically by the R30 drawing backend and the live mesh cut. The token-free webapp
+        # payload returns a non-empty section mesh for the bracket — no LLM, no backends in the hot path.
+        from agent.loop import execute as _exec
+        from backends.section import _section_spec as _spec
+        from webapp import gallery as _gal
+        from webapp.service import section_to_result as _sec_res
+        _decl_el, _ = _exec('element = box("b", 80, 40, 6)\nsection(element, axis="y", offset=15)\n')
+        check("R33: a declared section plane is honoured exactly by the backend resolver (y @ 15)",
+              _spec(_decl_el) == ("y", 15.0), f"{_spec(_decl_el)}")
+        _live = _sec_res(_gal.program_for("bracket"))
+        check("R33: token-free live cut returns a non-empty section mesh for the bracket",
+              bool(_live.get("ok")) and len(_live["mesh"]["indices"]) >= 3 and _live["axis"] in ("x", "y", "z"),
+              f"{_live.get('axis')} @ {_live.get('offset')} · "
+              f"{len(_live['mesh']['indices']) // 3 if _live.get('mesh') else 0} tris")
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend

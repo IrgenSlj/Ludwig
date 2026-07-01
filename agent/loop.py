@@ -237,6 +237,7 @@ def execute(program: str, *, record: bool = False) -> tuple[Optional[Element], O
         "assembly": toolkit.assembly, "place": toolkit.place, "stack": toolkit.stack,
         "profile": toolkit.profile, "stair": toolkit.stair, "wall": toolkit.wall,
         "opening": toolkit.opening, "sketch": toolkit.sketch, "extrude": toolkit.extrude,
+        "section": toolkit.section,
     }
     try:
         src = compile(_strip_fences(program), "<ludwig-program>", "exec")

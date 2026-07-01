@@ -63,16 +63,19 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
 
 
 def _section_spec(ir) -> tuple[str, float]:
-    """The declared section plane if the IR carries one (R33 records {kind:'section', axis, offset});
-    else the default centroidal longitudinal plane — cut ⟂ the SHORTEST extent, through the centroid."""
+    """The declared section plane if the IR carries one (R33's toolkit.section records
+    {kind:'section', axis, offset}); else — or for any field left unspecified — the centroidal
+    longitudinal default. Uses the SAME resolver as the live cut so drawing and slice agree."""
+    from geometry import GeometryService
+
+    g = GeometryService()
     for f in getattr(ir, "features", []):
         if isinstance(f, dict) and f.get("kind") == "section":
-            return str(f.get("axis", "z")), float(f.get("offset", 0.0))
-    xmin, xmax, ymin, ymax, zmin, zmax = _bbox(ir.geometry)
-    spans = {"x": xmax - xmin, "y": ymax - ymin, "z": zmax - zmin}
-    axis = min(spans, key=spans.get)          # normal = shortest axis → broadest longitudinal cut
-    ctr = {"x": (xmin + xmax) / 2, "y": (ymin + ymax) / 2, "z": (zmin + zmax) / 2}
-    return axis, ctr[axis]
+            axis, offset = f.get("axis"), f.get("offset")
+            if axis is None or offset is None:
+                axis, offset = g.default_section_plane(ir.geometry, axis=axis)
+            return str(axis), float(offset)
+    return g.default_section_plane(ir.geometry)
 
 
 # --------------------------------------------------------------------------- #

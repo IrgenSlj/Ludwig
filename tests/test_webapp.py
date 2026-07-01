@@ -177,6 +177,30 @@ def test_adopt_to_result_writes_artifacts_token_free(tmp_path):
     assert (tmp_path / r["artifacts"]["step"]).exists()
 
 
+def test_section_to_result_live_cut_is_token_free_and_real():
+    # R33: the live cut plane — execute + section + tessellate, NO llm/backends. Default plane matches
+    # the section drawing backend (centroidal longitudinal → ⟂ the shortest extent, the 6 mm thickness).
+    r = service.section_to_result(GOOD)
+    assert r["ok"] is True and r["axis"] == "z" and r["offset"] == pytest.approx(0.0)
+    assert len(r["mesh"]["indices"]) >= 3 and len(r["mesh"]["positions"]) >= 9   # a real mesh
+    assert r["bbox"]["length"] == pytest.approx(80.0) and r["span"] == pytest.approx(6.0)
+
+
+def test_section_to_result_honours_explicit_and_declared_planes():
+    # an explicit axis/offset wins; else a declared section() feature; else the default
+    r = service.section_to_result(GOOD, axis="x", offset=10.0)
+    assert r["ok"] and r["axis"] == "x" and r["offset"] == pytest.approx(10.0)
+    declared = GOOD + 'section(element, axis="y", offset=5)\n'
+    r2 = service.section_to_result(declared)
+    assert r2["ok"] and r2["axis"] == "y" and r2["offset"] == pytest.approx(5.0)
+
+
+def test_section_to_result_empty_plane_is_handled_not_crashed():
+    # a plane below the solid keeps nothing → ok False with a reason, never an exception/500
+    r = service.section_to_result(GOOD, axis="z", offset=-500.0)
+    assert r["ok"] is False and "reason" in r
+
+
 def test_server_blocks_path_traversal():
     # the /out/ guard resolves and rejects anything escaping out/ — assert the resolution logic
     from webapp.server import OUT

@@ -381,6 +381,49 @@ def adopt_to_result(program: str, *, out: Optional[Path] = None) -> dict:
     return result
 
 
+def section_to_result(program: str, *, axis: Optional[str] = None,
+                      offset: Optional[float] = None) -> dict:
+    """A live, re-promptable cut plane (R33). Execute the program token-free, slice the solid at the
+    section plane, tessellate the KEPT half, and return a render-ready section mesh — no LLM, no
+    backends, no files. The plane: explicit `axis`/`offset` if given (a slider/gizmo drag); else a
+    declared {kind:'section'} feature on the element; else the centroidal-longitudinal default. This
+    is the same plane the section DRAWING backend (R30) would draw, so the 3D slice and the DXF agree.
+    """
+    from agent.loop import execute
+    from geometry import GeometryService
+
+    el, err = execute(program)
+    if err or el is None or el.geometry is None:
+        return {"ok": False, "reason": err or "no geometry to section"}
+    g = GeometryService()
+
+    feat = next((f for f in getattr(el, "features", [])
+                 if isinstance(f, dict) and f.get("kind") == "section"), None)
+    if axis is None and feat is not None:
+        axis = feat.get("axis")
+    if offset is None and feat is not None:
+        offset = feat.get("offset")
+    if axis not in ("x", "y", "z"):
+        axis = None                                        # ignore a bad axis → fall to the default
+    ra, ro = g.default_section_plane(el.geometry, axis=axis)
+    axis = axis if axis is not None else ra
+    offset = float(offset) if offset is not None else ro
+
+    try:
+        kept = g.section(el.geometry, axis=axis, offset=offset, keep="-")
+        mesh = g.tessellate(kept)
+    except Exception as e:                                 # a degenerate plane (outside the solid) etc.
+        return {"ok": False, "reason": f"{type(e).__name__}: {e}", "axis": axis, "offset": offset}
+    if not mesh.get("indices"):
+        return {"ok": False, "reason": "empty section (plane misses the solid)", "axis": axis, "offset": offset}
+
+    length, width, height = g.bbox(el.geometry)
+    span = {"x": (length, 0), "y": (width, 1), "z": (height, 2)}[axis][0]
+    return {"ok": True, "id": el.id, "type": el.type, "axis": axis, "offset": round(offset, 4),
+            "mesh": mesh, "span": round(span, 4),
+            "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)}}
+
+
 def compile_to_result(prompt: str, *, candidates: int = 1, rounds: int = 2,
                       out: Optional[Path] = None, on_event=None) -> dict:
     """Compile a prompt to real artifacts and return a JSON-safe result.
@@ -591,4 +634,4 @@ def _preview_via_substitution(program: str, name: str, old: float, new: float, t
 
 
 __all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
-           "preview_edit", "_variant_payload", "OUT"]
+           "section_to_result", "preview_edit", "_variant_payload", "OUT"]

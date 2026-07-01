@@ -571,6 +571,80 @@ async function applyEdit(instruction, param) {
   finally { document.querySelectorAll("#props input").forEach(i => i.disabled = false); }
 }
 
+/* ===================== live cut plane (R33) =====================
+   The Section tool slices the loaded solid at a plane and shows the kept half — a token-free
+   /api/section call (execute + OCCT section + tessellate; no LLM, no backends). Axis buttons pick the
+   cut normal; the slider sweeps the plane through the part; both re-cut live and COALESCED (at most one
+   request in flight). Exit restores the full solid. The default plane is the centroidal-longitudinal
+   one the section DRAWING backend (R30) draws, so the live 3D slice and the DXF agree. */
+const SECTION = { on:false, axis:null, offset:0, span:null };
+let _secInFlight=false, _secPending=null;
+function liveSection(axis, offset, axisChanged){
+  if(!STATE.program){ log("sys","load a model first.","warn"); return; }
+  _secPending = { axis, offset, axisChanged };
+  if(!_secInFlight) pumpSection();
+}
+async function pumpSection(){
+  if(_secPending==null){ _secInFlight=false; return; }
+  _secInFlight=true;
+  const req=_secPending; _secPending=null;
+  try{
+    const r = await fetch("/api/section", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ program: STATE.program, axis:req.axis, offset:req.offset }) });
+    const d = await r.json();
+    if(d && d.ok) onSectionResult(d, req.axisChanged);
+    else if(d){ const ro=$("#secReadout"); if(ro) ro.textContent = d.reason || "empty section"; }
+  }catch(e){ /* drop this frame, keep the last good slice */ }
+  pumpSection();
+}
+function onSectionResult(d, axisChanged){
+  SECTION.axis=d.axis; SECTION.offset=d.offset; SECTION.span=d.span;
+  showGeometry({ id:d.id, mesh:d.mesh }, { refit:false });     // swap in the cut half, keep the camera
+  $("#badge").textContent = `${d.id} · section ⟂${d.axis.toUpperCase()} @ ${(+d.offset).toFixed(1)} mm`;
+  if(axisChanged) rebuildSectionSlider(); else updateSectionReadout();
+  document.querySelectorAll(".secax").forEach(b=> b.classList.toggle("on", b.dataset.ax===SECTION.axis));
+}
+function toggleSection(){
+  const btn = document.querySelector('.tool[data-tool="section"]');
+  if(SECTION.on){                                              // exit → restore the full solid + props
+    SECTION.on=false; if(btn) btn.classList.remove("on");
+    if(STATE.payload) render(STATE.payload);
+    log("sys","exited section — full solid restored.");
+    return;
+  }
+  if(!STATE.program){ log("sys","load a model first.","warn"); return; }
+  SECTION.on=true; if(btn) btn.classList.add("on");
+  buildSectionControls();
+  liveSection(null, null, true);                               // default centroidal-longitudinal plane
+  log("sys","section — live cut plane (token-free). Drag to sweep; pick X/Y/Z for the cut normal.","ok");
+}
+function buildSectionControls(){
+  const props=$("#props"); props.innerHTML="";
+  const wrap=document.createElement("div"); wrap.className="prop";
+  wrap.innerHTML =
+    `<div class="lbl"><span class="nm">cut plane</span><span class="unit" id="secReadout">…</span></div>
+     <div class="row" style="gap:6px;margin:6px 0 10px">
+       ${["x","y","z"].map(a=>`<button class="tool secax" data-ax="${a}" style="flex:1;padding:5px 0">${a.toUpperCase()}</button>`).join("")}
+     </div>
+     <div class="row"><input type="range" id="secOffset" disabled></div>
+     <div class="row" style="margin-top:12px"><button class="tool" id="secExit" style="width:100%;flex-direction:row">Exit section</button></div>`;
+  props.appendChild(wrap);
+  wrap.querySelectorAll(".secax").forEach(b=> b.addEventListener("click", ()=> liveSection(b.dataset.ax, null, true)));
+  wrap.querySelector("#secExit").addEventListener("click", toggleSection);
+}
+function rebuildSectionSlider(){
+  const s=$("#secOffset"); if(!s || SECTION.span==null) return;
+  const half=SECTION.span/2;
+  s.min=(-half).toFixed(2); s.max=half.toFixed(2); s.step=Math.max(0.25, SECTION.span/240).toFixed(2);
+  s.value=SECTION.offset; s.disabled=false;
+  s.oninput=()=> liveSection(SECTION.axis, Number(s.value), false);
+  updateSectionReadout();
+}
+function updateSectionReadout(){
+  const r=$("#secReadout");
+  if(r) r.textContent = `⟂${(SECTION.axis||"").toUpperCase()} @ ${(+SECTION.offset).toFixed(1)} mm`;
+}
+
 function emptyStage(msg) {
   if (model) { scene.remove(model); model = null; }
   if (grid)  { scene.remove(grid);  grid  = null; }
@@ -586,7 +660,8 @@ function emptyStage(msg) {
 // surface. Exposes render + selection so the Stage's Point-to-Navigate / Ambient wash are testable.
 window.LUDWIG = {
   render, selectFromStage, clearStageSelection,
-  state: STATE,
+  toggleSection, sectionAt: (axis, offset)=> liveSection(axis, offset, true),   // R33 headless seam
+  state: STATE, section: SECTION,
   get ambient(){ return { overall: AMBIENT.overall, byId: AMBIENT.byId,
     mats: Object.fromEntries(Object.entries(childMats).map(
       ([id, m]) => [id, { hex: m.emissive.getHex(), opacity: m.opacity }])) }; },
@@ -695,6 +770,7 @@ document.querySelectorAll("[data-ltab]").forEach(t=> t.addEventListener("click",
   $("#ltab-model").hidden = t.dataset.ltab!=="model";
 }));
 document.querySelectorAll(".tool").forEach(t=> t.addEventListener("click", ()=>{
+  if(t.dataset.tool==="section"){ toggleSection(); return; }   // R33: live cut plane (own active state)
   tagActive(".tool", t);
   log("sys", t.dataset.tool+" tool — not wired yet (R3+).", "warn");
 }));

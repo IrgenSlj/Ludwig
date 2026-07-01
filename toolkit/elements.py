@@ -252,6 +252,19 @@ def anchor(el: Element, diameter: float, at: tuple[float, float], depth: float, 
     return el
 
 
+def section(el: Element, *, axis: str | None = None, offset: float | None = None,
+            name: str | None = None) -> Element:
+    """Declare a section plane on an element — design intent recorded as a {kind:'section'} feature
+    (grow-the-IR, like a hole's position). It changes no geometry; the section drawing backend (R30)
+    and the live cut (R33) both honour it. `axis` in {x, y, z}, `offset` mm along it; omit either for
+    the centroidal-longitudinal default resolved at derive time. Returns the element for chaining."""
+    if axis is not None and axis not in ("x", "y", "z"):
+        raise ValueError(f"section axis must be x|y|z, got {axis!r}")
+    el.features.append({"kind": "section", "axis": axis,
+                        "offset": (float(offset) if offset is not None else None), "name": name})
+    return el
+
+
 def place(el: Element, offset: tuple[float, float, float]) -> Element:
     """Move an element's geometry by (dx, dy, dz) mm. Positioning for assemblies — the model says
     `place(top, (0, 0, 10))` instead of hand-rolling a kernel translate. Extents are unchanged, so

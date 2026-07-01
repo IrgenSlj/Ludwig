@@ -149,6 +149,17 @@ class GeometryService:
                 inners.extend(uv(w) for w in f.innerWires())
         return {"outer": outer, "inners": inners}
 
+    def default_section_plane(self, handle: BRepHandle, axis: str | None = None) -> tuple[str, float]:
+        """The default section plane: cut ⟂ the SHORTEST extent (the broadest *longitudinal* plane),
+        through the bounding-box centroid — the single most informative section for a plate-like part
+        (it reveals through-holes as voids). Pass `axis` to fix the cut axis and get its centroid.
+        Shared by the section drawing backend (R30) and the live cut (R33) so both agree on the plane."""
+        bb = handle.solid().val().BoundingBox()
+        spans = {"x": bb.xlen, "y": bb.ylen, "z": bb.zlen}
+        ax = axis or min(spans, key=spans.get)
+        ctr = {"x": (bb.xmin + bb.xmax) / 2, "y": (bb.ymin + bb.ymax) / 2, "z": (bb.zmin + bb.zmax) / 2}
+        return ax, ctr[ax]
+
     @staticmethod
     def loop_area(loop) -> float:
         """Shoelace area (mm²) of a closed (u, v) polygon loop. |signed area|; 0 for < 3 points."""

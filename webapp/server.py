@@ -144,7 +144,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise PermissionError("parameter value out of range — keep edits within a sane size.")
 
     def do_POST(self) -> None:
-        if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt", "/api/preview"):
+        if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt",
+                             "/api/preview", "/api/section"):
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -183,6 +184,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._check_param_bounds(param)   # the substituted `new` reaches the kernel — bound it
                 from webapp.service import preview_edit
                 result = preview_edit(program, param["name"], float(param["old"]), float(param["new"]))
+            elif self.path == "/api/section":  # live cut plane: geometry-only section mesh, no files/LLM
+                program = self._program(req)
+                axis = req.get("axis")
+                if axis is not None and axis not in ("x", "y", "z"):
+                    raise ValueError("section axis must be x, y or z")
+                offset = req.get("offset")
+                if offset is not None:
+                    offset = float(offset)
+                    from webapp import safety
+                    if DEMO and not safety.value_in_envelope(offset):   # the plane pos reaches the kernel
+                        raise PermissionError("section offset out of range — keep it within a sane size.")
+                from webapp.service import section_to_result
+                result = section_to_result(program, axis=axis, offset=offset)
             else:  # /api/edit — re-prompt an existing program into a minimal diff (S6)
                 program = self._program(req)
                 param = req.get("param")
