@@ -201,6 +201,43 @@ def test_section_to_result_empty_plane_is_handled_not_crashed():
     assert r["ok"] is False and "reason" in r
 
 
+def test_sketch_dim_preview_re_solves_and_returns_the_2d_profile():
+    # R34: dragging a sketch DISTANCE dim re-solves + re-extrudes in-process (no files, no LLM) and
+    # returns the new solid mesh AND the solved 2D profile — 3D extrude and 2D sketch move together.
+    from webapp import gallery
+    prog = gallery.program_for("l_profile")
+    r = service.preview_edit(prog, "d_L0", 80, 130)
+    assert r["ok"] and r["engine"] == "sketch-resolve"
+    assert r["bbox"]["length"] == pytest.approx(130.0)             # the 80 mm leg grew to 130
+    assert len(r["mesh"]["indices"]) >= 3 and len(r["sketch2d"]) == 6   # new solid + the L profile
+    # the doubled 10 mm leg (d_L1 == d_L4 == 10) is disambiguated by dim name, not value
+    r2 = service.preview_edit(prog, "d_L1", 10, 18)
+    assert r2["ok"] and r2["engine"] == "sketch-resolve"
+
+
+def test_sketch_dim_commit_is_token_free_minimal_diff(tmp_path):
+    # the release of a sketch-dim drag commits deterministically (no LLM) as a one-literal diff, and is
+    # allowed in the demo (allow_llm=False) — the durable analogue of the live preview.
+    from webapp import gallery
+    prog = gallery.program_for("l_profile")
+    r = service.edit_to_result(prog, "make the leg 130 mm",
+                               param={"name": "d_L0", "old": 80, "new": 130}, out=tmp_path, allow_llm=False)
+    assert r.get("fast") is True and "fatal" not in r
+    assert r["diff"]["added"] == 1 and r["diff"]["removed"] == 1     # exactly one constraint value changed
+    assert r["bbox"]["length"] == pytest.approx(130.0)
+
+
+def test_substitute_constraint_value_targets_only_the_constraint():
+    # the seed shares the literal 80 across point seeds AND the distance constraint — the substitution
+    # must edit ONLY the constraint, or dragging a dim would silently move the seed geometry too.
+    from webapp import gallery
+    prog = gallery.program_for("l_profile")
+    out = service._substitute_constraint_value(prog, "distance", "L0", 80, 130)
+    assert out.count("value=130") == 1                              # exactly the L0 distance constraint
+    assert 's.point("p1", 80, 0)' in out and 's.point("p2", 80, 10)' in out   # seeds untouched
+    assert service._substitute_constraint_value(prog, "distance", "NOPE", 80, 130) is None
+
+
 def test_server_blocks_path_traversal():
     # the /out/ guard resolves and rejects anything escaping out/ — assert the resolution logic
     from webapp.server import OUT

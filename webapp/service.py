@@ -127,6 +127,31 @@ def _try_fast_edit(program: str, name: str, old: float, new: float, out: Path) -
     return result
 
 
+def _try_sketch_edit(program: str, name: str, old: float, new: float, out: Path) -> Optional[dict]:
+    """Deterministic no-LLM COMMIT for a sketch distance/radius dim (R34) — the durable analogue of the
+    live sketch-resolve preview. Edit just that constraint's value, re-solve + re-extrude, and accept
+    only if the solid verifies (still fully constrained, valid, all-pass). A minimal one-literal diff."""
+    if not name.startswith(("d_", "r_")):
+        return None
+    kind = "distance" if name.startswith("d_") else "radius"
+    new_program = _substitute_constraint_value(program, kind, name[2:], old, new)
+    if new_program is None:
+        return None
+    from agent.loop import Brief, LoopResult, execute, verify
+    el, err = execute(new_program)
+    if err or el is None or el.geometry is None:
+        return None
+    crit = verify(el, Brief(prompt=""))
+    if not crit.passed:
+        return None
+    res = LoopResult(new_program, el, crit, True, 0, None)
+    result = _assemble(res, out)
+    diff = list(difflib.unified_diff(program.splitlines(), new_program.splitlines(), lineterm="", n=1))
+    result["diff"] = {"added": 1, "removed": 1, "text": "\n".join(diff)}
+    result["fast"] = True
+    return result
+
+
 # R8: per-node source spans. box(id, length, width, height) → the char span of each positional extent
 # literal, recovered from the program AST and matched to graph node ids in source order. This lets a
 # durable edit substitute the NODE's literal directly, even when its value collides with another extent
@@ -251,6 +276,7 @@ def _assemble(res, out: Path, on_event=None) -> dict:
             result["mesh"] = g.tessellate(el.geometry)
         except Exception as e:
             result["mesh_error"] = f"{type(e).__name__}: {e}"
+        result["sketch2d"] = _sketch_loop_2d(el, g)   # R34: the solved 2D profile for the 2D view (None if not a sketch)
     # An Assembly's children, each tessellated separately so the viewport can select/highlight one
     # solid at a time — "geometry is the index into the program" for multi-part models.
     for c in getattr(el, "children", []) or []:
@@ -466,7 +492,8 @@ def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = No
         n, o, v = param["name"], float(param["old"]), float(param["new"])
         # value-based substitute-all first (handles echoed literals); then R8 span edit for the
         # ambiguous case (a square's length == width) where substitute-all moves the wrong extent too.
-        fast = _try_fast_edit(program, n, o, v, out) or _try_span_edit(program, n, o, v, out)
+        fast = (_try_sketch_edit(program, n, o, v, out)   # R34: a sketch distance/radius dim
+                or _try_fast_edit(program, n, o, v, out) or _try_span_edit(program, n, o, v, out))
         if fast is not None:
             fast["instruction"] = instruction
             return fast
@@ -538,6 +565,8 @@ def preview_edit(program: str, name: str, old: float, new: float) -> dict:
     last good mesh rather than flickering."""
     from toolkit.standards import tol_linear
     tol = max(tol_linear(), 1e-3)
+    if name.startswith(("d_", "r_")):                       # R34: a sketch distance/radius dim → re-solve
+        return _preview_via_sketch_resolve(program, name, old, float(new), tol)
     entry = _graph_for(program)
     if entry["graph"] is not None:
         nodes = _nodes_for_dim(entry["graph"], name, old)
@@ -546,6 +575,74 @@ def preview_edit(program: str, name: str, old: float, new: float) -> dict:
             if fast is not None:
                 return fast
     return _preview_via_substitution(program, name, old, new, tol)
+
+
+# regex for a specific sketch constraint's value: constrain("distance", "L0", value=80) — targets ONLY
+# that literal, never the point seed coords that share the number (R34).
+_CONSTRAINT_VALUE = (
+    r'(constrain\(\s*["\']{kind}["\']\s*,\s*["\']{ref}["\']\s*,\s*value\s*=\s*)(-?\d+(?:\.\d+)?)')
+
+
+def _substitute_constraint_value(program: str, kind: str, ref: str, old: float, new: float) -> Optional[str]:
+    """Replace the value of one sketch constraint (distance/radius on a given line/circle id), leaving
+    every other literal — including the point seed coords that happen to share the number — untouched."""
+    pat = re.compile(_CONSTRAINT_VALUE.format(kind=re.escape(kind), ref=re.escape(ref)))
+    hits = [m for m in pat.finditer(program) if abs(float(m.group(2)) - old) <= 1e-6]
+    if len(hits) != 1:
+        return None                                         # 0 → not found; >1 → ambiguous, bail safely
+    m = hits[0]
+    return program[:m.start(2)] + f"{new:g}" + program[m.end(2):]
+
+
+def _sketch_loop_2d(el, g) -> Optional[list]:
+    """The solved sketch's outer profile as 2D (u, v) points — recovered by sectioning ⟂ the extrude
+    axis (R31's insight), so the studio's 2D view draws the real constrained sketch, not a stored copy."""
+    sk = next((f for f in getattr(el, "features", []) if isinstance(f, dict) and f.get("kind") == "sketch"), None)
+    if sk is None:
+        return None
+    axis = sk.get("extrude_axis", "z")
+    ai = {"x": 0, "y": 1, "z": 2}[axis]
+    try:
+        ctr = g.bbox_center(el.geometry)
+        outer = g.section_profile(el.geometry, axis=axis, offset=ctr[ai])["outer"]
+    except Exception:
+        return None
+    return [[round(u, 4), round(v, 4)] for (u, v) in outer[0]] if outer else None
+
+
+def _preview_via_sketch_resolve(program: str, name: str, old: float, new: float, tol: float) -> dict:
+    """Live preview for a SKETCH dimension drag (R34): edit just that constraint's value, re-solve the
+    sketch and re-extrude in-process (NO files, NO LLM), and return the new solid mesh + the solved 2D
+    profile so both the 3D extrude and the 2D sketch view update instantly under the slider."""
+    kind = "distance" if name.startswith("d_") else "radius"
+    ref = name[2:]                                          # d_L0 → L0
+    new_program = _substitute_constraint_value(program, kind, ref, old, new)
+    if new_program is None:
+        return {"ok": False, "reason": "constraint-not-found"}
+    from agent.loop import Brief, execute, verify
+    from geometry import GeometryService
+
+    el, err = execute(new_program)
+    if err or el is None or el.geometry is None:
+        return {"ok": False, "reason": err or "no-geometry"}
+    g = GeometryService()
+    try:
+        length, width, height = g.bbox(el.geometry)
+        mesh = g.tessellate(el.geometry)
+    except Exception as e:
+        return {"ok": False, "reason": f"{type(e).__name__}: {e}"}
+    crit = verify(el, Brief(prompt=""))
+    return {
+        "ok": True, "id": el.id, "type": el.type, "engine": "sketch-resolve",
+        "program": new_program, "dims": _dims(el.manifest), "mesh": mesh, "children": [],
+        "sketch2d": _sketch_loop_2d(el, g),
+        "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)},
+        "critic": [
+            {"check": c.check, "status": c.status.value, "message": c.message,
+             "element_id": getattr(c, "element_id", None),
+             "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
+            for c in (crit.checks if crit else [])],
+    }
 
 
 def _preview_via_evaluator(entry: dict, nodes, name: str, new: float, tol: float):

@@ -390,6 +390,26 @@ def selftest() -> int:
                   len(_lcut) == 1 and 5 <= len(list(_lcut[0].get_points())) <= 8 and len(_lh) >= 1,
                   f"{len(_lcut)} cut loop(s) · {len(list(_lcut[0].get_points())) if _lcut else 0} pts · {len(_lh)} hatch")
 
+        # R34 — live sketch edit. Dragging a sketch DISTANCE dim re-solves + re-extrudes in-process
+        # (no files, no LLM) and returns the new solid mesh AND the solved 2D profile (the derived
+        # section) — 3D extrude and 2D sketch move in lockstep. The commit is token-free too (1-literal diff).
+        from webapp.service import edit_to_result as _edit_res
+        from webapp.service import preview_edit as _prev
+        _lp_prog = _gal.program_for("l_profile")
+        _pv = _prev(_lp_prog, "d_L0", 80, 120)
+        check("R34: a sketch-dim drag re-solves live — 3D mesh + 2D profile, token-free",
+              bool(_pv.get("ok")) and _pv.get("engine") == "sketch-resolve"
+              and _pv["bbox"]["length"] == 120 and len(_pv["mesh"]["indices"]) >= 3
+              and _pv.get("sketch2d") and len(_pv["sketch2d"]) == 6,
+              f"len {_pv.get('bbox', {}).get('length')} · sketch2d "
+              f"{len(_pv['sketch2d']) if _pv.get('sketch2d') else 0} pts · {_pv.get('engine')}")
+        with tempfile.TemporaryDirectory() as _td:
+            _cm = _edit_res(_lp_prog, "make the leg 120 mm",
+                            param={"name": "d_L0", "old": 80, "new": 120}, out=_td, allow_llm=False)
+        check("R34: the sketch-dim commit is a token-free minimal diff (no LLM, demo-safe)",
+              _cm.get("fast") is True and _cm.get("diff", {}).get("added") == 1 and "fatal" not in _cm,
+              f"fast={_cm.get('fast')} · +{_cm.get('diff', {}).get('added')} line · id {_cm.get('id')}")
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend

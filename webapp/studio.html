@@ -127,6 +127,13 @@
   .stage{position:relative; min-width:0; background:
     radial-gradient(120% 90% at 50% 8%, #f3f1ec 0%, #e4e0d9 55%, #d6d1c8 100%);}
   #view{display:block; width:100%; height:100%;}
+  .vp-sketch{position:absolute; inset:0; width:100%; height:100%;}
+  .vp-sketch[hidden]{display:none;}
+  .vp-sketch .poche{fill:rgba(138,90,43,.10); stroke:var(--accent); stroke-width:1.6; stroke-linejoin:round;}
+  .vp-sketch .vtx{fill:var(--accent);}
+  .vp-sketch .dimline{stroke:var(--ok); stroke-width:1;}
+  .vp-sketch .dimtxt{fill:var(--ok); font:600 11px var(--mono,monospace);}
+  .vp-sketch .grid{stroke:rgba(28,26,23,.07); stroke-width:1;}
   .vp-tools{position:absolute; top:10px; right:12px; display:flex; gap:4px; background:rgba(239,236,231,.85);
     border:1px solid var(--hair2); border-radius:7px; padding:3px; backdrop-filter:blur(3px);}
   .vp-tools .btn{padding:4px 8px; font-size:11px;}
@@ -233,6 +240,7 @@
     <!-- VIEWPORT -->
     <section class="stage">
       <canvas id="view"></canvas>
+      <svg id="sketch2d" class="vp-sketch" hidden></svg>
       <div class="vp-badge" id="badge">no model — loading…</div>
       <div class="vp-units">mm · Z-up</div>
       <div class="vp-empty" id="empty" hidden>
@@ -437,7 +445,8 @@ function showGeometry(d, opts) {
 }
 
 /* ===================== window.LUDWIG seam (token-free test injection) ===================== */
-const STATE = { program: null, payload: null };
+const STATE = { program: null, payload: null, sketch2d: null };
+let REP = "3d";   // "3d" = the extrude · "2d" = the constrained sketch (R34)
 
 function render(payload) {
   if (!payload || payload.fatal) {
@@ -453,6 +462,8 @@ function render(payload) {
   $("#empty").hidden = true;                      // honest empty-stage overlay off once a solid is shown
   STATE.payload = payload;
   STATE.program = payload.program || null;
+  if (payload.sketch2d !== undefined) STATE.sketch2d = payload.sketch2d;   // R34: the solved 2D profile
+  if (REP === "2d") renderSketch2d(STATE.sketch2d);
 
   const id   = payload.id   || "model";
   const type = payload.type || "";
@@ -485,11 +496,12 @@ function buildTree(d) {
 // geometry live via /api/preview (no LLM, no files), release commits via /api/edit. Other named dims
 // are read-only rows. Below them, the REAL deterministic critic verdict from payload.critic.
 const EDITABLE = new Set(["length", "width", "height", "thickness", "diameter", "rise", "going", "riser_count", "depth"]);
+const isEditableDim = n => EDITABLE.has(n) || /^[dr]_/.test(n);   // R34: d_*/r_* are sketch distance/radius dims
 function buildProps(d) {
   const props = $("#props"); props.innerHTML = "";
   const dims = d.dims || [];
   const seen = new Set();
-  const editable = dims.filter(x => EDITABLE.has(x.name) && !seen.has(x.name) && seen.add(x.name));
+  const editable = dims.filter(x => isEditableDim(x.name) && !seen.has(x.name) && seen.add(x.name));
   // a value shared by two extents (a 30×30 square) can't be disambiguated by literal substitution —
   // its slider still commits via /api/edit (LLM), but the live preview is disabled to avoid moving both.
   const valCount = {}; editable.forEach(x => valCount[x.value] = (valCount[x.value] || 0) + 1);
@@ -500,7 +512,9 @@ function buildProps(d) {
       `<div class="lbl"><span class="nm">${x.name}</span><span class="unit">${x.value} ${x.unit||"mm"}</span></div>
        <div class="row"><input type="range" min="${lo}" max="${hi}" step="1" value="${x.value}"></div>`;
     const range = el.querySelector("input"), valLbl = el.querySelector(".unit");
-    const canPreview = valCount[x.value] === 1;
+    // a sketch dim always previews — the backend disambiguates by dim name (d_L1 → line L1), so the two
+    // equal 10 mm legs move independently; a plain extent needs a unique literal to substitute safely.
+    const canPreview = /^[dr]_/.test(x.name) || valCount[x.value] === 1;
     range.addEventListener("input", () => {
       valLbl.textContent = range.value + " " + (x.unit || "mm");
       if (canPreview) livePreview({ name: x.name, old: x.value, new: Number(range.value) });
@@ -510,7 +524,7 @@ function buildProps(d) {
       { name: x.name, old: x.value, new: Number(range.value) }));
     props.appendChild(el);
   });
-  dims.filter(x => !EDITABLE.has(x.name)).forEach(x => {           // remaining dims, read-only
+  dims.filter(x => !isEditableDim(x.name)).forEach(x => {          // remaining dims, read-only
     const el = document.createElement("div"); el.className = "prop"; el.style.marginBottom = "6px";
     el.innerHTML = `<div class="lbl"><span class="nm">${x.name}</span><span class="unit">${x.value} ${x.unit||"mm"}</span></div>`;
     props.appendChild(el);
@@ -550,7 +564,13 @@ async function pumpPreview() {
     const r = await fetch("/api/preview", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ program: STATE.program, param }) });
     const d = await r.json();
-    if (d && d.ok) showGeometry(d, { refit: false });   // swap mesh in place; keep the camera put
+    if (d && d.ok) {
+      showGeometry(d, { refit: false });                // swap the 3D mesh in place; keep the camera put
+      if (d.sketch2d !== undefined) {                   // R34: the solved 2D profile came back too
+        STATE.sketch2d = d.sketch2d;
+        if (REP === "2d") renderSketch2d(STATE.sketch2d);   // 2D sketch + 3D extrude update in lockstep
+      }
+    }
   } catch (e) { /* drop this frame, keep the last good mesh */ }
   pumpPreview();
 }
@@ -645,6 +665,49 @@ function updateSectionReadout(){
   if(r) r.textContent = `⟂${(SECTION.axis||"").toUpperCase()} @ ${(+SECTION.offset).toFixed(1)} mm`;
 }
 
+/* ===================== 2D sketch view (R34) =====================
+   The "2D" representation draws the REAL constrained sketch — the solved outer profile the backend
+   recovers by sectioning the extrude (sketch2d). Dragging a sketch dimension re-solves server-side and
+   this redraws live, in lockstep with the 3D extrude. Token-free; no compile, no LLM. */
+function setRep(rep){
+  REP = rep;
+  $("#rep-3d").classList.toggle("on", rep==="3d");
+  $("#rep-2d").classList.toggle("on", rep==="2d");
+  const svg = $("#sketch2d"), canvas = $("#view");
+  const on2d = rep==="2d";
+  // NB: <svg> is an SVGElement, which does not reflect the `hidden` PROPERTY to the attribute the way
+  // HTMLElement does — so toggle the attribute explicitly, or the [hidden]{display:none} rule sticks.
+  if(on2d) svg.removeAttribute("hidden"); else svg.setAttribute("hidden","");
+  canvas.style.visibility = on2d ? "hidden" : "visible";
+  if(on2d) renderSketch2d(STATE.sketch2d);
+}
+function renderSketch2d(loop){
+  const svg = $("#sketch2d");
+  if(!loop || loop.length < 3){
+    svg.removeAttribute("viewBox");
+    svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" '
+      + 'fill="#8a8577" font-size="13" font-family="Georgia,serif">no 2D sketch for this part — draw or load a sketched part</text>';
+    return;
+  }
+  const xs=loop.map(p=>p[0]), ys=loop.map(p=>p[1]);
+  const minx=Math.min(...xs), maxx=Math.max(...xs), miny=Math.min(...ys), maxy=Math.max(...ys);
+  const w=(maxx-minx)||1, h=(maxy-miny)||1, pad=Math.max(w,h)*0.22, S=Math.max(w,h);
+  svg.setAttribute("viewBox", `${minx-pad} ${-(maxy+pad)} ${w+2*pad} ${h+2*pad}`);
+  svg.setAttribute("preserveAspectRatio","xMidYMid meet");
+  const P = loop.map(p=>`${p[0]},${-p[1]}`).join(" ");     // flip Y so sketch-up is screen-up
+  const r = S*0.013, dh = S*0.05;
+  let g = "";
+  g += `<polygon class="poche" points="${P}"/>`;
+  loop.forEach(p=> g += `<circle class="vtx" cx="${p[0]}" cy="${-p[1]}" r="${r}"/>`);
+  // overall width dim (below) + height dim (left) — the sketch reads dimensioned
+  const yb = -miny + dh, xl = minx - dh;
+  g += `<line class="dimline" x1="${minx}" y1="${yb}" x2="${maxx}" y2="${yb}"/>`;
+  g += `<text class="dimtxt" x="${(minx+maxx)/2}" y="${yb + dh*0.9}" text-anchor="middle">${w.toFixed(0)}</text>`;
+  g += `<line class="dimline" x1="${xl}" y1="${-miny}" x2="${xl}" y2="${-maxy}"/>`;
+  g += `<text class="dimtxt" x="${xl - dh*0.4}" y="${-(miny+maxy)/2}" text-anchor="end" dominant-baseline="middle">${h.toFixed(0)}</text>`;
+  svg.innerHTML = g;
+}
+
 function emptyStage(msg) {
   if (model) { scene.remove(model); model = null; }
   if (grid)  { scene.remove(grid);  grid  = null; }
@@ -661,6 +724,7 @@ function emptyStage(msg) {
 window.LUDWIG = {
   render, selectFromStage, clearStageSelection,
   toggleSection, sectionAt: (axis, offset)=> liveSection(axis, offset, true),   // R33 headless seam
+  setRep, renderSketch2d, get rep(){ return REP; },                             // R34 headless seam
   state: STATE, section: SECTION,
   get ambient(){ return { overall: AMBIENT.overall, byId: AMBIENT.byId,
     mats: Object.fromEntries(Object.entries(childMats).map(
@@ -758,6 +822,7 @@ document.querySelectorAll("[data-view]").forEach(b=> b.addEventListener("click",
 $("#b-fit").onclick = ()=>{ userMoved=false; frame(); };
 $("#vp-fit").onclick = ()=>{ userMoved=false; frame(); };
 $("#cam-persp").onclick=()=>setCam("persp"); $("#cam-ortho").onclick=()=>setCam("ortho");
+$("#rep-3d").onclick=()=>setRep("3d"); $("#rep-2d").onclick=()=>setRep("2d");   // R34: 3D extrude ⇄ 2D sketch
 $("#t-left").onclick =()=>document.body.classList.toggle("no-left");
 $("#t-right").onclick=()=>document.body.classList.toggle("no-right");
 $("#show-left").onclick =()=>document.body.classList.remove("no-left");
