@@ -238,6 +238,25 @@ def test_substitute_constraint_value_targets_only_the_constraint():
     assert service._substitute_constraint_value(prog, "distance", "NOPE", 80, 130) is None
 
 
+def test_scoped_instruction_reaches_the_edit_loop(monkeypatch, tmp_path):
+    # R12: the studio scopes a footer edit to the selected element ("On element 'top': …"); this asserts
+    # the server passes that scoped instruction straight through to agent.loop.edit (the client scoping is
+    # browser-verified). Lineage-based ([H2]) — the id names the element, never a kernel handle.
+    from agent import loop
+    from agent.loop import Brief, LoopResult, execute, verify
+    captured = {}
+
+    def fake_edit(program, instruction, *, rounds=1):
+        captured["instruction"] = instruction
+        el, _ = execute(program)
+        crit = verify(el, Brief(prompt=""))
+        return LoopResult(program, el, crit, crit.passed, 0, None)
+
+    monkeypatch.setattr(loop, "edit", fake_edit)
+    service.edit_to_result(GOOD, "On element 'top': make it 20 mm taller", out=tmp_path, allow_llm=True)
+    assert captured["instruction"] == "On element 'top': make it 20 mm taller"
+
+
 def test_plan_and_build_endpoints_service_layer(monkeypatch, tmp_path):
     # R18: /api/plan proposes ops (writes nothing); /api/build builds a client-reviewed plan token-free.
     from agent import inference

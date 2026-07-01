@@ -400,14 +400,20 @@ function pulseAll(){
   Object.values(childMats).forEach(m=>paintMat(m,{selected:true}));
   setTimeout(()=>Object.values(childMats).forEach(m=>paintMat(m,{})), 650);
 }
+let SELECTED = null;   // R12: the selected element id — scopes a footer edit to that element ([H2] lineage)
 function selectFromStage(id){
+  SELECTED = id;
   document.querySelectorAll("#tree .node").forEach(n=> n.classList.toggle("sel", n.dataset.elid===id));
   setSelection(id);
 }
 function clearStageSelection(){
+  SELECTED = null;
   document.querySelectorAll("#tree .node").forEach(n=> n.classList.remove("sel"));
   setSelection(null);
 }
+// R12: prefix a free-text change with the selected element so the edit/plan touches only that element
+// (works on assembly children — "On element 'top': make it 20mm taller" changes top, not base).
+function scopeInstruction(s){ return SELECTED ? `On element '${SELECTED}': ${s}` : s; }
 /* ===================== face-drag write-back (R10 — the marquee) =====================
    Pick a face → a drag arrow appears along its normal, bound to the extent dim on that world axis (R9
    metadata: length=0 · width=1 · height=2). Dragging the arrow streams /api/preview (camera fixed) so the
@@ -934,6 +940,7 @@ window.LUDWIG = {
   get holeRings(){ return holeHandles ? holeHandles.children.map(g=>g.userData.hole.at) : []; },
   get dragging(){ return HOLE ? "hole" : DRAG ? "face" : null; },
   propose: proposePlan, build: buildPlan, get pending(){ return PENDING; },   // R18 Plan/Build seam
+  get selected(){ return SELECTED; }, scoped: scopeInstruction,               // R12 selection-scoped edits
   // project a world point to canvas client (x,y) — headless helper for synthetic-pointer drag tests
   _screenOf(x,y,z){ const r=canvas.getBoundingClientRect();
     const p=new THREE.Vector3(x,y,z).project(cam);
@@ -1061,10 +1068,12 @@ function runCommand(raw){
     return;
   }
   log("you",s);
-  if(agentIsPlan()){ proposePlan(s); return; }          // PLAN → propose reviewable ops
+  const scoped = scopeInstruction(s);                   // R12: scope to the selected element if any
+  if(SELECTED && scoped!==s) log("sys", "scoped to '"+SELECTED+"'");
+  if(agentIsPlan()){ proposePlan(scoped); return; }     // PLAN → propose reviewable ops
   if(PENDING){ buildPlan(); return; }                   // BUILD with a pending plan → apply it
   if(!STATE.program){ log("sys","load a model first, or switch to Plan to describe one.","warn"); return; }
-  applyEdit(s, null);                                   // BUILD, no plan → the free-text edit fallback
+  applyEdit(scoped, null);                              // BUILD, no plan → the free-text edit fallback
 }
 
 /* ===================== wiring ===================== */
