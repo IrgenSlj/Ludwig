@@ -238,6 +238,25 @@ def test_substitute_constraint_value_targets_only_the_constraint():
     assert service._substitute_constraint_value(prog, "distance", "NOPE", 80, 130) is None
 
 
+def test_build_to_result_renders_a_plan_to_verified_artifacts(tmp_path):
+    # R15: the Op-API build path — render a reviewed Plan → execute → verify → assemble (fab gate intact).
+    from agent.ops import AddElement, AddFeature, Plan, SetParam
+    plan = Plan((AddElement("box", "bracket", (80, 40, 6)),
+                 AddFeature("clearance_hole", ("M8", (-25, 0))),
+                 AddFeature("clearance_hole", ("M8", (25, 0)))))
+    r = service.build_to_result("", plan, out=tmp_path)
+    assert r["passed"] is True and r["built"] is True
+    assert r["diff"]["added"] == 3                                  # three ops → three new lines
+    assert r["program"] == GOOD                                     # renders exactly the recipe
+    assert "step" in r["artifacts"] and (tmp_path / r["artifacts"]["step"]).exists()
+    assert "ifc" in r["artifacts"]
+
+    # a SetParam build edits an existing program and returns an invertible plan (undo)
+    edited = service.build_to_result(r["program"], Plan((SetParam("width", 40, 55),)), out=tmp_path)
+    assert edited["passed"] and edited["bbox"]["width"] == pytest.approx(55.0)
+    assert edited["inverse"] == [{"op": "SetParam", "name": "width", "old": 55.0, "new": 40.0}]
+
+
 def test_hole_move_re_bores_and_commits_token_free(tmp_path):
     # R13: dragging a hole re-bores deterministically — substitute just that hole's position literal,
     # re-bore, and ACCEPT only if a cylindrical feature landed at the new centre (the plan-drag analogue

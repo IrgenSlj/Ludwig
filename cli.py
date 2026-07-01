@@ -426,6 +426,33 @@ def selftest() -> int:
               _cm.get("fast") is True and _cm.get("diff", {}).get("added") == 1 and "fatal" not in _cm,
               f"fast={_cm.get('fast')} · +{_cm.get('diff', {}).get('added')} line · id {_cm.get('id')}")
 
+        # R15 — Op-API build path: render a reviewed Plan → execute → verify → assemble (fab gate intact).
+        # A 3-op bracket plan built onto an empty program produces the verified solid + STEP/IFC; a +3-line
+        # diff; and the fab gate withholds STEP if the critic doesn't all-pass. No LLM, no exec of model code.
+        from pathlib import Path as _Path
+
+        from agent.ops import AddElement as _AE
+        from agent.ops import AddFeature as _AF
+        from agent.ops import Plan as _Plan
+        from agent.ops import SetParam as _SP
+        from webapp.service import build_to_result as _build
+        _bracket_plan = _Plan((_AE("box", "bracket", (80, 40, 6)),
+                               _AF("clearance_hole", ("M8", (-25, 0))),
+                               _AF("clearance_hole", ("M8", (25, 0)))))
+        with tempfile.TemporaryDirectory() as _td:
+            _br = _build("", _bracket_plan, out=_td)
+            check("R15: a reviewed 3-op plan builds a verified solid with STEP+IFC (+3-line diff)",
+                  _br.get("passed") is True and _br.get("diff", {}).get("added") == 3
+                  and "step" in _br["artifacts"] and "ifc" in _br["artifacts"]
+                  and (_Path(_td) / _br["artifacts"]["step"]).exists(),
+                  f"passed={_br.get('passed')} +{_br.get('diff', {}).get('added')} artifacts={sorted(k for k in _br['artifacts'] if k in ('step', 'ifc', 'dxf'))}")
+            # a SetParam build edits an existing program + hands back an invertible plan (undo)
+            _edit = _build(_br["program"], _Plan((_SP("length", 80, 120),)), out=_td)
+            check("R15: a SetParam build edits the solid and returns an invertible plan (undo)",
+                  _edit.get("passed") is True and _edit["bbox"]["length"] == 120
+                  and _edit["inverse"] and _edit["inverse"][0]["new"] == 80,
+                  f"len={_edit.get('bbox', {}).get('length')} inverse={_edit.get('inverse')}")
+
         # R13 — hole-position edit: move a hole deterministically (substitute its literal + re-bore),
         # gated by a cylindrical-centre re-measure — token-free, the plan-drag analogue of face-drag.
         from webapp.service import hole_move_to_result as _hmr

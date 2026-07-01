@@ -368,6 +368,44 @@ def adopt_to_result(program: str, *, out: Optional[Path] = None) -> dict:
     return result
 
 
+def build_to_result(program: str, plan, *, out: Optional[Path] = None) -> dict:
+    """Build a reviewed Plan (R15): render its ADD ops onto `program` (empty → a fresh recipe), thread any
+    SetParam edits, then run the SAME execute → verify → _assemble pipeline as adopt (the fab gate is
+    untouched — no STEP leaves on a failing critic). Returns the standard result plus the unified diff and
+    the inverse plan (for undo). The Op-API's deterministic build path — a plan is data we render, never
+    model-authored code we exec()."""
+    from agent.loop import Brief, LoopResult, execute, verify
+
+    out = Path(out) if out is not None else OUT
+    out.mkdir(parents=True, exist_ok=True)
+    base = program or ""
+    add_src = plan.render()
+    rendered = base + ("\n" if base and add_src else "") + add_src if add_src else base
+    new_program, inverse = plan.apply_to(rendered)         # thread SetParam ops; get the inverse plan
+
+    el, err = execute(new_program)
+    crit = verify(el, Brief(prompt="")) if el is not None else None
+    passed = el is not None and crit is not None and crit.passed
+    res = LoopResult(new_program, el, crit, passed, 0, err)
+    result = _assemble(res, out)
+    diff = list(difflib.unified_diff(base.splitlines(), new_program.splitlines(), lineterm="", n=1))
+    result["diff"] = {
+        "added": sum(1 for ln in diff if ln.startswith("+") and not ln.startswith("+++")),
+        "removed": sum(1 for ln in diff if ln.startswith("-") and not ln.startswith("---")),
+        "text": "\n".join(diff),
+    }
+    result["inverse"] = _ops_json(inverse.ops)             # serialized inverse ops for a later undo
+    result["built"] = True
+    return result
+
+
+def _ops_json(ops) -> list:
+    """Serialize Ops to JSON dicts ({op: <kind>, ...fields}) — the wire form for review/undo."""
+    from dataclasses import asdict
+
+    return [{"op": type(o).__name__, **asdict(o)} for o in ops]
+
+
 def section_to_result(program: str, *, axis: Optional[str] = None,
                       offset: Optional[float] = None) -> dict:
     """A live, re-promptable cut plane (R33). Execute the program token-free, slice the solid at the
@@ -748,5 +786,5 @@ def _preview_via_substitution(program: str, name: str, old: float, new: float, t
 
 
 __all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
-           "section_to_result", "preview_hole_move", "hole_move_to_result", "preview_edit",
-           "_variant_payload", "OUT"]
+           "build_to_result", "section_to_result", "preview_hole_move", "hole_move_to_result",
+           "preview_edit", "_variant_payload", "OUT"]
