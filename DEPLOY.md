@@ -1,16 +1,20 @@
 # Deploying the Ludwig public demo
 
-The demo is the **direct-manipulation core** — load a gallery part, drag its dimensions, download a
-real STEP/IFC/DXF — running with **no inference** (the R3–R9 no-LLM evaluator). So it costs ~nothing
-per visitor. It runs in **demo mode** (`LUDWIG_DEMO=1`): no remote code execution, no generation, only
-numeric edits to trusted seeds (see `webapp/safety.py`). Generation ("describe a part") is the local /
-BYO-key experience, never exposed on the public box.
+The demo is the **direct-manipulation core** — load a gallery part; drag its dimensions or **grab a 3D
+face and pull it**; take a **live section cut**; on a sketch part, toggle **2D** and drag a sketch
+dimension to re-solve the constraints live; then **download the verified STEP / IFC / shop DXF / section
+DXF** (and see the conventioned shop drawing inline) — all running with **no inference** (the R3–R34
+no-LLM evaluator + constraint solver). So it costs ~nothing per visitor. It runs in **demo mode**
+(`LUDWIG_DEMO=1`): no remote code execution, no generation, only numeric edits to trusted seeds (see
+`webapp/safety.py`). Generation ("describe a part") is the local / BYO-key experience, never exposed on
+the public box.
 
 ## What ships
 - `Dockerfile` — `python:3.12-slim` + the headless GL/X11 libs OCP/vtk need + `pip install cadquery
-  ezdxf ifcopenshell PyYAML`. ~1.4 GB image. Builds with a smoke test (`import cadquery`) so a missing
-  `.so` fails the build, not production. (OCP wheels pin CPython ≤3.12 — the image pins 3.12; the dev
-  box runs 3.14 via `.venv`.)
+  ezdxf ifcopenshell matplotlib PyYAML`. ~1.5 GB image. Builds with a smoke test (`import cadquery`) so a
+  missing `.so` fails the build, not production. (OCP wheels pin CPython ≤3.12 — the image pins 3.12; the
+  dev box runs 3.14 via `.venv`. `matplotlib` renders the shop-drawing/section PNG previews; scipy/numpy
+  are intentionally omitted — the sketch solver's pure-Python fallback covers the demo.)
 - Binds `0.0.0.0` and honors `$PORT` (both set in the image). Defaults to demo mode.
 
 ## Option A — Google Cloud Run (recommended; ~$0/month)

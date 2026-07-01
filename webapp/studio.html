@@ -911,7 +911,11 @@ async function bootModel(){
     if(d.fatal) throw new Error(d.fatal);
     render(d);
     log("sys", `loaded ${d.id||"?"} — ${d.type||"?"}` + (d.bbox ? ` · ${d.bbox.length}×${d.bbox.width}×${d.bbox.height} mm` : ""), "ok");
-    if(DEMO) log("sys", "demo — drag a dimension to edit (free, no AI); pick another part from the Gallery. Generation runs locally with your own key.");
+    if(DEMO){
+      log("sys", "demo — every edit here is free & instant (no AI): drag a dimension slider, or grab a 3D face and pull it.", "ok");
+      log("sys", "then: click Section for a live cut · toggle 2D on a sketch part · download the verified STEP / IFC / DXF from Properties.");
+      log("sys", "generation from a text prompt runs locally with your own AI key.");
+    }
   } catch (e) {
     emptyStage("no model — start the engine");
     log("sys", "Engine not available. Start the server with: .venv/bin/python cli.py --serve", "warn");
@@ -971,7 +975,9 @@ document.querySelectorAll("[data-ltab]").forEach(t=> t.addEventListener("click",
 document.querySelectorAll(".tool").forEach(t=> t.addEventListener("click", ()=>{
   if(t.dataset.tool==="section"){ toggleSection(); return; }   // R33: live cut plane (own active state)
   tagActive(".tool", t);
-  log("sys", t.dataset.tool+" tool — not wired yet (R3+).", "warn");
+  // reframe the not-yet-authoring tools as a guided nudge to what IS live and free today.
+  log("sys", `the ${t.dataset.tool} tool is on the roadmap — today: load a gallery part, then `
+    + `drag its dimensions or a 3D face, click Section for a live cut, or toggle 2D on a sketch part.`, "warn");
 }));
 ["b-new","b-open","b-save"].forEach(id=> $("#"+id).addEventListener("click",
   ()=> log("sys", id.slice(2)+" — file ops not wired yet (shell).","warn")));
