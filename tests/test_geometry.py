@@ -126,6 +126,30 @@ def test_section_backend_draws_a_poche_hatched_cut_sheet(tmp_path):
     assert len(dims) >= 2                                         # overall extents dimensioned
 
 
+def test_section_of_a_sketch_solid_recovers_the_authored_profile(tmp_path):
+    # R31: a sketch-extruded solid sections ⟂ its EXTRUDE axis by default, so the section recovers the
+    # authored 2D profile — the L-profile cut at mid-height is the true L (6 corners, 1300 mm²), not a
+    # rectangle through the wrong axis. Reuses R29's section primitive; drawn poché'd into the DXF.
+    import ezdxf
+    from backends import by_name
+    from backends.section import _section_spec
+
+    lp = reference.build(next(b for b in BRIEFS if b["id"] == "l_profile"))
+    g = GeometryService()
+    axis, offset = _section_spec(lp)
+    assert axis == "z" and offset == pytest.approx(50.0)          # ⟂ the extrude axis, mid-height
+
+    outer = g.section_profile(lp.geometry, axis=axis, offset=offset)["outer"]
+    assert len(outer) == 1 and len(outer[0]) == 6                 # the L has six corners
+    assert abs(g.loop_area(outer[0]) - 1300) < 1.0               # t·(Lx+Ly−t) = 10·(80+60−10)
+
+    path = by_name("section").compile(lp, tmp_path)
+    msp = ezdxf.readfile(str(path)).modelspace()
+    cut = [e for e in msp if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == "CUT"]
+    assert len(cut) == 1 and 6 <= len(list(cut[0].get_points())) <= 7   # the L drawn as one cut loop
+    assert any(e.dxftype() == "HATCH" for e in msp)              # poché present
+
+
 def test_harness_discriminates_a_wrong_build():
     # an off-by-5mm height build must FAIL the gate — proves the instrument has real signal
     def bad(b):

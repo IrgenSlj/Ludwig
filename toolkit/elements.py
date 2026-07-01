@@ -234,7 +234,9 @@ def extrude(sk, depth: float, *, element_id: str | None = None, name: str = "") 
     # (R32) can flag an under- / over-constrained profile without re-solving.
     el.features.append({"kind": "sketch", "dof": int(res.dof), "solved": bool(res.solved),
                         "residual": float(res.residual_norm), "redundant": int(res.redundant),
-                        "n_points": len(sk.points), "n_constraints": len(sk.constraints)})
+                        "n_points": len(sk.points), "n_constraints": len(sk.constraints),
+                        "extrude_axis": "z"})   # profile is in XY, extruded along Z — the section that
+                                                # recovers the authored 2D profile cuts ⟂ this axis (R31)
     return el
 
 

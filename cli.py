@@ -371,6 +371,25 @@ def selftest() -> int:
               f"{_live.get('axis')} @ {_live.get('offset')} · "
               f"{len(_live['mesh']['indices']) // 3 if _live.get('mesh') else 0} tris")
 
+        # R31 — section/plan as a derived SKETCH view. A sketch-extruded solid sections ⟂ its EXTRUDE
+        # axis by default, recovering the authored 2D profile: the L-profile cut at mid-height is the
+        # true L (6 corners, ≈1300 mm²) — not a rectangle through the wrong axis — poché'd into the DXF.
+        _lax, _loff = _spec(_lp)
+        _lprof = g.section_profile(_lp.geometry, axis=_lax, offset=_loff)["outer"]
+        check("R31: L-profile sections ⟂ its extrude axis, recovering the authored L (6 pts · ≈1300 mm²)",
+              _lax == "z" and len(_lprof) == 1 and 5 <= len(_lprof[0]) <= 7
+              and abs(g.loop_area(_lprof[0]) - 1300) <= 5.0,
+              f"{_lax}@{_loff:g} · {len(_lprof[0]) if _lprof else 0} pts · "
+              f"{g.loop_area(_lprof[0]) if _lprof else 0:.0f} mm²")
+        with tempfile.TemporaryDirectory() as _td:
+            _lps = _secb.compile(_lp, _td)
+            _lmsp = _ezdxf.readfile(str(_lps)).modelspace()
+            _lcut = [e for e in _lmsp if e.dxftype() == "LWPOLYLINE" and e.dxf.layer == "CUT"]
+            _lh = [e for e in _lmsp if e.dxftype() == "HATCH"]
+            check("R31: the L section is drawn into the DXF (poché + L-shaped cut boundary)",
+                  len(_lcut) == 1 and 5 <= len(list(_lcut[0].get_points())) <= 8 and len(_lh) >= 1,
+                  f"{len(_lcut)} cut loop(s) · {len(list(_lcut[0].get_points())) if _lcut else 0} pts · {len(_lh)} hatch")
+
         try:
             import ifcopenshell  # noqa: F401
             from backends import ifc as ifc_backend

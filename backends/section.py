@@ -63,18 +63,25 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
 
 
 def _section_spec(ir) -> tuple[str, float]:
-    """The declared section plane if the IR carries one (R33's toolkit.section records
-    {kind:'section', axis, offset}); else — or for any field left unspecified — the centroidal
-    longitudinal default. Uses the SAME resolver as the live cut so drawing and slice agree."""
+    """The section plane to draw, in priority order:
+      1. a declared section (R33's toolkit.section records {kind:'section', axis, offset});
+      2. R31 — a sketch-derived solid → cut ⟂ its EXTRUDE axis, recovering the authored 2D profile
+         (an L-section's true L, not a rectangle through it);
+      3. the centroidal-longitudinal default (cut ⟂ the shortest extent).
+    Uses the SAME resolver as the live cut so the drawing and the 3D slice agree."""
+    feats = [f for f in getattr(ir, "features", []) if isinstance(f, dict)]
     from geometry import GeometryService
 
     g = GeometryService()
-    for f in getattr(ir, "features", []):
-        if isinstance(f, dict) and f.get("kind") == "section":
+    for f in feats:
+        if f.get("kind") == "section":
             axis, offset = f.get("axis"), f.get("offset")
             if axis is None or offset is None:
                 axis, offset = g.default_section_plane(ir.geometry, axis=axis)
             return str(axis), float(offset)
+    sk = next((f for f in feats if f.get("kind") == "sketch" and f.get("extrude_axis")), None)
+    if sk is not None:
+        return g.default_section_plane(ir.geometry, axis=str(sk["extrude_axis"]))
     return g.default_section_plane(ir.geometry)
 
 

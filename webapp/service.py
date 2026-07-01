@@ -397,12 +397,16 @@ def section_to_result(program: str, *, axis: Optional[str] = None,
         return {"ok": False, "reason": err or "no geometry to section"}
     g = GeometryService()
 
-    feat = next((f for f in getattr(el, "features", [])
-                 if isinstance(f, dict) and f.get("kind") == "section"), None)
+    feats = [f for f in getattr(el, "features", []) if isinstance(f, dict)]
+    feat = next((f for f in feats if f.get("kind") == "section"), None)
     if axis is None and feat is not None:
         axis = feat.get("axis")
     if offset is None and feat is not None:
         offset = feat.get("offset")
+    if axis is None:                                       # R31: a sketch solid defaults to a cut ⟂ its
+        sk = next((f for f in feats if f.get("kind") == "sketch" and f.get("extrude_axis")), None)
+        if sk is not None:                                 # extrude axis, recovering the authored profile
+            axis = sk["extrude_axis"]
     if axis not in ("x", "y", "z"):
         axis = None                                        # ignore a bad axis → fall to the default
     ra, ro = g.default_section_plane(el.geometry, axis=axis)
