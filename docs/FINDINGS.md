@@ -7,6 +7,25 @@ over the frozen held-out brief set (`eval/briefs.py`) — reproduce any CAD find
 `cli.py --eval [--live] [--repair]`. CAD numbers are single-run (n=1/brief) on the
 `claude` default tier unless noted, so treat small deltas as directional.
 
+## Interaction-core (rebuild R1–R34) — measured state, 2026-07-01
+
+The no-LLM interaction core (recorded FeatureGraph → deterministic evaluator + targeted literal
+substitution) now carries the whole direct-manipulation surface **token-free** (`$0` inference/visitor):
+extent sliders + **face-drag** (R10: grab a 3D face → its extent dim updates live, commit is a +1/−1
+diff), **live 2D sketch edit** (R34: drag a sketch distance dim → re-solve + re-extrude, 2D & 3D in
+lockstep), **live cut plane** (R33), the **section drawing backend** (R30 poché sheet), and the
+**sketch DoF critic** (R32). Gate: `--selftest` kernel **57/57** / pure-Python **17/17** · `--eval`
+**15/15 (100%)** · pytest **145**. All browser-verified where interactive.
+
+**R11 (span-identity binding) is obviated by R8 — measured, not assumed.** R11 was scheduled to kill
+the value-collision LLM fallback (a 30×30 square editing `length` moving `width` too). Measured: R8's
+`_try_span_edit` already routes the spacer's `length` 30→45 through the deterministic fast path with
+`agent.inference.infer` asserted **not called** — only `length` moves (45×30×12). Building R11's
+`bind.py` + `L=80; box(id,L,…)` variable-binding infra now would be a premature abstraction with no
+brief demanding it (CLAUDE.md: "Never pre-build the ontology"); revisit only when a real seed uses a
+variable extent. Reproduce: patch `agent.inference.infer`, `edit_to_result(spacer, param=length 30→45,
+allow_llm=False)` → `fast=True`, `infer.called is False`.
+
 ## P0/S3 — First-pass geometric pass-rate: the [H1] baseline
 
 **60% (3/5)** on the frozen brief set — the first time the loop generated real CadQuery against the
