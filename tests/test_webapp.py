@@ -238,6 +238,27 @@ def test_substitute_constraint_value_targets_only_the_constraint():
     assert service._substitute_constraint_value(prog, "distance", "NOPE", 80, 130) is None
 
 
+def test_face_drag_write_back_contract_is_token_free_and_axis_bound(tmp_path):
+    # R10 (face-drag) backend contract: the studio binds a picked face's world axis to the extent dim
+    # via R9 metadata (length=0/width=1/height=2), streams a live preview, and commits on release — all
+    # token-free. This asserts the destination the marquee interaction writes to.
+    from agent.loop import execute
+    from webapp.service import _dims
+    el, _ = execute(GOOD)
+    axis_of = {d["name"]: d.get("axis") for d in _dims(el.manifest)}
+    assert axis_of["length"] == 0 and axis_of["width"] == 1 and axis_of["height"] == 2   # the binding
+
+    live = service.preview_edit(GOOD, "height", 6, 24)                  # drag preview (no files, no LLM)
+    assert live["ok"] and live["bbox"]["height"] == pytest.approx(24.0)
+    assert live.get("engine") in ("evaluator", "substitution")         # deterministic, never the LLM
+
+    commit = service.edit_to_result(GOOD, "make the height 24 mm",
+                                    param={"name": "height", "old": 6, "new": 24}, out=tmp_path,
+                                    allow_llm=False)                    # release commit, demo-safe
+    assert commit.get("fast") is True and "fatal" not in commit
+    assert commit["diff"]["added"] == 1 and commit["bbox"]["height"] == pytest.approx(24.0)
+
+
 def test_server_blocks_path_traversal():
     # the /out/ guard resolves and rejects anything escaping out/ — assert the resolution logic
     from webapp.server import OUT

@@ -395,19 +395,93 @@ function clearStageSelection(){
   document.querySelectorAll("#tree .node").forEach(n=> n.classList.remove("sel"));
   setSelection(null);
 }
+/* ===================== face-drag write-back (R10 — the marquee) =====================
+   Pick a face → a drag arrow appears along its normal, bound to the extent dim on that world axis (R9
+   metadata: length=0 · width=1 · height=2). Dragging the arrow streams /api/preview (camera fixed) so the
+   extent grows live under the cursor — no LLM, no files; release commits via /api/edit as a +1/−1 minimal
+   diff. Output-directed editing: you manipulate the geometry, Ludwig writes the parameter. */
 const _ray = new THREE.Raycaster(); let _downXY = null;
-canvas.addEventListener("pointerdown", e=>{ _downXY=[e.clientX, e.clientY]; });
-canvas.addEventListener("pointerup", e=>{
+let faceGizmo = null, DRAG = null;
+const _AXES = [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1)];
+
+function dimForAxis(axisIndex){
+  const dims = (STATE.payload && STATE.payload.dims) || [];
+  return dims.find(d => d.axis === axisIndex && d.editable) || null;
+}
+function clearFaceGizmo(){ if(faceGizmo){ scene.remove(faceGizmo); faceGizmo = null; } }
+function rayOD(e){
+  const r = canvas.getBoundingClientRect();
+  _ray.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1), cam);
+  return { O:_ray.ray.origin.clone(), D:_ray.ray.direction.clone() };
+}
+function closestTOnAxis(C, A, O, D){       // param t on line (C + tA) closest to ray (O + sD) — skew lines
+  const w0 = C.clone().sub(O);
+  const a=A.dot(A), b=A.dot(D), c=D.dot(D), d=A.dot(w0), e2=D.dot(w0), denom=a*c-b*b;
+  return Math.abs(denom) < 1e-9 ? 0 : (b*e2 - c*d) / denom;
+}
+function showFaceGizmo(hit){
+  clearFaceGizmo();
+  if(!hit || !hit.face || REP!=="3d" || SECTION.on || !model) return;
+  const nrm = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+  let ax=0, best=-1; for(let i=0;i<3;i++){ const m=Math.abs(nrm.getComponent(i)); if(m>best){ best=m; ax=i; } }
+  const dim = dimForAxis(ax); if(!dim) return;           // no editable extent on this axis (e.g. a hole face)
+  const sign = nrm.getComponent(ax) >= 0 ? 1 : -1;
+  const A = _AXES[ax].clone().multiplyScalar(sign);
+  const box = new THREE.Box3().setFromObject(model);
+  const C = box.getCenter(new THREE.Vector3());
+  const R = Math.max(box.getSize(new THREE.Vector3()).length()/2, 1), len = R*0.55;
+  const mat = new THREE.MeshBasicMaterial({ color:0x8a5a2b, depthTest:false, transparent:true });
+  const g = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(R*0.018, R*0.018, len*0.7, 12), mat);
+  const head  = new THREE.Mesh(new THREE.ConeGeometry(R*0.06, len*0.3, 18), mat);
+  shaft.position.y = len*0.35; head.position.y = len*0.85;
+  g.add(shaft); g.add(head);
+  g.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), A);
+  g.position.copy(C).addScaledVector(A, dim.value/2);
+  g.renderOrder = 999;
+  g.userData.face = { ax, A, dim:dim.name, old:dim.value, C };
+  scene.add(g); faceGizmo = g;
+}
+
+canvas.addEventListener("pointerdown", e=>{
+  _downXY=[e.clientX, e.clientY];
+  if(faceGizmo){                                         // grabbing the arrow starts a face-drag, not an orbit
+    _ray.setFromCamera(new THREE.Vector2(
+      ((e.clientX-canvas.getBoundingClientRect().left)/canvas.getBoundingClientRect().width)*2-1,
+      -((e.clientY-canvas.getBoundingClientRect().top)/canvas.getBoundingClientRect().height)*2+1), cam);
+    if(_ray.intersectObject(faceGizmo, true).length){
+      const f = faceGizmo.userData.face, {O,D} = rayOD(e);
+      DRAG = { ...f, t0: closestTOnAxis(f.C, f.A, O, D), new: f.old };
+      controls.enabled = false;                          // suspend orbit for the duration of the drag
+    }
+  }
+});
+window.addEventListener("pointermove", e=>{
+  if(!DRAG) return;
+  const {O,D} = rayOD(e);
+  const val = Math.max(1, Math.round(DRAG.old + 2*(closestTOnAxis(DRAG.C, DRAG.A, O, D) - DRAG.t0)));
+  DRAG.new = val;
+  livePreview({ name:DRAG.dim, old:DRAG.old, new:val });   // stream the extent live (coalesced, no LLM/files)
+  if(faceGizmo) faceGizmo.position.copy(DRAG.C).addScaledVector(DRAG.A, val/2);   // arrow tracks the face
+});
+window.addEventListener("pointerup", e=>{
+  if(DRAG){                                              // release → commit the new extent (+1/−1 diff)
+    controls.enabled = true;
+    const d = DRAG; DRAG = null; _downXY = null;
+    if(d.new && d.new !== d.old) applyEdit(`make the ${d.dim} ${d.new} mm`, { name:d.dim, old:d.old, new:d.new });
+    return;
+  }
   if(!_downXY) return;
   const moved = Math.hypot(e.clientX-_downXY[0], e.clientY-_downXY[1]); _downXY=null;
   if(moved>5 || !model) return;                          // a drag is an orbit, not a pick
   const r = canvas.getBoundingClientRect();
   _ray.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1), cam);
   const hits = _ray.intersectObjects(model.children, true);
-  let o = hits.length ? hits[0].object : null;
+  const hit = hits.length ? hits[0] : null;
+  let o = hit ? hit.object : null;
   while(o && o.userData.elementId===undefined) o = o.parent;
-  if(o && o.userData.elementId) selectFromStage(o.userData.elementId);
-  else clearStageSelection();
+  if(o && o.userData.elementId){ selectFromStage(o.userData.elementId); showFaceGizmo(hit); }
+  else { clearStageSelection(); clearFaceGizmo(); }
 });
 
 function showGeometry(d, opts) {
@@ -460,6 +534,7 @@ function render(payload) {
     return;
   }
   $("#empty").hidden = true;                      // honest empty-stage overlay off once a solid is shown
+  clearFaceGizmo();                               // a fresh payload retires any stale drag arrow (R10)
   STATE.payload = payload;
   STATE.program = payload.program || null;
   if (payload.sketch2d !== undefined) STATE.sketch2d = payload.sketch2d;   // R34: the solved 2D profile
@@ -634,6 +709,7 @@ function toggleSection(){
   }
   if(!STATE.program){ log("sys","load a model first.","warn"); return; }
   SECTION.on=true; if(btn) btn.classList.add("on");
+  clearFaceGizmo();                                            // face-drag arrow doesn't belong on a slice
   buildSectionControls();
   liveSection(null, null, true);                               // default centroidal-longitudinal plane
   log("sys","section — live cut plane (token-free). Drag to sweep; pick X/Y/Z for the cut normal.","ok");
@@ -679,7 +755,7 @@ function setRep(rep){
   // HTMLElement does — so toggle the attribute explicitly, or the [hidden]{display:none} rule sticks.
   if(on2d) svg.removeAttribute("hidden"); else svg.setAttribute("hidden","");
   canvas.style.visibility = on2d ? "hidden" : "visible";
-  if(on2d) renderSketch2d(STATE.sketch2d);
+  if(on2d){ clearFaceGizmo(); renderSketch2d(STATE.sketch2d); }   // face-drag is a 3D-only tool (R10)
 }
 function renderSketch2d(loop){
   const svg = $("#sketch2d");
@@ -725,6 +801,20 @@ window.LUDWIG = {
   render, selectFromStage, clearStageSelection,
   toggleSection, sectionAt: (axis, offset)=> liveSection(axis, offset, true),   // R33 headless seam
   setRep, renderSketch2d, get rep(){ return REP; },                             // R34 headless seam
+  // R10 face-drag headless seam: bind an axis (0/1/2) to its extent dim, stream a live preview, optionally commit
+  faceDragTo: (axisIndex, newValue, commit)=>{
+    const dim = dimForAxis(axisIndex); if(!dim) return null;
+    livePreview({ name:dim.name, old:dim.value, new:newValue });
+    if(commit) applyEdit(`make the ${dim.name} ${newValue} mm`, { name:dim.name, old:dim.value, new:newValue });
+    return { dim:dim.name, old:dim.value };
+  },
+  get gizmo(){ return faceGizmo ? faceGizmo.userData.face : null; },
+  // project a world point to canvas client (x,y) — headless helper for synthetic-pointer drag tests
+  _screenOf(x,y,z){ const r=canvas.getBoundingClientRect();
+    const p=new THREE.Vector3(x,y,z).project(cam);
+    return { x:r.left+(p.x*0.5+0.5)*r.width, y:r.top+(-p.y*0.5+0.5)*r.height }; },
+  _gizmoTip(){ if(!faceGizmo) return null; const p=new THREE.Vector3();
+    faceGizmo.children[1].getWorldPosition(p); return this._screenOf(p.x,p.y,p.z); },
   state: STATE, section: SECTION,
   get ambient(){ return { overall: AMBIENT.overall, byId: AMBIENT.byId,
     mats: Object.fromEntries(Object.entries(childMats).map(
