@@ -294,6 +294,7 @@ def fillet(el: Element, radius: float, *, faces: str = ">Z", name: str | None = 
     el.geometry = _geom.fillet(el.geometry, radius, faces=faces)
     el.register_dim(name or "fillet_radius", float(radius))
     el.graph = None
+    el.graph_node = None
     return el
 
 
@@ -303,6 +304,7 @@ def chamfer(el: Element, distance: float, *, selector: str = "bore", name: str |
     el.geometry = _geom.chamfer(el.geometry, distance, selector=selector)
     el.register_dim(name or "chamfer", float(distance))
     el.graph = None
+    el.graph_node = None
     return el
 
 
@@ -313,6 +315,7 @@ def slot(el: Element, width: float, length: float, at: tuple[float, float] = (0.
     el.register_dim((name or "slot") + "_width", float(width))
     el.register_dim((name or "slot") + "_length", float(length))
     el.graph = None
+    el.graph_node = None
     return el
 
 
@@ -324,8 +327,9 @@ def counterbore(el: Element, through_dia: float, cbore_dia: float, cbore_depth: 
     idx = sum(1 for d in el.manifest if d.name.startswith("cbore")) + 1
     el.register_dim(name or f"cbore_{idx}_dia", float(cbore_dia))
     el.features.append({"kind": "hole", "at": (float(at[0]), float(at[1])), "diameter": float(through_dia),
-                        "through": True, "thread": None})
+                        "through": True, "depth": None, "thread": None})
     el.graph = None
+    el.graph_node = None
     return el
 
 

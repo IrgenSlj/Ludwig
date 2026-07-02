@@ -10,16 +10,18 @@ R3: `evaluate(graph)` — a full re-eval, no caching.
 R4: `Evaluator` — a content-hash cache + `set_param`, so editing one parameter recomputes only the
     dirty descendant subtree and reuses every clean subtree from cache (tree-reduction).
 
-Expressibility: a graph is graph-expressible when it is box-rooted and every node's inputs reference
-earlier nodes (a valid DAG over the known ops) — true for the box+holes/anchors briefs AND, since the
-per-element lineage fix (R4), for stack/assembly composition. A build that used a raw-CadQuery closure
-the recorder never saw yields an empty or rootless graph and stays on the text-substitution fallback
-(the filleted/slotted/chamfered/counterbored briefs; panel+anchors; profile). The selftest parity check
-is the backstop: any expressible graph whose evaluation diverges from the oracle turns the gate red.
+Expressibility: a graph is graph-expressible when it is box/cylinder-rooted (first op box or cylinder)
+and every node's inputs reference earlier nodes (a valid DAG over the known ops) — true for the
+box+holes/anchors briefs AND, since the per-element lineage fix (R4), for stack/assembly composition.
+A build that used a raw-CadQuery closure the recorder never saw yields an empty or rootless graph and
+stays on the text-substitution fallback (the filleted/slotted/chamfered/counterbored briefs;
+panel+anchors; profile). The selftest parity check is the backstop: any expressible graph whose
+evaluation diverges from the oracle turns the gate red.
 """
 from __future__ import annotations
 
 import hashlib
+from collections import OrderedDict
 
 from ir.elements import BRepHandle
 from ir.feature import FeatureGraph
@@ -51,8 +53,14 @@ def _apply(g: GeometryService, op: str, params: dict, inputs: list[BRepHandle]) 
                       through=params.get("through", True), depth=params.get("depth"))
     if op == "anchor":
         return g.hole(src, params["diameter"], tuple(params["at"]), through=False, depth=params["depth"])
-    if op in ("place", "stack"):                    # stack lifted `top` (last input) by the stored offset
+    if op == "place":
         return g.translate(src, tuple(params["offset"]))
+    if op == "stack":                               # recompute offset from live bboxes — mirrors toolkit stack()
+        if len(inputs) < 2:
+            raise EvaluatorError("stack requires at least 2 inputs (base, top)")
+        base_h = g.bbox(inputs[0])[2]
+        top_h = g.bbox(inputs[-1])[2]
+        return g.translate(inputs[-1], (0.0, 0.0, (base_h + top_h) / 2.0))
     raise EvaluatorError(f"unknown feature op {op!r}")
 
 
@@ -77,8 +85,9 @@ def evaluate(graph: FeatureGraph, *, geom: GeometryService | None = None) -> BRe
 def is_graph_expressible(graph: FeatureGraph) -> bool:
     """True when the evaluator reproduces the closure path for ``graph`` with full fidelity.
 
-    Requires: non-empty, box-rooted (first op ``box``), every op known, every input referencing an
-    earlier node (a valid topological DAG), and a result that was built. This admits linear chains
+    Requires: non-empty, box/cylinder-rooted (first op ``box`` or ``cylinder``), every op known,
+    every input referencing an earlier node (a valid topological DAG), and a result that was built.
+    This admits linear chains
     (box + holes/anchors) and — since the per-element lineage fix — stack/assembly composition.
     Returns False for an empty graph (raw-CadQuery closure not recorded) or a rootless one (panel +
     anchors / profile), which stay on the text-substitution fallback.
@@ -129,16 +138,25 @@ def _node_key(op: str, params: dict, input_keys: list[str], tol: float) -> str:
 
 
 class EvalCache:
-    """Content-key → built BRepHandle. Unchanged subtrees are reused across evaluations by key."""
+    """Content-key → built BRepHandle. Unchanged subtrees are reused across evaluations by key.
+
+    Capped at _MAX entries (FIFO eviction) so long drag sessions don't accumulate unbounded
+    OCCT handles. The cap is large enough (256) that warm-subtree reuse within a single
+    set_param rebuild is never disrupted.
+    """
+
+    _MAX = 256
 
     def __init__(self) -> None:
-        self._by_key: dict[str, BRepHandle] = {}
+        self._by_key: OrderedDict[str, BRepHandle] = OrderedDict()
 
     def get(self, key: str):
         return self._by_key.get(key)
 
     def put(self, key: str, handle: BRepHandle) -> None:
         self._by_key[key] = handle
+        while len(self._by_key) > self._MAX:
+            self._by_key.popitem(last=False)  # FIFO: evict oldest entry
 
     def __len__(self) -> int:
         return len(self._by_key)

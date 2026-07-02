@@ -24,6 +24,9 @@ class Param:
             raise ValueError(f"Param {self.name!r} has no unit — units are mandatory")
 
 
+_KNOWN_UNITS: frozenset[str] = frozenset({"mm", "count"})
+
+
 @dataclass
 class NamedDim:
     """A named dimension the program registers. Feeds BOTH the dimensional critic and
@@ -31,6 +34,13 @@ class NamedDim:
     name: str
     value: float
     unit: str = "mm"
+
+    def __post_init__(self) -> None:
+        if not self.unit or self.unit not in _KNOWN_UNITS:
+            raise ValueError(
+                f"NamedDim {self.name!r} has unknown unit {self.unit!r} — "
+                f"known units: {sorted(_KNOWN_UNITS)}"
+            )
 
 
 @dataclass

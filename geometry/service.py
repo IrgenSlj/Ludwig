@@ -163,7 +163,10 @@ class GeometryService:
         """Cut a solid with a plane perpendicular to `axis` (x|y|z) at `offset`, keeping one half
         (keep '+' = higher side, '-' = lower) — an oversized half-space box intersection, robust for
         the prismatic parts we section. StdFail_NotDone surfaces via execute()."""
-        ai = {"x": 0, "y": 1, "z": 2}.get(axis, axis)
+        _axis_idx = {"x": 0, "y": 1, "z": 2}
+        if axis not in _axis_idx:
+            raise ValueError(f"section axis must be 'x', 'y', or 'z', got {axis!r}")
+        ai = _axis_idx[axis]
 
         def build() -> Any:
             cq = _cq()
@@ -183,7 +186,10 @@ class GeometryService:
         wires projected to the plane's (u, v). Through-features split the section into multiple outer
         loops; enclosed voids appear as inner loops. Best-effort; empty lists if nothing lies on the
         plane."""
-        ai = {"x": 0, "y": 1, "z": 2}.get(axis, axis)
+        _axis_idx = {"x": 0, "y": 1, "z": 2}
+        if axis not in _axis_idx:
+            raise ValueError(f"section_profile axis must be 'x', 'y', or 'z', got {axis!r}")
+        ai = _axis_idx[axis]
         u_ax, v_ax = {0: (1, 2), 1: (0, 2), 2: (0, 1)}[ai]
         kept = self.section(handle, axis=axis, offset=offset, keep="+")
         solid = kept.solid()
@@ -294,30 +300,30 @@ class GeometryService:
                         min_d = d
         return min_d if min_d != float("inf") else 0.0
 
+    def _cylindrical_faces(self, handle: BRepHandle) -> list:
+        """Return every cylindrical face from the solid (shared inner helper for center/count queries)."""
+        faces = []
+        for f in handle.solid().val().Faces():
+            try:
+                if f.geomType() == "CYLINDER":
+                    faces.append(f)
+            except Exception:  # pragma: no cover - geomType can throw on exotic surfaces
+                pass
+        return faces
+
     def cylindrical_face_centers(self, handle: BRepHandle) -> list[tuple[float, float]]:
         """The (x, y) axis centres of every cylindrical face — hole/bore positions in plan. The
         deterministic acceptance signal for a hole-position edit (R13): confirm a hole actually landed
         at the new centre, the way bbox extents gate an extent edit. Deduped to ~0.1 mm."""
         centers: list[tuple[float, float]] = []
-        for f in handle.solid().val().Faces():
-            try:
-                if f.geomType() == "CYLINDER":
-                    c = f.Center().toTuple()
-                    xy = (round(c[0], 3), round(c[1], 3))
-                    if not any(abs(xy[0] - e[0]) < 0.1 and abs(xy[1] - e[1]) < 0.1 for e in centers):
-                        centers.append(xy)
-            except Exception:  # pragma: no cover - geomType can throw on exotic surfaces
-                pass
+        for f in self._cylindrical_faces(handle):
+            c = f.Center().toTuple()
+            xy = (round(c[0], 3), round(c[1], 3))
+            if not any(abs(xy[0] - e[0]) < 0.1 and abs(xy[1] - e[1]) < 0.1 for e in centers):
+                centers.append(xy)
         return centers
 
     def cylindrical_face_count(self, handle: BRepHandle) -> int:
         """Count cylindrical faces — for the fillet-free frozen brief set this equals hole count.
         (A full hole-topology check is S4 critic work; this is the cheap S2 gate signal.)"""
-        n = 0
-        for f in handle.solid().val().Faces():
-            try:
-                if f.geomType() == "CYLINDER":
-                    n += 1
-            except Exception:  # pragma: no cover - geomType can throw on exotic surfaces
-                pass
-        return n
+        return len(self._cylindrical_faces(handle))
