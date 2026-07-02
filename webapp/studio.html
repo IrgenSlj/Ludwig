@@ -135,6 +135,11 @@
   .exdraw:hover{border-color:var(--accent);}
   .exdraw img{display:block; width:100%; height:auto;}
   .exdraw .cap{font-size:9.5px; color:var(--muted); padding:3px 7px; border-top:1px solid var(--hair); background:var(--paper);}
+  .logchips{display:flex; align-items:center; gap:6px; padding:3px 0 3px 54px; font-size:11.5px; color:var(--muted);}
+  .logchips .chip{font:inherit; padding:2px 10px; border:1px solid var(--hair2); border-radius:11px; background:var(--paper); cursor:pointer;}
+  .logchips .chip:hover{border-color:var(--accent);}
+  .logchips .chip.ok{color:var(--ok); border-color:rgba(58,125,107,.4);}
+  .cli.busy input{opacity:.6;}
 
   /* ---------- viewport ---------- */
   .stage{position:relative; min-width:0; background:
@@ -612,7 +617,7 @@ function showGeometry(d, opts) {
 }
 
 /* ===================== window.LUDWIG seam (token-free test injection) ===================== */
-const STATE = { program: null, payload: null, sketch2d: null };
+const STATE = { program: null, payload: null, sketch2d: null, seedId: null };
 let REP = "3d";   // "3d" = the extrude · "2d" = the constrained sketch (R34)
 
 function render(payload) {
@@ -941,6 +946,7 @@ window.LUDWIG = {
   get dragging(){ return HOLE ? "hole" : DRAG ? "face" : null; },
   propose: proposePlan, build: buildPlan, get pending(){ return PENDING; },   // R18 Plan/Build seam
   get selected(){ return SELECTED; }, scoped: scopeInstruction,               // R12 selection-scoped edits
+  streamAgent, stopAgent, get running(){ return RUNNING; },                   // R24/R25 streaming lane seam
   // project a world point to canvas client (x,y) — headless helper for synthetic-pointer drag tests
   _screenOf(x,y,z){ const r=canvas.getBoundingClientRect();
     const p=new THREE.Vector3(x,y,z).project(cam);
@@ -979,6 +985,7 @@ async function adoptSeed(id, title){
     const d = await fetch("/api/adopt", { method:"POST", headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ seed: id }) }).then(r => r.json());
     if(d.fatal){ log("sys", "load failed: " + d.fatal, "err"); return; }
+    STATE.seedId = id;                                  // R24: the trusted seed for the agent stream
     render(d);
     log("you", "load " + id);
     log("sys", "loaded " + (title||id) + (d.bbox ? ` · ${d.bbox.length}×${d.bbox.width}×${d.bbox.height} mm` : ""), "ok");
@@ -997,6 +1004,7 @@ async function bootModel(){
     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const d = await resp.json();
     if(d.fatal) throw new Error(d.fatal);
+    STATE.seedId = first ? first.id : null;
     render(d);
     log("sys", `loaded ${d.id||"?"} — ${d.type||"?"}` + (d.bbox ? ` · ${d.bbox.length}×${d.bbox.width}×${d.bbox.height} mm` : ""), "ok");
     if(DEMO){
@@ -1056,24 +1064,69 @@ async function buildPlan(){
     PENDING = null;
   }catch(e){ log("sys", "build failed: " + e, "err"); }
 }
+/* R24/R25 — the streaming agent lane: the footer opens an EventSource on /api/agent_stream and prints
+   each proposed op as it arrives (token-free by default — the local grammar; the LLM plugs into the
+   same seam at R26). BUILD auto-applies the streamed result; PLAN holds it behind an Apply/Discard chip.
+   The Run button becomes Stop while a stream is open (R25) — closing it cancels cleanly. */
+let _es = null, RUNNING = false;
+function setRunning(on){ RUNNING = on; const b=$("#cli-send"); if(b) b.textContent = on ? "Stop" : "Run";
+  $(".cli") && $(".cli").classList.toggle("busy", on); }
+function stopAgent(){ if(_es){ _es.close(); _es=null; log("sys","stopped","warn"); } setRunning(false); }
+function commitStream(r){
+  showGeometry(r, { refit:false });
+  STATE.program = r.program || STATE.program;
+  STATE.payload = { ...(STATE.payload||{}), ...r };
+  buildTree(r); buildProps(r);
+  const failed = (r.critic||[]).some(c=>c.status==="fail");
+  log("sys", `applied ${(r.applied||[]).length} op(s) · ${failed ? "below spec" : "verified"}`, failed?"warn":"ok");
+}
+function agentChips(count, onApply){
+  const box=$("#log"); const row=document.createElement("div"); row.className="logchips";
+  row.innerHTML = `<span>${count} op(s) proposed · </span>`;
+  const a=document.createElement("button"); a.className="chip ok"; a.textContent="Apply";
+  const d=document.createElement("button"); d.className="chip"; d.textContent="Discard";
+  a.onclick=()=>{ onApply(); row.remove(); };
+  d.onclick=()=>{ log("sys","discarded"); row.remove(); };
+  row.append(a,d); box.appendChild(row); box.scrollTop=box.scrollHeight;
+}
+function streamAgent(instruction){
+  if(!STATE.program){ log("sys","load a model first.","warn"); return; }
+  if(_es) _es.close();
+  const planMode = agentIsPlan();
+  const src = STATE.seedId ? "seed="+encodeURIComponent(STATE.seedId)
+                           : "program="+encodeURIComponent(STATE.program);
+  const es = new EventSource(`/api/agent_stream?instruction=${encodeURIComponent(instruction)}&${src}`);
+  _es = es; setRunning(true); let n = 0;
+  es.onmessage = (m)=>{
+    let e; try{ e=JSON.parse(m.data); }catch(_){ return; }
+    if(e.event==="op"){ n++; log("sys","· "+e.summary,"ok"); }
+    else if(e.event==="cancelled"){ log("sys","cancelled","warn"); es.close(); _es=null; setRunning(false); }
+    else if(e.event==="error"){ log("sys","agent: "+(e.message||e.fatal||"error"),"err"); es.close(); _es=null; setRunning(false); }
+    else if(e.event==="result"){
+      es.close(); _es=null; setRunning(false);
+      const r = e.result;
+      if(!r || !r.ok){ log("sys", n ? "no valid change" : "nothing matched — try e.g. 'height 20' or 'going 300'","warn"); return; }
+      if(planMode){ agentChips(n, ()=>commitStream(r)); } else { commitStream(r); }
+    }
+  };
+  es.onerror = ()=>{ if(_es){ _es.close(); _es=null; } setRunning(false); };
+}
 function runCommand(raw){
   const s=raw.trim(); if(!s) return;
   const [cmd,...rest]=s.split(/\s+/); const k=cmd.toLowerCase();
+  if(RUNNING || k==="stop"){ stopAgent(); if(k==="stop") return; }
   if(VIEWDIR[k]){ log("you",s); setView(k); log("sys","view: "+k); return; }
   if(k==="ortho"||k==="persp"){ log("you",s); setCam(k); log("sys","camera: "+k); return; }
   if(k==="fit"||k==="home"){ log("you",s); userMoved=false; frame(); log("sys","framed"); return; }
   if(k==="help"){ log("you",s);
     log("sys","view: iso · top · front · back · right · left · bottom · ortho · persp · fit");
-    log("sys","Plan mode: describe a change → reviewable ops · Build mode: apply the plan (/api/plan · /api/build).");
+    log("sys","describe a parametric change (e.g. 'height 20', 'going 300') → streamed ops · Plan reviews, Build applies · Stop halts.");
     return;
   }
   log("you",s);
   const scoped = scopeInstruction(s);                   // R12: scope to the selected element if any
   if(SELECTED && scoped!==s) log("sys", "scoped to '"+SELECTED+"'");
-  if(agentIsPlan()){ proposePlan(scoped); return; }     // PLAN → propose reviewable ops
-  if(PENDING){ buildPlan(); return; }                   // BUILD with a pending plan → apply it
-  if(!STATE.program){ log("sys","load a model first, or switch to Plan to describe one.","warn"); return; }
-  applyEdit(scoped, null);                              // BUILD, no plan → the free-text edit fallback
+  streamAgent(scoped);                                  // R24: stream the change through the agent lane
 }
 
 /* ===================== wiring ===================== */
