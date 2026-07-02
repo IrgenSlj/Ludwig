@@ -115,6 +115,49 @@ class GeometryService:
             return handle.solid().cut(tool)
         return BRepHandle(build)
 
+    def fillet(self, handle: BRepHandle, radius: float, *, faces: str = ">Z") -> BRepHandle:
+        """Round the edges of the selected face(s) by `radius` mm (default the top +Z face) — the common
+        deburr/edge-break. StdFail_NotDone surfaces via execute() if the radius exceeds the geometry."""
+        def build() -> Any:
+            return handle.solid().faces(faces).fillet(float(radius))
+        return BRepHandle(build)
+
+    def chamfer(self, handle: BRepHandle, distance: float, *, selector: str = "bore") -> BRepHandle:
+        """Bevel edges by `distance` mm. selector='bore' chamfers circular (hole/bore) edges; 'top'
+        chamfers the top-face edges. Lead-ins for fasteners / bores."""
+        def build() -> Any:
+            wp = handle.solid()
+            if selector == "bore":
+                return wp.edges("%Circle").chamfer(float(distance))
+            return wp.faces(">Z").edges().chamfer(float(distance))
+        return BRepHandle(build)
+
+    def slot(self, handle: BRepHandle, width: float, length: float,
+             at: tuple[float, float] = (0.0, 0.0)) -> BRepHandle:
+        """Cut a rectangular through-slot `length`×`width` mm centred at (x, y) on the top face — a
+        generic rectangular cutout (cable slot, adjustment slot)."""
+        x, y = at
+
+        def build() -> Any:
+            return (handle.solid().faces(">Z").workplane()
+                    .center(float(x), float(y)).rect(float(length), float(width)).cutThruAll())
+        return BRepHandle(build)
+
+    def counterbore(self, handle: BRepHandle, through_dia: float, cbore_dia: float,
+                    cbore_depth: float, at: tuple[float, float]) -> BRepHandle:
+        """A counterbored hole at (x, y): a `through_dia` through-hole plus a `cbore_dia` recess
+        `cbore_depth` mm deep from the top face — a socket-head cap-screw pocket."""
+        x, y = at
+
+        def build() -> Any:
+            cq = _cq()
+            wp = handle.solid()
+            h = wp.val().BoundingBox().zlen
+            through = cq.Workplane("XY").transformed(offset=(x, y, -h / 2)).circle(float(through_dia) / 2).extrude(h)
+            recess = cq.Workplane("XY").transformed(offset=(x, y, h / 2)).circle(float(cbore_dia) / 2).extrude(-float(cbore_depth))
+            return wp.cut(through).cut(recess)
+        return BRepHandle(build)
+
     def section(self, handle: BRepHandle, *, axis: str = "x", offset: float = 0.0,
                 keep: str = "-") -> BRepHandle:
         """Cut a solid with a plane perpendicular to `axis` (x|y|z) at `offset`, keeping one half

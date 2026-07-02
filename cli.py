@@ -416,6 +416,24 @@ def selftest() -> int:
               and g.cylindrical_face_count(_fl.geometry) == 6,
               f"bbox {tuple(round(v, 1) for v in _flbb)} · {g.cylindrical_face_count(_fl.geometry)} cyl faces")
 
+        # machining features (fillet / chamfer / slot / counterbore) — element-API ops the live eval's
+        # feature briefs demand. Each builds a valid solid; a featured part drops to the substitution
+        # preview (an edge op isn't in the evaluator) — verified graph-cleared, so no wrong fast-path.
+        from toolkit import box as _bx
+        from toolkit import chamfer as _ch
+        from toolkit import counterbore as _cb
+        from toolkit import fillet as _fi
+        from toolkit import hole as _ho
+        from toolkit import slot as _sl
+        _fb = _fi(_bx("fb", 80, 40, 6), 5)
+        _cs = _ch(_ho(_bx("cs", 30, 30, 12), 10.0, (0, 0)), 2, selector="bore")
+        _sp = _sl(_bx("sp", 120, 60, 10), 10, 40)
+        _cp = _cb(_cb(_bx("cp", 80, 50, 10), 6.6, 11, 5, (-20, 0)), 6.6, 11, 5, (20, 0))
+        check("features: fillet/chamfer/slot/counterbore each build a valid solid + clear the fast-path graph",
+              all(g.is_valid(e.geometry) for e in (_fb, _cs, _sp, _cp)) and _fb.graph is None
+              and g.volume(_sp.geometry) < 120 * 60 * 10 and g.cylindrical_face_count(_cp.geometry) == 4,
+              f"cbore cyl faces {g.cylindrical_face_count(_cp.geometry)}")
+
         # R29 — section op + void-aware cut profile. A YZ cut keeps half the bracket (40×40×6) with one
         # outer loop (240 mm²). A horizontal (z) cut shows the plate plan with the two holes as INNER
         # loops — the void-aware case. (A through-hole splits the section rather than nesting; the

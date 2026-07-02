@@ -169,9 +169,13 @@ def _api_and_standards() -> str:
         "  s.constrain('horizontal','L0'); s.constrain('vertical','L1'); …   # orient each edge\n"
         "  s.constrain('distance','L0', value=80); …   # dimension enough edges to FULLY constrain it (0 DoF)\n"
         "  element = extrude(s, depth, element_id='id')   # extrude the solved profile by `depth` mm along +Z\n"
-        "- raw CadQuery is available as `cq` for a feature with no element-API op (chamfer/fillet/slot/"
-        "counterbore): build with cq, assign to element.geometry, and register_dim the driving sizes. "
-        "Prefer the element API above whenever it covers the shape.\n"
+        "## Machining features — apply to an already-built `element` (return it / reassign):\n"
+        "- fillet(element, radius)                      # round the TOP-face edges by `radius` mm (edge-break)\n"
+        "- chamfer(element, distance, selector='bore')  # bevel bore/hole edges; selector='top' bevels the top edges\n"
+        "- slot(element, width, length, (x, y))         # a rectangular through-slot length×width centred at (x, y)\n"
+        "- counterbore(element, through_dia, cbore_dia, cbore_depth, (x, y))  # a cap-screw pocket (⌀through + ⌀cbore recess)\n"
+        "- raw CadQuery is available as `cq` for anything the ops above don't cover: build with cq, assign "
+        "to element.geometry, and register_dim the driving sizes. Prefer the element API whenever it fits.\n"
         "All units mm. Do not print; just build `element`.\n\n"
         f"## Standards — clearance holes (mm)\n{clear}\n"
     )
@@ -267,7 +271,8 @@ def execute(program: str, *, record: bool = False) -> tuple[Optional[Element], O
         "assembly": toolkit.assembly, "place": toolkit.place, "stack": toolkit.stack,
         "profile": toolkit.profile, "stair": toolkit.stair, "wall": toolkit.wall,
         "opening": toolkit.opening, "sketch": toolkit.sketch, "extrude": toolkit.extrude,
-        "section": toolkit.section,
+        "section": toolkit.section, "fillet": toolkit.fillet, "chamfer": toolkit.chamfer,
+        "slot": toolkit.slot, "counterbore": toolkit.counterbore,
     }
     try:
         src = compile(_strip_fences(program), "<ludwig-program>", "exec")

@@ -288,6 +288,47 @@ def section(el: Element, *, axis: str | None = None, offset: float | None = None
     return el
 
 
+def fillet(el: Element, radius: float, *, faces: str = ">Z", name: str | None = None) -> Element:
+    """Round the selected face's edges (default the top +Z face) by `radius` mm — a deburr / edge-break.
+    Clears the fast-path graph (an edge op isn't in the evaluator) so a live edit re-solves by substitution."""
+    el.geometry = _geom.fillet(el.geometry, radius, faces=faces)
+    el.register_dim(name or "fillet_radius", float(radius))
+    el.graph = None
+    return el
+
+
+def chamfer(el: Element, distance: float, *, selector: str = "bore", name: str | None = None) -> Element:
+    """Bevel edges by `distance` mm — selector='bore' for circular (hole/bore) edges, 'top' for the top
+    face's edges. A fastener / bore lead-in."""
+    el.geometry = _geom.chamfer(el.geometry, distance, selector=selector)
+    el.register_dim(name or "chamfer", float(distance))
+    el.graph = None
+    return el
+
+
+def slot(el: Element, width: float, length: float, at: tuple[float, float] = (0.0, 0.0),
+         *, name: str | None = None) -> Element:
+    """Cut a rectangular through-slot `length`×`width` mm centred at (x, y) on the top face."""
+    el.geometry = _geom.slot(el.geometry, width, length, at)
+    el.register_dim((name or "slot") + "_width", float(width))
+    el.register_dim((name or "slot") + "_length", float(length))
+    el.graph = None
+    return el
+
+
+def counterbore(el: Element, through_dia: float, cbore_dia: float, cbore_depth: float,
+                at: tuple[float, float], *, name: str | None = None) -> Element:
+    """A counterbored hole at (x, y): a `through_dia` through-hole + a `cbore_dia` recess `cbore_depth`
+    mm deep from the top face — a socket-head cap-screw pocket."""
+    el.geometry = _geom.counterbore(el.geometry, through_dia, cbore_dia, cbore_depth, at)
+    idx = sum(1 for d in el.manifest if d.name.startswith("cbore")) + 1
+    el.register_dim(name or f"cbore_{idx}_dia", float(cbore_dia))
+    el.features.append({"kind": "hole", "at": (float(at[0]), float(at[1])), "diameter": float(through_dia),
+                        "through": True, "thread": None})
+    el.graph = None
+    return el
+
+
 def place(el: Element, offset: tuple[float, float, float]) -> Element:
     """Move an element's geometry by (dx, dy, dz) mm. Positioning for assemblies — the model says
     `place(top, (0, 0, 10))` instead of hand-rolling a kernel translate. Extents are unchanged, so
