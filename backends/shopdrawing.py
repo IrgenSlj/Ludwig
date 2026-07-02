@@ -328,11 +328,18 @@ def _view_title(msp, view, paper_w, txt) -> None:
     t.set_placement((view.ox + paper_w / 2, y), align=TextEntityAlignment.MIDDLE_CENTER)
 
 
+def _bores(features) -> list:
+    """The bore-like features (holes, cast-in anchors) that carry a `diameter`. Stair/opening/sketch/
+    section features do not — the hole-detailing and callout passes must skip them, or they KeyError on
+    `f["diameter"]` and take down the whole shop drawing (the moat deliverable) for every sketch/AEC part."""
+    return [f for f in features if f.get("diameter") is not None]
+
+
 def _draw_features(msp, views, features, zmin, zmax) -> None:
     """Overlay holes/anchors authored from IR semantics: a visible circle in the plan, hidden walls +
     a centre-line in the elevations. This is the conventioned detail HLR cannot give us."""
     front, top, right = views["FRONT"], views["TOP"], views["RIGHT"]
-    for f in features:
+    for f in _bores(features):
         try:
             cx, cy = f["at"]
             r = float(f["diameter"]) / 2.0
@@ -415,7 +422,7 @@ def _feature_callouts(features) -> list[str]:
     """Group identical features into conventioned callouts: e.g. '2× ⌀9 (M8) THRU'."""
     groups: dict[tuple, dict] = {}
     order: list[tuple] = []
-    for f in features:
+    for f in _bores(features):
         key = (round(float(f["diameter"]), 3), bool(f.get("through", True)),
                f.get("thread"), f.get("kind"), f.get("depth"))
         if key not in groups:

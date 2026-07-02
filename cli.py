@@ -670,7 +670,7 @@ def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2) -> int:
         artifacts = compile_all(res.ir, out)
         parts = [f"wrote recipe {recipe}"]
         _LABELS = {"step": "STEP", "ifc": "IFC", "drawing": "SVG preview",
-                   "shop_drawing": "shop drawing", "section": "section", "render": "render"}
+                   "shop_drawing": "shop drawing", "section": "section"}
         for name, value in artifacts.items():
             if name.endswith("_error"):
                 label = _LABELS.get(name.removesuffix("_error"), name)

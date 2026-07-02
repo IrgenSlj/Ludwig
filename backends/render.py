@@ -13,10 +13,9 @@ fmt = "png"
 fabrication = False
 
 
-# Module-level self-registration
-from backends.registry import register as _register
-import sys as _sys
-_register(_sys.modules[__name__])
+# NOT self-registered yet: compile() is an unimplemented P1 stub, and a registered backend that
+# always raises would surface as a phantom "render skipped (NotImplementedError)" on every passing
+# compile. P1 restores `register(sys.modules[__name__])` here once compile() actually tessellates.
 
 
 def compile(ir: object, out_dir: Path) -> Path:  # noqa: A001, ARG001
