@@ -13,3 +13,7 @@ desktop/src-tauri/target/
 desktop/src-tauri/gen/
 *.app
 *.dmg
+# node deps — reproduced from package-lock.json by `npm install`, never committed
+node_modules/
+# local re-foundation salvage; gitignored, never tracked
+adapters/
