@@ -29,6 +29,7 @@ from backends.shopdrawing import (
     _render_preview,
     _scale_label,
     _straight_edges,
+    _uv,
     _vdim,
 )
 
@@ -308,9 +309,6 @@ def _section_title(msp, view, paper_w, axis, offset, denom, txt) -> None:
     t = msp.add_text(label, dxfattribs={"layer": "TEXT", "height": h})
     t.set_placement((view.ox + paper_w / 2, y), align=TextEntityAlignment.MIDDLE_CENTER)
 
-
-# `_uv` is imported lazily here to avoid a circular-looking import at module top (shopdrawing is a peer).
-from backends.shopdrawing import _uv  # noqa: E402
 
 # Module-level self-registration (a backend is added by import + register, never a loop change).
 from backends.registry import register as _register  # noqa: E402

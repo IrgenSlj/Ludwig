@@ -35,6 +35,9 @@ def evaluate(el, brief) -> Critique:  # noqa: ARG001 - brief unused for manufact
         for i, a in enumerate(anchors, 1):
             x, y = a["at"]
             r = a["diameter"] / 2
+            # Edge clearance assumes the part is ORIGIN-CENTRED (box()/panel() build centred at 0,0 —
+            # a locked convention), so the nearest x-edge is at ±length/2. A future off-centre element
+            # would need clearance measured against the real bbox min/max, not half-extents.
             edge = min(length / 2 - abs(x) - r, thickness / 2 - abs(y) - r)
             ok = edge >= cov
             checks.append(CheckResult(

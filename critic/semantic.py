@@ -32,8 +32,8 @@ def evaluate(el, brief) -> Critique:
         from geometry import GeometryService
         n = GeometryService().cylindrical_face_count(el.geometry)
         ok = n == holes
-        # Loose elements (crystallization explicitly set >0, <0.5): hole count mismatch is a warning, not a failure
-        loose = 0.0 < el.crystallization < 0.5
+        # Loose elements (crystallization explicitly set >0, <0.5): hole count mismatch is a warning,
+        # not a failure. `loose` was already computed above for the units check — reuse it.
         sev = Severity.WARNING if loose else Severity.ERROR
         checks.append(CheckResult("hole_count", Status.PASS if ok else Status.FAIL,
                                   "" if ok else f"declared {holes} holes, built {n}", el.id,

@@ -117,7 +117,7 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
 # --- module-level helpers: material + property-set authoring (called from compile) ---
 
 
-def _material_for(el, ifc_map, std):
+def _material_for(el, std):
     """Resolve the material key for an element from standards.yaml ifc_material_map."""
     mat_map = std.get("ifc_material_map", {})
     return mat_map.get(el.type)
@@ -126,7 +126,7 @@ def _material_for(el, ifc_map, std):
 def _add_material(f, el, ifc_element, ifc_cls, std):
     """Create an IfcMaterial + IfcRelAssociatesMaterial for the element, if a material is
     defined in standards.yaml. Uses `ifc_material_map` to resolve Element.type -> material id."""
-    key = _material_for(el, None, std)
+    key = _material_for(el, std)
     if not key:
         return
     mat_def = std.get("materials", {}).get(key)
@@ -145,7 +145,7 @@ def _add_property_sets(f, el, ifc_element):
     sets as new materials are defined."""
     from toolkit.standards import load as _load
     std = _load()
-    key = _material_for(el, None, std)
+    key = _material_for(el, std)
     if not key:
         return
     mat_def = std.get("materials", {}).get(key)
