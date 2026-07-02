@@ -757,6 +757,8 @@ def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         return selftest()
     if "--eval" in argv:
+        if "--repair" in argv and "--live" not in argv:
+            print("note: --repair applies only to --live codegen; the reference-oracle eval ignores it.")
         return run_eval(live="--live" in argv, repair="--repair" in argv)
     if "--serve" in argv:
         from webapp.server import serve
@@ -766,8 +768,11 @@ def main(argv: list[str]) -> int:
                 port = int(argv[i + 1])
         return serve(port)
 
-    # Parse --candidates N or --candidates=N (default 1)
+    # Parse --candidates N or --candidates=N (default 1). The space form consumes the NEXT token as its
+    # value, so that index must be excluded from the positional args — else `--candidates 3 "prompt"`
+    # leaks "3" into pos and compiles it as the prompt.
     candidates = 1
+    consumed: set[int] = set()
     for i, arg in enumerate(argv):
         if arg.startswith("--candidates="):
             try:
@@ -777,10 +782,11 @@ def main(argv: list[str]) -> int:
         elif arg == "--candidates" and i + 1 < len(argv):
             try:
                 candidates = int(argv[i + 1])
+                consumed.add(i + 1)
             except ValueError:
                 pass
 
-    pos = [a for a in argv if not a.startswith("--")]
+    pos = [a for i, a in enumerate(argv) if not a.startswith("--") and i not in consumed]
     if "--plan" in argv or "--apply" in argv:   # reviewable op-plan (R17), routed before positional/--edit
         if len(pos) < 2:
             raise SystemExit('Usage: cli.py --plan <recipe.py> "<change>"  |  --apply <recipe.py> "<change>"')
