@@ -298,7 +298,7 @@
     <div class="cli">
       <span class="prefix" id="cli-prefix">›</span>
       <input id="cli" autocomplete="off" spellcheck="false"
-             placeholder="command (iso · top · front · ortho · persp · fit) — or describe a change for the agent…">
+             placeholder="type a change — 'height 20', 'going 300' (free, no AI) — or a view: iso · top · front · ortho · fit">
       <button class="send" id="cli-send">Run</button>
     </div>
   </footer>
@@ -1029,8 +1029,9 @@ async function bootModel(){
     log("sys", `loaded ${d.id||"?"} — ${d.type||"?"}` + (d.bbox ? ` · ${d.bbox.length}×${d.bbox.width}×${d.bbox.height} mm` : ""), "ok");
     if(DEMO){
       log("sys", "demo — every edit here is free & instant (no AI): drag a dimension slider, or grab a 3D face and pull it.", "ok");
-      log("sys", "then: click Section for a live cut · toggle 2D on a sketch part · download the verified STEP / IFC / DXF from Properties.");
-      log("sys", "generation from a text prompt runs locally with your own AI key.");
+      log("sys", "or just type a change below — 'height 20', 'going 300' — and the agent applies it live (also free, no AI).", "ok");
+      log("sys", "then: Section for a live cut · toggle 2D on a sketch part · read the mass/cost + download verified STEP / IFC / DXF from Properties.");
+      log("sys", "full text-to-CAD generation ('a 6-hole mounting plate') runs locally with your own AI key.");
     }
   } catch (e) {
     emptyStage("no model — start the engine");
