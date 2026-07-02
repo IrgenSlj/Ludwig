@@ -25,14 +25,21 @@ four M6 clearance holes inset 12 mm at the corners" — produced valid toolkit c
 verify + derive loop works against a live model, not just the mocked tests — the local/BYO-key tier is
 functional. Reproduce: `.venv/bin/python cli.py "<brief>"`.
 
-**First-pass live pass-rate: 60% (9/15)** (`cli.py --eval --live`, haiku codegen, first-pass, no repair)
-— the [H1] baseline, holding at the ~50–60% the due-diligence predicted. The failures are DIAGNOSTIC,
-not random: `stair_flight` and `l_profile` failed because the codegen prompt (`_api_and_standards`) only
-documented box/hole/panel/anchor/place/stack/assembly — it never told the model that `stair()`,
-`cylinder()`, `sketch()/extrude()`, `wall()/opening()` exist, so it couldn't reach for them. The other
-fails (filtered/slotted/chamfered/counterbored) need edge/feature ops with no element-API primitive yet
-(the LLM must fall back to raw `cq`). **Acted on it:** the prompt now documents the full toolkit API
-(incl. a sketch→extrude worked example). Re-measuring — the measurement told us exactly what was missing.
+**First-pass live pass-rate: 60% → 93% (14/15)** — lifted by *measurement-driven capability additions*,
+not prompt-fiddling vibes. (`cli.py --eval --live`, haiku codegen, first-pass, no repair.) The arc:
+
+| run | rate | what changed | who flipped to pass |
+|---|---|---|---|
+| baseline | **60%** (9/15) | — | — |
+| +prompt | **67%** (10/15) | `_api_and_standards` now documents the FULL toolkit (it had never told the model `stair()`/`cylinder()`/`sketch()`/`wall()` exist) | `stair_flight` |
+| +feature ops | **93%** (14/15) | promoted the oracle's proven cq methods to element-API ops: `fillet`/`chamfer`/`slot`/`counterbore`, documented | `slotted_plate`, `chamfered_spacer`, `counterbored_plate`, `l_profile` |
+
+The one remaining fail — `filtered_bracket` (a 5 mm fillet on all top edges + two holes) — is the genuine
+edge-op fragility the BRIEF warns about: fillet-vs-hole edge-selection order is brittle (the oracle
+fillets the box *before* drilling; the model doesn't always). A capability gap it is NOT — the op exists
+and the oracle builds it. **The load-bearing lesson:** the frozen eval's failures are a precise
+capability to-do list; each fail named exactly the op the model couldn't reach for, and adding it (not
+tuning the prompt) is what moved the number. Reproduce: `cli.py --eval --live`.
 
 **R11 (span-identity binding) is obviated by R8 — measured, not assumed.** R11 was scheduled to kill
 the value-collision LLM fallback (a 30×30 square editing `length` moving `width` too). Measured: R8's
