@@ -17,6 +17,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest PyYAML cadquery ifcopenshell ruff
+      - name: Verify kernel present (no silent skip-to-green)
+        # cli.py --selftest and 8 test files ADAPT to kernel presence (76/76 + full suite with the
+        # kernel, 27/27 + wholesale skips without it). If cadquery ever failed to import here, the gate
+        # would silently degrade to the pure-Python spine and still pass. Fail hard instead.
+        run: python -c "import cadquery, ifcopenshell; print('kernel present')"
       - name: Lint (dead-code gate)
         run: ruff check
       - name: Selftest gate (no LLM tokens)
