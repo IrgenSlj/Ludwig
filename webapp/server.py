@@ -101,6 +101,11 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
         try:
+            if DEMO:  # the SSE twin of POST /api/compile — same lock: generation needs inference and
+                      # exec's model-authored code, never exposed on the public box (RCE + cost DoS).
+                raise PermissionError("generation is disabled in the public demo. Bring your own AI "
+                                      "key and run Ludwig locally; direct manipulation of the gallery "
+                                      "parts (drag dimensions → STEP/IFC/DXF) is free here.")
             prompt = (q.get("prompt", [""])[0] or "").strip()
             if not prompt:
                 raise ValueError("empty prompt")
