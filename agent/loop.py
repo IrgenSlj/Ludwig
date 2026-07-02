@@ -251,7 +251,7 @@ def execute(program: str, *, record: bool = False) -> tuple[Optional[Element], O
 
     ns = {
         "cq": cadquery, "cadquery": cadquery, "standards": standards, "Element": Element,
-        "part": toolkit.part, "box": toolkit.box, "hole": toolkit.hole,
+        "part": toolkit.part, "box": toolkit.box, "cylinder": toolkit.cylinder, "hole": toolkit.hole,
         "clearance_hole": toolkit.clearance_hole, "panel": toolkit.panel, "anchor": toolkit.anchor,
         "assembly": toolkit.assembly, "place": toolkit.place, "stack": toolkit.stack,
         "profile": toolkit.profile, "stair": toolkit.stair, "wall": toolkit.wall,

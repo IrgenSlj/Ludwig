@@ -150,6 +150,25 @@ def test_section_of_a_sketch_solid_recovers_the_authored_profile(tmp_path):
     assert any(e.dxftype() == "HATCH" for e in msp)              # poché present
 
 
+def test_cylinder_primitive_and_flange_part():
+    # the round part class: a cylinder is a robust primitive (no boolean → no StdFail); a flange builds,
+    # rides the evaluator fast-path (graph-expressible), and its mass is the exact bored volume.
+    from toolkit import cylinder
+    g = GeometryService()
+    cyl = cylinder("c", 100, 12)
+    dx, dy, dz = g.bbox(cyl.geometry)
+    assert abs(dx - 100) < 1e-6 and abs(dy - 100) < 1e-6 and abs(dz - 12) < 1e-6   # bbox = ⌀×⌀×h
+    assert g.is_valid(cyl.geometry) and cyl.dim("diameter") == 100 and cyl.dim("height") == 12
+
+    from webapp import gallery, service
+    r = service.adopt_to_result(gallery.program_for("flange"))
+    assert r["passed"] and r["bbox"]["length"] == pytest.approx(100.0) and r["mesh"]["indices"]
+    assert r["estimate"]["material"] == "Steel" and r["estimate"]["mass_kg"] == pytest.approx(0.586, abs=0.02)
+    # a cylinder-rooted graph is evaluator-expressible → the fast (no-LLM) preview path
+    pv = service.preview_edit(gallery.program_for("flange"), "height", 12, 20)
+    assert pv["ok"] and pv["engine"] == "evaluator" and pv["bbox"]["height"] == pytest.approx(20.0)
+
+
 def test_harness_discriminates_a_wrong_build():
     # an off-by-5mm height build must FAIL the gate — proves the instrument has real signal
     def bad(b):

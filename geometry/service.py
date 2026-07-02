@@ -37,6 +37,14 @@ class GeometryService:
             return cq.Workplane("XY").box(length, width, height)
         return BRepHandle(build)
 
+    def cylinder(self, diameter: float, height: float) -> BRepHandle:
+        """A cylinder centred on the origin, axis along +Z; bbox extents are (diameter, diameter, height).
+        The robust round primitive for flanges/shafts/washers — no boolean, so it never StdFails."""
+        def build() -> Any:
+            cq = _cq()
+            return cq.Workplane("XY").cylinder(float(height), float(diameter) / 2.0)
+        return BRepHandle(build)
+
     def compound(self, handles) -> BRepHandle:
         """Combine several solids into one OCCT compound (for Assembly geometry)."""
         def build():

@@ -406,6 +406,16 @@ def selftest() -> int:
               and _be["grade"] == "S355" and _be.get("cost") is not None,
               f"{_be.get('mass_kg')} kg · {_be.get('cost')} {_be.get('currency')}")
 
+        # cylinder primitive — the round part class (flanges/shafts/washers), a robust OCCT primitive.
+        from agent.loop import execute as _ex2
+        from webapp import gallery as _gal2
+        _fl, _ = _ex2(_gal2.program_for("flange"))
+        _flbb = g.bbox(_fl.geometry)
+        check("cylinder: flange ⌀100×12 builds with 6 cylindrical faces (rim + bore + 4 bolts), valid",
+              abs(_flbb[0] - 100) <= tol and abs(_flbb[2] - 12) <= tol and g.is_valid(_fl.geometry)
+              and g.cylindrical_face_count(_fl.geometry) == 6,
+              f"bbox {tuple(round(v, 1) for v in _flbb)} · {g.cylindrical_face_count(_fl.geometry)} cyl faces")
+
         # R29 — section op + void-aware cut profile. A YZ cut keeps half the bracket (40×40×6) with one
         # outer loop (240 mm²). A horizontal (z) cut shows the plate plan with the two holes as INNER
         # loops — the void-aware case. (A through-hole splits the section rather than nesting; the

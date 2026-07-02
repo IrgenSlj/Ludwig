@@ -32,6 +32,13 @@ SEEDS = [
      "program": ('element = box("gusset", 100, 100, 5)\n'
                  'clearance_hole(element, "M10", (-30, 0))\n'
                  'clearance_hole(element, "M10", (30, 0))\n')},
+    {"id": "flange", "title": "Pipe flange", "blurb": "⌀100 × 12 mm · ⌀40 bore · 4× M10 on a ⌀75 bolt circle",
+     "program": ('element = cylinder("flange", 100, 12)\n'
+                 'hole(element, 40.0, (0, 0))\n'
+                 'clearance_hole(element, "M10", (37.5, 0))\n'
+                 'clearance_hole(element, "M10", (0, 37.5))\n'
+                 'clearance_hole(element, "M10", (-37.5, 0))\n'
+                 'clearance_hole(element, "M10", (0, -37.5))\n')},
     {"id": "precast_panel", "title": "Precast panel (BIM)",
      "blurb": "3000 × 2000 × 200 mm · two M16 cast-in anchors",
      "program": ('element = panel("precast_panel", 3000, 2000, 200)\n'

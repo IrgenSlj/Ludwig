@@ -25,7 +25,7 @@ from ir.elements import BRepHandle
 from ir.feature import FeatureGraph
 from geometry.service import GeometryService
 
-_KNOWN_OPS = {"box", "hole", "anchor", "place", "stack", "assembly"}
+_KNOWN_OPS = {"box", "cylinder", "hole", "anchor", "place", "stack", "assembly"}
 
 
 class EvaluatorError(ValueError):
@@ -37,6 +37,8 @@ def _apply(g: GeometryService, op: str, params: dict, inputs: list[BRepHandle]) 
     handles for the node's recorded inputs (the upstream solids), in order."""
     if op == "box":
         return g.box(params["length"], params["width"], params["height"])
+    if op == "cylinder":
+        return g.cylinder(params["diameter"], params["height"])
     if op == "assembly":
         if not inputs:
             raise EvaluatorError("assembly has no children to compound")
@@ -82,7 +84,7 @@ def is_graph_expressible(graph: FeatureGraph) -> bool:
     anchors / profile), which stay on the text-substitution fallback.
     """
     nodes = graph.nodes
-    if not nodes or nodes[0].op != "box":
+    if not nodes or nodes[0].op not in ("box", "cylinder"):
         return False
     seen: set[str] = set()
     for n in nodes:

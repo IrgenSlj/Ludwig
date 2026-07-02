@@ -165,6 +165,22 @@ def stair(element_id: str, *, rise: float = 170.0, going: float = 280.0, width: 
     return el
 
 
+def cylinder(element_id: str, diameter: float, height: float, *, name: str = "") -> Element:
+    """A dimensioned cylinder Part — the round primitive (flange/shaft/washer). Registers `diameter`
+    and `height` as named dims; bbox is diameter×diameter×height, centred on the origin."""
+    el = part(element_id, name=name)
+    el.geometry = _geom.cylinder(diameter, height)
+    el.register_dim("diameter", diameter)
+    el.register_dim("height", height)
+    _g = _RECORDING.get()
+    if _g is not None:
+        _node = _g.append("cylinder",
+                          {"element_id": element_id, "diameter": diameter, "height": height}, [])
+        el.graph = _g
+        el.graph_node = _node.node_id
+    return el
+
+
 def panel(element_id: str, length: float, height: float, thickness: float, *, name: str = "") -> Element:
     """A precast wall panel (P1) — a Part of type 'Panel'. Oriented x=length, y=thickness, z=height,
     so the large faces are the length×height elevation. Registers length/thickness/height as named dims."""
