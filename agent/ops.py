@@ -186,6 +186,20 @@ class SetParam:
         out = _substitute_all_literals(program, self.old, self.new)
         if out is None:
             return None, None
+        # Collision guard: if `new` already exists as a distinct literal in the original program,
+        # the inverse SetParam would corrupt those pre-existing occurrences on undo.
+        if abs(self.new - self.old) > 1e-9:
+            comments = _comment_regions(program)
+            in_comment = lambda pos: any(a <= pos < b for a, b in comments)  # noqa: E731
+            collisions = [m for m in _NUM.finditer(program)
+                          if abs(float(m.group()) - self.new) < 1e-9
+                          and not in_comment(m.start())
+                          and abs(float(m.group()) - self.old) >= 1e-9]
+            if collisions:
+                raise ValueError(
+                    f"SetParam {self.name!r}: new={self.new} already occurs as a distinct literal "
+                    "in the program — edit is non-invertible"
+                )
         return out, SetParam(self.name, self.new, self.old)
 
 
@@ -196,22 +210,26 @@ _OP_KINDS = {c.__name__: c for c in (AddElement, AddFeature, Place, Assemble, Se
 class Plan:
     """An ordered list of Ops. `render` writes the ADD ops to a fresh program (byte-identical to a
     hand-written recipe); `apply_to` threads the SetParam ops through an existing program and returns
-    the inverse plan for undo."""
+    the inverse plan for undo. The returned inverse plan carries a `.skipped` tuple of any SetParam
+    ops that could not be applied (literal absent), so the caller can distinguish applied from skipped."""
     ops: tuple = ()
+    skipped: tuple = ()   # ops that were not applied (e.g., literal not found in program)
 
     def render(self) -> str:
         lines = [op.to_source() for op in self.ops if not isinstance(op, SetParam)]
         return "\n".join(lines) + ("\n" if lines else "")
 
     def apply_to(self, program: str):
-        out, inverse = program, []
+        out, inverse, skipped_ops = program, [], []
         for op in self.ops:
             if isinstance(op, SetParam):
                 new_text, inv = op.apply(out)
                 if new_text is None:
+                    skipped_ops.append(op)
                     continue
-                out, _ = new_text, inverse.append(inv)
-        return out, Plan(tuple(reversed(inverse)))
+                inverse.append(inv)
+                out = new_text
+        return out, Plan(tuple(reversed(inverse)), skipped=tuple(skipped_ops))
 
 
 # --------------------------------------------------------------------------- #
@@ -255,6 +273,38 @@ def parse_plan(data) -> Plan:
         missing = required - set(given)
         if missing:
             raise ValueError(f"op[{i}] ({raw['op']}): missing field(s) {sorted(missing)}")
+        # Per-field VALUE type validation (security boundary: reject non-data shapes before construction)
+        _str_fields: dict[str, set] = {
+            "AddElement": {"kind", "id"},
+            "AddFeature": {"func", "target"},
+            "Place": {"target"},
+            "Assemble": {"id", "kind"},
+            "SetParam": {"name"},
+        }
+        for _fname in _str_fields.get(raw["op"], set()):
+            if _fname in given and not isinstance(given[_fname], str):
+                raise ValueError(
+                    f"op[{i}] ({raw['op']}): field '{_fname}' must be a str, "
+                    f"got {type(given[_fname]).__name__!r}"
+                )
+        if raw["op"] == "SetParam":
+            for _fname in ("old", "new"):
+                _fv = given.get(_fname)
+                if _fv is None:
+                    continue   # missing field already caught above
+                if isinstance(_fv, bool) or isinstance(_fv, (list, dict)):
+                    raise ValueError(
+                        f"op[{i}] (SetParam): field '{_fname}' must be a number or numeric string, "
+                        f"got {type(_fv).__name__!r}"
+                    )
+                if isinstance(_fv, str):
+                    try:
+                        float(_fv)
+                    except (ValueError, TypeError):
+                        raise ValueError(
+                            f"op[{i}] (SetParam): field '{_fname}' must be a number or numeric string, "
+                            f"got {_fv!r}"
+                        )
         try:
             ops.append(cls(**{k: _tuplify(v) for k, v in given.items()}))
         except TypeError as e:
@@ -282,7 +332,10 @@ def extract_json(text: str):
     array/object. Raises if none parses (so a non-JSON reply fails loud, never runs)."""
     m = re.search(r"```(?:json)?\s*(\[.*\]|\{.*\})\s*```", text, re.DOTALL)
     if m:
-        return _json.loads(m.group(1))
+        try:
+            return _json.loads(m.group(1))
+        except ValueError:
+            pass
     for open_c, close_c in (("[", "]"), ("{", "}")):
         i, j = text.find(open_c), text.rfind(close_c)
         if i != -1 and j > i:

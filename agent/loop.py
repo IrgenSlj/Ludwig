@@ -94,8 +94,16 @@ def _tier_model(tier: str) -> Optional[str]:
             return None
         model = (cfg.get("tiers", {}) or {}).get(label)   # label MUST be defined in tiers: else default
         return model or None
-    except Exception:
+    except (FileNotFoundError, KeyError):
         return None
+    except Exception as _e:
+        try:
+            import yaml
+            if isinstance(_e, yaml.YAMLError):
+                return None
+        except ImportError:
+            pass
+        raise
 
 
 @dataclass
@@ -259,6 +267,9 @@ def execute(program: str, *, record: bool = False) -> tuple[Optional[Element], O
     Forces the lazy geometry to build so OCCT `StdFail_NotDone` surfaces here and feeds repair (§8).
     `record=True` runs it under toolkit.recording() so the returned Element carries a FeatureGraph
     (el.graph) for the deterministic evaluator — additive, the closure geometry path is unchanged ([H1]).
+
+    TRUSTED program code only — must never be called on raw model output in the public demo
+    (demo uses the Op-API / local grammar with allow_llm=False).
     """
     import cadquery
     import toolkit
@@ -410,7 +421,7 @@ def edit(program: str, instruction: str, *, brief: Optional[Brief] = None,
     """
     b = brief or Brief(prompt=instruction)
     critic_model = model or _tier_model("critic")
-    new = _strip_fences(inference.infer(_edit_prompt(program, instruction), model=model))
+    new = _strip_fences(inference.infer(_edit_prompt(program, instruction), model=critic_model))
     el, err = execute(new)
     crit = verify(el, b) if el is not None else None
     rnd = 0

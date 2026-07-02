@@ -34,15 +34,24 @@ def local_grammar(instruction: str, state: dict) -> list:
     return ops
 
 
-def _default_apply(op, state: dict) -> dict:
+def _default_apply(op, state: dict):
     """Fold one op into the running state (program text + dim map). Deterministic, token-free. A SetParam
     rewrites its literal; any other op (AddElement/AddFeature/…) appends its rendered source as a build
-    step — the same source the Op-API renders, never model-authored code."""
+    step — the same source the Op-API renders, never model-authored code.
+
+    Returns the updated state dict, or None if the op could not be applied (e.g. SetParam literal
+    absent/ambiguous). Returning None signals no-change to plan_stream so it emits 'skipped'."""
     program = state.get("program", "")
     if isinstance(op, SetParam):
-        new_program, _inv = op.apply(program)
+        try:
+            new_program, _inv = op.apply(program)
+        except ValueError:
+            # collision guard: `new` already occurs as a distinct literal, so an all-literals
+            # substitution can't set this dim unambiguously (the span-based slider path can, but
+            # this layer has no span context) — signal no-change so the caller emits 'skipped'.
+            return None
         if new_program is None:
-            return state
+            return None   # signal: literal not found — caller emits 'skipped'
         return {**state, "program": new_program, "dims": {**state.get("dims", {}), op.name: op.new}}
     src = op.to_source()
     joiner = "\n" if program and not program.endswith("\n") else ""
@@ -77,8 +86,13 @@ def plan_stream(instruction: str, state: dict, *,
                 yield emit({"event": "cancelled"})
                 return
             yield emit({"event": "op", "op": _op_json(op), "summary": summarize(op)})
-            state = apply(op, state)
-            yield emit({"event": "applied", "op": _op_json(op)})
+            new_state = apply(op, state)
+            if new_state is None:
+                yield emit({"event": "skipped", "op": _op_json(op),
+                            "reason": "value not found or ambiguous in the program"})
+            else:
+                state = new_state
+                yield emit({"event": "applied", "op": _op_json(op)})
         yield emit({"event": "done", "state": {"program": state.get("program", ""),
                                                "dims": state.get("dims", {})}, "count": len(ops)})
     except Exception as e:  # pragma: no cover - defensive; a bad op never crashes the stream

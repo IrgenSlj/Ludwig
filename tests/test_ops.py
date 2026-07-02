@@ -74,6 +74,35 @@ def test_parse_plan_validates_and_rejects_never_execs():
         parse_plan([{"op": "SetParam", "name": "h"}])                # missing required old/new
 
 
+def test_parse_plan_rejects_bad_field_value_types():
+    # Fix 3: SetParam old/new must be numeric — list/dict/non-numeric-str are rejected at the security boundary.
+    from agent.ops import parse_plan
+    import pytest
+    with pytest.raises(ValueError, match="numeric"):
+        parse_plan([{"op": "SetParam", "name": "x", "old": "foo", "new": []}])
+    with pytest.raises(ValueError, match="numeric"):
+        parse_plan([{"op": "SetParam", "name": "x", "old": 80, "new": {}}])
+    with pytest.raises(ValueError, match="numeric"):
+        parse_plan([{"op": "SetParam", "name": "x", "old": [], "new": 120}])
+    # numeric strings are still accepted
+    result = parse_plan([{"op": "SetParam", "name": "x", "old": "80", "new": "120"}])
+    assert result.ops[0].name == "x"
+    # str fields must be str
+    with pytest.raises(ValueError, match="str"):
+        parse_plan([{"op": "AddElement", "kind": 123, "id": "b", "args": []}])
+
+
+def test_setparam_raises_on_collision():
+    # Fix 4: if new already occurs as a distinct literal in the program, the edit is non-invertible.
+    import pytest
+    # BRACKET has 80, 40, 6; SetParam("length", 80, 40) → new=40 collides with the existing 40 (width)
+    with pytest.raises(ValueError, match="non-invertible"):
+        SetParam("length", 80, 40).apply(BRACKET)
+    # non-colliding edit (120 not in BRACKET) must still succeed
+    out, inv = SetParam("length", 80, 120).apply(BRACKET)
+    assert out is not None and inv == SetParam("length", 120, 80)
+
+
 def test_plan_stream_is_deterministic_token_free_and_cancellable():
     # R23: the streaming agent runtime — a local grammar turns an instruction into op events, no LLM.
     from agent.runtime import local_grammar, plan_stream

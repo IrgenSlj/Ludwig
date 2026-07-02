@@ -18,15 +18,6 @@ class LudwigError(Exception):
         super().__init__(message)
 
 
-class InferenceError(LudwigError):
-    """The inference provider failed/returned empty/timed out — no generated code."""
-    provider: str
-
-    def __init__(self, message: str, provider: str = "") -> None:
-        self.provider = provider
-        super().__init__(message)
-
-
 class SyntaxError_(LudwigError):
     """The generated program has a Python syntax error."""
     line: int
@@ -51,16 +42,6 @@ class MissingElementError(LudwigError):
         super().__init__(message or "program did not assign an Element to `element`")
 
 
-class CriticError(LudwigError):
-    """The critic itself raised an exception during evaluation."""
-    critic_name: str
-
-    def __init__(self, message: str, critic_name: str = "") -> None:
-        self.critic_name = critic_name
-        super().__init__(message)
-
-
 __all__ = [
-    "LudwigError", "InferenceError", "SyntaxError_", "GeometryBuildError",
-    "MissingElementError", "CriticError",
+    "LudwigError", "SyntaxError_", "GeometryBuildError", "MissingElementError",
 ]
