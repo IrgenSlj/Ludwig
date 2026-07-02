@@ -197,6 +197,25 @@ def selftest() -> int:
     check("R23: plan_stream honours should_cancel (Stop) — zero ops, one 'cancelled'",
           [e["event"] for e in _pstream("going 320", _st, should_cancel=lambda: True)] == ["cancelled"])
 
+    # R26 — LLM op-planner behind the SAME stream seam: a canned JSON reply parses to validated ops
+    # (consuming the Op-API schema, never exec'd); a malformed or unknown-op reply yields none; the
+    # hybrid keeps a plain '<dim> <number>' edit on the free grammar (no inference call). Token-free gate.
+    from agent.runtime import hybrid_infer as _hyb
+    from agent.runtime import llm_infer as _llm
+    _canned = '```json\n[{"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [0, 0]]}]\n```'
+    _ops26 = _llm("add a hole", {"program": 'element = box("b", 80, 40, 6)\n'},
+                  infer_fn=lambda *a, **k: _canned)
+    check("R26: LLM infer parses a canned JSON reply into validated ops (token-free, never exec'd)",
+          len(_ops26) == 1 and type(_ops26[0]).__name__ == "AddFeature", f"{[type(o).__name__ for o in _ops26]}")
+    check("R26: a malformed or unknown-op reply yields NO ops (rejected, never exec'd)",
+          _llm("x", {"program": ""}, infer_fn=lambda *a, **k: "not json") == []
+          and _llm("x", {"program": ""}, infer_fn=lambda *a, **k: '[{"op":"RunShell","cmd":"rm -rf /"}]') == [])
+    _called = []
+    _hops = _hyb("height 20", {"dims": {"height": 6}, "program": 'element = box("b", 80, 40, 6)\n'},
+                 infer_fn=lambda *a, **k: (_called.append(1), "[]")[1])
+    check("R26: hybrid keeps a plain '<dim> <number>' edit on the free grammar (no inference call)",
+          len(_hops) == 1 and type(_hops[0]).__name__ == "SetParam" and not _called)
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:

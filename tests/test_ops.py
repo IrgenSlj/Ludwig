@@ -93,6 +93,32 @@ def test_plan_stream_is_deterministic_token_free_and_cancellable():
     assert list(plan_stream("anything", state, infer=fixed))[0]["op"]["name"] == "width"
 
 
+def test_llm_infer_behind_the_stream_seam_validates_and_rejects():
+    # R26: the LLM planner plugs into the same stream seam as the grammar, consuming the Op-API schema —
+    # canned JSON → validated ops (never exec'd); malformed / unknown-op → none; hybrid keeps a plain
+    # '<dim> <number>' edit token-free.
+    from agent.runtime import hybrid_infer, llm_infer
+    canned = '[{"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [0, 0]]}]'
+    ops = llm_infer("add a hole", {"program": BRACKET}, infer_fn=lambda *a, **k: canned)
+    assert len(ops) == 1 and type(ops[0]).__name__ == "AddFeature"
+
+    assert llm_infer("x", {"program": ""}, infer_fn=lambda *a, **k: "not json at all") == []
+    assert llm_infer("x", {"program": ""},
+                     infer_fn=lambda *a, **k: '[{"op": "RunShell", "cmd": "rm -rf /"}]') == []   # never exec'd
+
+    called = []
+    hops = hybrid_infer("height 22", {"dims": {"height": 6}, "program": BRACKET},
+                        infer_fn=lambda *a, **k: (called.append(1), "[]")[1])
+    assert len(hops) == 1 and type(hops[0]).__name__ == "SetParam" and not called   # grammar, no LLM
+
+    # a stream driven by the LLM infer applies the op end-to-end (folds AddFeature source into the program)
+    from agent.runtime import plan_stream
+    evs = list(plan_stream("add a hole", {"program": BRACKET},
+                           infer=lambda instr, st: llm_infer(instr, st, infer_fn=lambda *a, **k: canned)))
+    assert [e["event"] for e in evs] == ["op", "applied", "done"]
+    assert 'clearance_hole(element, "M8", (0, 0))' in evs[-1]["state"]["program"]
+
+
 def test_loop_plan_parses_a_mocked_inference_reply(monkeypatch):
     # R16: loop.plan asks the model for JSON ops and returns a validated Plan — one inference call,
     # the reply parsed as DATA (never exec'd). Mocked inference → no tokens.

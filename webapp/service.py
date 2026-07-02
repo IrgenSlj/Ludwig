@@ -428,11 +428,12 @@ def build_from_ops(program: str, ops_json, *, out: Optional[Path] = None) -> dic
     return build_to_result(program, parse_plan(ops_json), out=out)
 
 
-def agent_stream(instruction: str, program: str, *, on_event=None, should_cancel=None) -> dict:
-    """Run the streaming agent runtime (R23) over a program and return the final geometry payload
-    (_variant_payload shape). Each op/applied/done event mirrors to `on_event` for a live agent lane;
-    the default planner is the deterministic local grammar (zero tokens). No files are written — the
-    stream ends with the re-executed solid + critic, and the human adopts/builds to persist artifacts."""
+def agent_stream(instruction: str, program: str, *, on_event=None, should_cancel=None, infer=None) -> dict:
+    """Run the streaming agent runtime (R23/R26) over a program and return the final geometry payload
+    (_variant_payload shape). Each op/applied/done event mirrors to `on_event` for a live agent lane. The
+    planner is injectable: default = the deterministic local grammar (zero tokens); the server passes the
+    LLM hybrid in local mode (R26). No files are written — the stream ends with the re-executed solid +
+    critic, and the human adopts/builds to persist artifacts."""
     from agent.loop import Brief, execute, verify
     from agent.runtime import plan_stream
 
@@ -441,7 +442,7 @@ def agent_stream(instruction: str, program: str, *, on_event=None, should_cancel
     state = {"program": program, "dims": dims}
 
     final, applied = state, []
-    for ev in plan_stream(instruction, state, on_event=on_event, should_cancel=should_cancel):
+    for ev in plan_stream(instruction, state, infer=infer, on_event=on_event, should_cancel=should_cancel):
         if ev.get("event") == "applied":
             applied.append(ev["op"])
         elif ev.get("event") == "done":

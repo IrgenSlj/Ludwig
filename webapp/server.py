@@ -144,7 +144,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not all(safety.value_in_envelope(float(n)) for n in re.findall(r"-?\d+(?:\.\d+)?", instruction)):
                     raise PermissionError("a value in that request is out of range for the demo.")
             from webapp.service import agent_stream
-            result = agent_stream(instruction, program, on_event=event)
+            # DEMO → the token-free local grammar; local/BYO-key → the LLM hybrid (grammar first, else infer)
+            infer = None
+            if not DEMO:
+                from agent.runtime import hybrid_infer
+                infer = hybrid_infer
+            result = agent_stream(instruction, program, on_event=event, infer=infer)
             event({"event": "result", "result": result})
         except Exception as e:
             event({"event": "error", "fatal": f"{type(e).__name__}: {e}"})

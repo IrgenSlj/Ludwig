@@ -35,14 +35,18 @@ def local_grammar(instruction: str, state: dict) -> list:
 
 
 def _default_apply(op, state: dict) -> dict:
-    """Fold one op into the running state (program text + dim map). Deterministic, token-free."""
+    """Fold one op into the running state (program text + dim map). Deterministic, token-free. A SetParam
+    rewrites its literal; any other op (AddElement/AddFeature/…) appends its rendered source as a build
+    step — the same source the Op-API renders, never model-authored code."""
+    program = state.get("program", "")
     if isinstance(op, SetParam):
-        new_program, _inv = op.apply(state.get("program", ""))
+        new_program, _inv = op.apply(program)
         if new_program is None:
             return state
-        dims = {**state.get("dims", {}), op.name: op.new}
-        return {**state, "program": new_program, "dims": dims}
-    return state
+        return {**state, "program": new_program, "dims": {**state.get("dims", {}), op.name: op.new}}
+    src = op.to_source()
+    joiner = "\n" if program and not program.endswith("\n") else ""
+    return {**state, "program": program + joiner + src + "\n"}
 
 
 def plan_stream(instruction: str, state: dict, *,
@@ -81,4 +85,32 @@ def plan_stream(instruction: str, state: dict, *,
         yield emit({"event": "error", "message": f"{type(e).__name__}: {e}"})
 
 
-__all__ = ["plan_stream", "local_grammar"]
+def llm_infer(instruction: str, state: dict, *, infer_fn: Optional[Callable] = None,
+              model: Optional[str] = None) -> list:
+    """LLM planner for the stream (R26): ONE cheap-tier inference call → JSON ops → strict-validated Op
+    list, consuming the same Op-API schema as the CLI/webapp. A malformed reply (bad JSON, unknown op,
+    wrong shape) yields NO ops — nothing model-authored is ever exec'd; the caller streams an error chip.
+    `infer_fn` is injectable so the gate can drive it with canned JSON (token-free)."""
+    from agent.loop import _plan_prompt, _tier_model
+    from agent.ops import extract_json, parse_plan
+
+    if infer_fn is None:
+        from agent import inference
+        infer_fn = inference.infer
+    reply = infer_fn(_plan_prompt(instruction, state.get("program", ""), None),
+                     model=model or _tier_model("codegen"))   # planning ops is cheap-tier work
+    try:
+        return list(parse_plan(extract_json(reply)).ops)
+    except (ValueError, TypeError):
+        return []   # malformed / unknown op → drop the whole plan; never exec model text
+
+
+def hybrid_infer(instruction: str, state: dict, *, infer_fn: Optional[Callable] = None,
+                 model: Optional[str] = None) -> list:
+    """The local-mode planner: the free, instant local grammar for a plain '<dim> <number>' edit, else
+    the LLM (R26). Keeps the common parametric tweak token-free and reserves inference for real language."""
+    ops = local_grammar(instruction, state)
+    return ops if ops else llm_infer(instruction, state, infer_fn=infer_fn, model=model)
+
+
+__all__ = ["plan_stream", "local_grammar", "llm_infer", "hybrid_infer"]
