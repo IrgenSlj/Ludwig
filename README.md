@@ -4,8 +4,10 @@
 verifies it is correct and fabricable, and emits drawings, fabrication files, and presentations — all
 re-promptable. Named for Mies van der Rohe. *Less is more.*
 
-> **Status:** re-foundation in progress (P0 — the spine). Ludwig was previously a mesh render tool;
-> it is now a precision CAD/BIM compiler. The mesh era is preserved at the git tag `mesh-era-m4`.
+> **Status:** the interaction-core rebuild (R1–R34, see [docs/REBUILD_ROADMAP.md](docs/REBUILD_ROADMAP.md))
+> is complete — live direct manipulation, a deterministic fabricability critic, 2D sketch + true
+> sections, op-based agent edits, and STEP/IFC/DXF/shop-drawing backends, behind a token-free public
+> demo. Ludwig was previously a mesh render tool; the mesh era is preserved at the git tag `mesh-era-m4`.
 
 ## The idea
 
@@ -35,8 +37,9 @@ structurally cannot offer.
 
 ## Architecture
 
-See **[BRIEF.md](BRIEF.md)** for the founding architecture, first principles, and the P0–P4 roadmap;
-**[docs/ROADMAP_SESSIONS.md](docs/ROADMAP_SESSIONS.md)** for the session-by-session plan;
+See **[BRIEF.md](BRIEF.md)** for the founding architecture and first principles;
+**[docs/REBUILD_ROADMAP.md](docs/REBUILD_ROADMAP.md)** for the canonical session-by-session plan
+(R1–R34, supersedes the earlier `docs/ROADMAP_SESSIONS.md`);
 **[docs/UX_BRIEF.md](docs/UX_BRIEF.md)** for the desktop UI/UX direction (Phase 3).
 
 ```

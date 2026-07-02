@@ -12,8 +12,9 @@ file. The loop is `generate → verify → repair`. Engine, backends, and critic
 > the truth. See **[BRIEF.md](BRIEF.md)** — the founding architecture & roadmap. Read it first, every session.
 
 ## The plan of record
-**[BRIEF.md](BRIEF.md)** is the spec (architecture, first principles, P0–P4). **[docs/ROADMAP_SESSIONS.md](docs/ROADMAP_SESSIONS.md)**
-sequences the work session-by-session. **[docs/UX_BRIEF.md](docs/UX_BRIEF.md)** is the P3 UI/UX seam.
+**[BRIEF.md](BRIEF.md)** is the spec (architecture, first principles, P0–P4). **[docs/REBUILD_ROADMAP.md](docs/REBUILD_ROADMAP.md)**
+is the canonical session-by-session schedule (R1–R34, complete; supersedes the earlier
+`docs/ROADMAP_SESSIONS.md`, kept as historical). **[docs/UX_BRIEF.md](docs/UX_BRIEF.md)** is the P3 UI/UX seam.
 
 ## Phase discipline (non-negotiable)
 - **One session deliverable per branch/PR.** Implement only the current session's slice; do not skip ahead.
