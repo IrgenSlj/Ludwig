@@ -41,9 +41,13 @@ materials:
     fire_rating: "R60"
     cover_to_reinforcement_mm: 40
     reinforcement_class: "B500B"
+    density_kg_m3: 2400        # reinforced precast, nominal
+    price_per_kg: 0.06         # indicative material rate (~€150/m³) — a rough estimate, not a quote
   steel:
     ifc_material: "Steel"
     grade: "S355"
+    density_kg_m3: 7850
+    price_per_kg: 1.20         # indicative material rate for S355 plate/stock — a rough estimate, not a quote
 
 # Maps Element.type -> material key (from materials: above). The IFC backend consults this.
 ifc_material_map:

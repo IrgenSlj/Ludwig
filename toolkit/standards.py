@@ -49,3 +49,11 @@ def drawing() -> dict:
     """The conventioned drawing conventions (sheet, scales, line weights, title block).
     Returns {} if the section is absent so the engine can fall back to built-in defaults."""
     return dict(load().get("drawing", {}) or {})
+
+
+def material_for(element_type: str) -> dict:
+    """The material record for an Element.type (via ifc_material_map → materials), including
+    `density_kg_m3` and `price_per_kg` for a mass/cost estimate. Returns {} if unmapped."""
+    std = load()
+    key = std.get("ifc_material_map", {}).get(element_type)
+    return dict(std.get("materials", {}).get(key, {})) if key else {}

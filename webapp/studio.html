@@ -122,6 +122,11 @@
     background:rgba(255,255,255,.4); font-size:11.5px; line-height:1.5;}
   .verdict .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;}
   .verdict .mono{font-family:var(--mono);}
+  .estimate{margin-top:12px; padding:9px 11px; border:1px solid var(--hair); border-radius:6px; background:rgba(255,255,255,.4);}
+  .estimate .estline{font-size:15px; color:var(--ink);}
+  .estimate .estline b{font-weight:600;}
+  .estimate .estcost{color:var(--accent);}
+  .estimate .estsub{font-size:10.5px; color:var(--muted); font-family:var(--mono); margin-top:3px;}
   .exports{margin-top:14px; border-top:1px solid var(--hair); padding-top:12px;}
   .exhead{font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); margin-bottom:8px;}
   .exhead .exok{color:var(--ok);}
@@ -718,7 +723,22 @@ function buildProps(d) {
           + `${c.message ? " — " + c.message : ""}</div>`).join("");
   }
   props.appendChild(v);
+  const est = buildEstimate(d); if (est) props.appendChild(est);   // mass + indicative material cost
   const ex = buildExports(d); if (ex) props.appendChild(ex);   // the verified fab files, downloadable
+}
+
+// Mass + indicative material cost from the EXACT (holes-subtracted) solid volume — the "what will this
+// weigh and cost to make" a fabricator/buyer asks, computed from standards.yaml density/price. Shown
+// only when the element's type maps to a material (a solid primitive like the demo stair stays out —
+// its simplified geometry would mislead).
+function buildEstimate(d) {
+  const e = d.estimate; if (!e) return null;
+  const wrap = document.createElement("div"); wrap.className = "estimate";
+  const cost = (e.cost != null) ? ` · <span class="estcost">~${e.cost} ${e.currency || ""}</span>` : "";
+  const grade = e.grade ? " " + e.grade : "";
+  wrap.innerHTML = `<div class="estline"><b>${e.mass_kg} kg</b>${cost}</div>`
+    + `<div class="estsub">${e.material}${grade} · ${e.volume_cm3} cm³ · exact B-rep · material rate, not a quote</div>`;
+  return wrap;
 }
 
 // The moat, made tangible: once the critic passes, the derived fabrication files are downloadable

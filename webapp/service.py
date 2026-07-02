@@ -203,6 +203,32 @@ def _try_span_edit(program: str, name: str, old: float, new: float, out: Path) -
     return result
 
 
+def _mass_estimate(el, g) -> Optional[dict]:
+    """Mass (kg) + indicative material cost from the EXACT solid volume × the material's density/price
+    (standards.yaml) — the concrete 'what will this weigh and cost to make' a fabricator/buyer asks. The
+    volume is holes-subtracted (real B-rep), so the figure is honest, not a bbox guess. None if the
+    element type has no material record. The rate is indicative material stock, not a fabrication quote."""
+    from toolkit.standards import material_for
+
+    mat = material_for(getattr(el, "type", "") or "")
+    density = mat.get("density_kg_m3")
+    if not density or getattr(el, "geometry", None) is None:
+        return None
+    try:
+        vol_m3 = g.volume(el.geometry) * 1e-9   # mm³ → m³
+    except Exception:
+        return None
+    mass = vol_m3 * float(density)
+    out = {"volume_cm3": round(vol_m3 * 1e6, 1), "mass_kg": round(mass, 3),
+           "material": mat.get("ifc_material") or "",
+           "grade": mat.get("grade") or mat.get("concrete_strength_class") or ""}
+    price = mat.get("price_per_kg")
+    if price:
+        out["cost"] = round(mass * float(price), 2)
+        out["currency"] = "EUR"
+    return out
+
+
 def _assemble(res, out: Path, on_event=None) -> dict:
     """Turn a LoopResult into a JSON-safe dict: IR stats, critic, render mesh, persisted artifacts.
 
@@ -237,6 +263,7 @@ def _assemble(res, out: Path, on_event=None) -> dict:
         except Exception as e:
             result["mesh_error"] = f"{type(e).__name__}: {e}"
         result["sketch2d"] = _sketch_loop_2d(el, g)   # R34: the solved 2D profile for the 2D view (None if not a sketch)
+        result["estimate"] = _mass_estimate(el, g)     # mass + indicative material cost (verified fabricability)
     result["holes"] = _hole_features(el)               # R13: hole positions, so a picked hole maps to its literal
     # An Assembly's children, each tessellated separately so the viewport can select/highlight one
     # solid at a time — "geometry is the index into the program" for multi-part models.
@@ -309,6 +336,7 @@ def _variant_payload(program, el, crit) -> dict:
                 payload["mesh"] = g.tessellate(el.geometry)
             except Exception:
                 payload["mesh"] = None
+        payload["estimate"] = _mass_estimate(el, g)     # mass + indicative material cost
     # SAME critic serialization as _assemble — element_id + severity travel with each check so the
     # contact sheet can paint Ambient Correctness on every thumbnail.
     payload["critic"] = [

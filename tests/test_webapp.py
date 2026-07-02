@@ -353,6 +353,22 @@ def test_hole_move_re_bores_and_commits_token_free(tmp_path):
     assert service._substitute_hole_pos(prog, (99, 99), (0, 0)) is None           # absent → safe None
 
 
+def test_mass_and_cost_estimate_from_exact_volume(tmp_path):
+    # mass + indicative material cost from the EXACT (holes-subtracted) solid volume × standards
+    # density/price — surfaced in the payload; None for a type with no material record.
+    r = service.adopt_to_result(GOOD, out=tmp_path)
+    e = r["estimate"]
+    assert e["material"] == "Steel" and e["grade"] == "S355"
+    assert e["mass_kg"] == pytest.approx(0.145, abs=0.01)          # 80×40×6 steel less two M8 holes
+    assert e["cost"] == pytest.approx(e["mass_kg"] * 1.20, abs=0.01) and e["currency"] == "EUR"
+    assert e["volume_cm3"] < 80.0 * 40.0 * 6.0 / 1000.0            # holes subtracted → below the bbox volume
+
+    # a precast panel is priced by its (much larger) concrete mass
+    from webapp import gallery
+    p = service.adopt_to_result(gallery.program_for("precast_panel"), out=tmp_path)
+    assert p["estimate"]["material"] == "PrecastConcrete" and p["estimate"]["mass_kg"] > 1000
+
+
 def test_adopt_writes_the_downloadable_fabrication_export_set(tmp_path):
     # The studio's "Fabrication exports" chips link to these files under /out/ — the verified-fabricability
     # payoff made tangible. On a passing critic the full set is written to disk; the fab gate withholds

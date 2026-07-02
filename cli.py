@@ -396,6 +396,16 @@ def selftest() -> int:
                   abs(_rl - 80) <= tol and abs(_rw - 60) <= tol and abs(_rh - 100) <= tol,
                   f"reimport {_rl:.1f}×{_rw:.1f}×{_rh:.1f}")
 
+        # Mass + material cost from the EXACT (holes-subtracted) solid volume × standards density/price —
+        # the "what will this weigh and cost to make" a fabricator/buyer asks. Only when the type maps to
+        # a material (a solid primitive like the stair stays out — its simplified geometry would mislead).
+        from webapp.service import _mass_estimate as _mest
+        _be = _mest(bracket, g)
+        check("estimate: bracket mass from exact B-rep volume × steel density + a material cost",
+              _be is not None and abs(_be["mass_kg"] - 0.145) < 0.01 and _be["material"] == "Steel"
+              and _be["grade"] == "S355" and _be.get("cost") is not None,
+              f"{_be.get('mass_kg')} kg · {_be.get('cost')} {_be.get('currency')}")
+
         # R29 — section op + void-aware cut profile. A YZ cut keeps half the bracket (40×40×6) with one
         # outer loop (240 mm²). A horizontal (z) cut shows the plate plan with the two holes as INNER
         # loops — the void-aware case. (A through-hole splits the section rather than nesting; the
