@@ -17,6 +17,15 @@ lockstep), **live cut plane** (R33), the **section drawing backend** (R30 poché
 **sketch DoF critic** (R32). Gate: `--selftest` kernel **57/57** / pure-Python **17/17** · `--eval`
 **15/15 (100%)** · pytest **145**. All browser-verified where interactive.
 
+**Real generative pipeline validated end-to-end (2026-07-02).** With the whole rebuild shipped, a real
+inference run (claude CLI, `cheap`=haiku codegen) on a fresh brief — "90×50×8 steel mounting plate,
+four M6 clearance holes inset 12 mm at the corners" — produced valid toolkit code that built exactly
+(90×50×8, holes at ±33/±13), passed **every** critic (watertight, dims, hole_count=4, min_wall),
+**first-pass, 0 repair rounds**, and emitted STEP/IFC/SVG/shop-DXF/section-DXF. So the generative +
+verify + derive loop works against a live model, not just the mocked tests — the local/BYO-key tier is
+functional. Reproduce: `.venv/bin/python cli.py "<brief>"`. (First-pass geometric pass-rate over the
+frozen set on live codegen: run `cli.py --eval --live` — the [H1] baseline number.)
+
 **R11 (span-identity binding) is obviated by R8 — measured, not assumed.** R11 was scheduled to kill
 the value-collision LLM fallback (a 30×30 square editing `length` moving `width` too). Measured: R8's
 `_try_span_edit` already routes the spacer's `length` 30→45 through the deterministic fast path with
