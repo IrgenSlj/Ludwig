@@ -23,8 +23,16 @@ four M6 clearance holes inset 12 mm at the corners" — produced valid toolkit c
 (90×50×8, holes at ±33/±13), passed **every** critic (watertight, dims, hole_count=4, min_wall),
 **first-pass, 0 repair rounds**, and emitted STEP/IFC/SVG/shop-DXF/section-DXF. So the generative +
 verify + derive loop works against a live model, not just the mocked tests — the local/BYO-key tier is
-functional. Reproduce: `.venv/bin/python cli.py "<brief>"`. (First-pass geometric pass-rate over the
-frozen set on live codegen: run `cli.py --eval --live` — the [H1] baseline number.)
+functional. Reproduce: `.venv/bin/python cli.py "<brief>"`.
+
+**First-pass live pass-rate: 60% (9/15)** (`cli.py --eval --live`, haiku codegen, first-pass, no repair)
+— the [H1] baseline, holding at the ~50–60% the due-diligence predicted. The failures are DIAGNOSTIC,
+not random: `stair_flight` and `l_profile` failed because the codegen prompt (`_api_and_standards`) only
+documented box/hole/panel/anchor/place/stack/assembly — it never told the model that `stair()`,
+`cylinder()`, `sketch()/extrude()`, `wall()/opening()` exist, so it couldn't reach for them. The other
+fails (filtered/slotted/chamfered/counterbored) need edge/feature ops with no element-API primitive yet
+(the LLM must fall back to raw `cq`). **Acted on it:** the prompt now documents the full toolkit API
+(incl. a sketch→extrude worked example). Re-measuring — the measurement told us exactly what was missing.
 
 **R11 (span-identity binding) is obviated by R8 — measured, not assumed.** R11 was scheduled to kill
 the value-collision LLM fallback (a 30×30 square editing `length` moving `width` too). Measured: R8's
