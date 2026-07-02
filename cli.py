@@ -182,6 +182,21 @@ def selftest() -> int:
           _summ(_ops[0]).startswith("add box 'bracket'") and "add clearance_hole" in _summ(_ops[1]),
           f"{_summ(_ops[0])} | {_summ(_ops[1])}")
 
+    # R23 — streaming agent runtime: a token-free local grammar turns an instruction into a stream of op
+    # events (op → applied → done), zero LLM; should_cancel halts cleanly. The injectable seam the LLM
+    # planner (R26) plugs into with infer=inference.infer.
+    from agent.runtime import plan_stream as _pstream
+    _st = {"program": 'element = stair("s", rise=170, going=280, width=1000, riser_count=17)\n',
+           "dims": {"rise": 170, "going": 280, "width": 1000, "riser_count": 17}}
+    _evs = list(_pstream("going 320", _st))
+    check("R23: plan_stream streams 'going 320' → op → applied → done (deterministic, token-free)",
+          [e["event"] for e in _evs] == ["op", "applied", "done"]
+          and _evs[0]["op"]["op"] == "SetParam" and _evs[0]["op"]["new"] == 320.0
+          and _evs[-1]["state"]["dims"]["going"] == 320.0,
+          f"{[e['event'] for e in _evs]}")
+    check("R23: plan_stream honours should_cancel (Stop) — zero ops, one 'cancelled'",
+          [e["event"] for e in _pstream("going 320", _st, should_cancel=lambda: True)] == ["cancelled"])
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:

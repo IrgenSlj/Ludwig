@@ -63,6 +63,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/compile_stream":   # live Activity Rail (Server-Sent Events)
             self._compile_stream()
             return
+        if path == "/api/agent_stream":      # streaming agent runtime (R23) — token-free by default
+            self._agent_stream()
+            return
         if path.startswith("/out/"):
             f = (OUT / path[len("/out/"):]).resolve()
             if OUT.resolve() in f.parents and f.exists():  # no path traversal outside out/
@@ -106,6 +109,42 @@ class Handler(BaseHTTPRequestHandler):
                 prompt, candidates=int(q.get("candidates", ["1"])[0]),
                 rounds=int(q.get("rounds", ["2"])[0]),
                 on_event=lambda ev: event({"event": "stage", **ev}))
+            event({"event": "result", "result": result})
+        except Exception as e:
+            event({"event": "error", "fatal": f"{type(e).__name__}: {e}"})
+
+    def _agent_stream(self) -> None:
+        """Stream the agent runtime as SSE (R23). Token-free by default (the local grammar — zero LLM).
+        Query: instruction=<text> + seed=<id> (or program=<validated derivative>). Yields op/applied/
+        done events and a final `result` payload. In DEMO the instruction's numbers are envelope-bounded
+        BEFORE any kernel work, mirroring the /api/preview guard."""
+        import re
+        from urllib.parse import parse_qs, urlparse
+        q = parse_qs(urlparse(self.path).query)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        def event(obj) -> None:
+            try:
+                self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
+                self.wfile.flush()
+            except Exception:
+                pass
+
+        try:
+            instruction = (q.get("instruction", [""])[0] or "").strip()
+            if not instruction:
+                raise ValueError("empty instruction")
+            program = self._program({"seed": q.get("seed", [None])[0], "program": q.get("program", [None])[0]})
+            if DEMO:  # bound every number in the instruction before it can reach OCCT tessellation
+                from webapp import safety
+                if not all(safety.value_in_envelope(float(n)) for n in re.findall(r"-?\d+(?:\.\d+)?", instruction)):
+                    raise PermissionError("a value in that request is out of range for the demo.")
+            from webapp.service import agent_stream
+            result = agent_stream(instruction, program, on_event=event)
             event({"event": "result", "result": result})
         except Exception as e:
             event({"event": "error", "fatal": f"{type(e).__name__}: {e}"})

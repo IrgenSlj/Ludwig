@@ -74,6 +74,25 @@ def test_parse_plan_validates_and_rejects_never_execs():
         parse_plan([{"op": "SetParam", "name": "h"}])                # missing required old/new
 
 
+def test_plan_stream_is_deterministic_token_free_and_cancellable():
+    # R23: the streaming agent runtime — a local grammar turns an instruction into op events, no LLM.
+    from agent.runtime import local_grammar, plan_stream
+    state = {"program": 'element = box("bracket", 80, 40, 6)\n', "dims": {"length": 80, "width": 40, "height": 6}}
+
+    evs = list(plan_stream("make the height 22", state))
+    assert [e["event"] for e in evs] == ["op", "applied", "done"]
+    assert evs[0]["op"] == {"op": "SetParam", "name": "height", "old": 6.0, "new": 22.0}
+    assert evs[-1]["state"]["program"] == 'element = box("bracket", 80, 40, 22)\n'   # folded into state
+
+    # should_cancel halts before any op (R25's Stop contract)
+    assert [e["event"] for e in plan_stream("height 22", state, should_cancel=lambda: True)] == ["cancelled"]
+    # an unrecognised instruction streams nothing but a clean done
+    assert [e["event"] for e in plan_stream("hello", state)] == ["done"]
+    # injectable infer: the same seam the LLM planner uses
+    fixed = lambda instr, st: local_grammar("width 52", st)
+    assert list(plan_stream("anything", state, infer=fixed))[0]["op"]["name"] == "width"
+
+
 def test_loop_plan_parses_a_mocked_inference_reply(monkeypatch):
     # R16: loop.plan asks the model for JSON ops and returns a validated Plan — one inference call,
     # the reply parsed as DATA (never exec'd). Mocked inference → no tokens.

@@ -428,6 +428,35 @@ def build_from_ops(program: str, ops_json, *, out: Optional[Path] = None) -> dic
     return build_to_result(program, parse_plan(ops_json), out=out)
 
 
+def agent_stream(instruction: str, program: str, *, on_event=None, should_cancel=None) -> dict:
+    """Run the streaming agent runtime (R23) over a program and return the final geometry payload
+    (_variant_payload shape). Each op/applied/done event mirrors to `on_event` for a live agent lane;
+    the default planner is the deterministic local grammar (zero tokens). No files are written — the
+    stream ends with the re-executed solid + critic, and the human adopts/builds to persist artifacts."""
+    from agent.loop import Brief, execute, verify
+    from agent.runtime import plan_stream
+
+    el, _ = execute(program)
+    dims = {d["name"]: d["value"] for d in _dims(el.manifest)} if el is not None else {}
+    state = {"program": program, "dims": dims}
+
+    final, applied = state, []
+    for ev in plan_stream(instruction, state, on_event=on_event, should_cancel=should_cancel):
+        if ev.get("event") == "applied":
+            applied.append(ev["op"])
+        elif ev.get("event") == "done":
+            final = ev.get("state", state)
+
+    new_program = final.get("program", program)
+    el2, err = execute(new_program)
+    crit = verify(el2, Brief(prompt="")) if el2 is not None else None
+    payload = _variant_payload(new_program, el2, crit)
+    payload["program"] = new_program
+    payload["applied"] = applied
+    payload["ok"] = el2 is not None and err is None
+    return payload
+
+
 def section_to_result(program: str, *, axis: Optional[str] = None,
                       offset: Optional[float] = None) -> dict:
     """A live, re-promptable cut plane (R33). Execute the program token-free, slice the solid at the
@@ -808,5 +837,5 @@ def _preview_via_substitution(program: str, name: str, old: float, new: float, t
 
 
 __all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
-           "build_to_result", "plan_to_result", "build_from_ops", "section_to_result",
+           "build_to_result", "plan_to_result", "build_from_ops", "agent_stream", "section_to_result",
            "preview_hole_move", "hole_move_to_result", "preview_edit", "_variant_payload", "OUT"]
