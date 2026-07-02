@@ -47,9 +47,10 @@ Render/Railway free tiers cap at 0.5 GB RAM — too tight for the OCP import + t
 Fly.io `shared-cpu-1x@1GB` (~$5.78/mo always-on, or scale-to-zero) is a fine middle option.
 
 ## Notes / follow-ups
-- **Artifacts (`out/`)** are written per edit and served from `/out/`. Concurrent visitors editing the
-  same seed share a filename (e.g. `bracket.step`) — last-write-wins, fine for a demo; namespace by
-  session before heavy traffic.
+- **Artifacts (`out/`)** are written per edit and served from `/out/`, **namespaced per browser session**
+  (`out/<session>/…`): concurrent visitors editing the same seed no longer clobber each other's
+  `bracket.step`, and download links resolve to the caller's own dir (traversal-guarded). Sessions
+  accumulate on disk — add a periodic sweep of `out/*/` (or an ephemeral tmpfs) before long-running boxes.
 - **Generation stays off in public.** The wow ("I dragged it → got a fab-ready STEP") needs no AI; the
   generative "describe a part" is the reason to run locally / sign up — keep it that way (BYO inference).
 - **WASM path (later):** OCP.wasm + Pyodide can move the kernel into the browser (→ truly $0 server),

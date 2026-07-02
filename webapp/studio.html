@@ -623,6 +623,9 @@ function showGeometry(d, opts) {
 
 /* ===================== window.LUDWIG seam (token-free test injection) ===================== */
 const STATE = { program: null, payload: null, sketch2d: null, seedId: null };
+// A per-browser session id so concurrent visitors don't clobber each other's out/<id>.step on the shared
+// public URL — this session's artifacts land in out/<SESSION>/ and its export links point there.
+const SESSION = ((crypto && crypto.randomUUID && crypto.randomUUID()) || Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/gi, "").slice(0, 16);
 let REP = "3d";   // "3d" = the extrude · "2d" = the constrained sketch (R34)
 
 function render(payload) {
@@ -760,12 +763,12 @@ function buildExports(d) {
   const wrap = document.createElement("div"); wrap.className = "exports";
   wrap.innerHTML = `<div class="exhead">Fabrication exports · <span class="exok">verified</span></div>`
     + `<div class="exgrid">` + files.map(([label, file, desc]) =>
-        `<a class="exchip" href="/out/${file}" download title="${desc}">`
+        `<a class="exchip" href="/out/${SESSION}/${file}" download title="${desc}">`
         + `<b>${label}</b><span>${file.split(".").pop().toUpperCase()}</span></a>`).join("") + `</div>`;
   if (a.drawing_preview) {                                     // the conventioned shop drawing — the moat, visible
-    wrap.innerHTML += `<a class="exdraw" href="/out/${a.drawing_preview}" target="_blank" rel="noopener"`
+    wrap.innerHTML += `<a class="exdraw" href="/out/${SESSION}/${a.drawing_preview}" target="_blank" rel="noopener"`
       + ` title="conventioned multi-view shop drawing — click to open full size">`
-      + `<img src="/out/${a.drawing_preview}?v=${Date.now()}" alt="shop drawing preview">`
+      + `<img src="/out/${SESSION}/${a.drawing_preview}?v=${Date.now()}" alt="shop drawing preview">`
       + `<div class="cap">conventioned shop drawing · third-angle · click to enlarge</div></a>`;
   }
   return wrap;
@@ -805,7 +808,7 @@ async function applyEdit(instruction, param) {
   document.querySelectorAll("#props input").forEach(i => i.disabled = true);
   try {
     const r = await fetch("/api/edit", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ program: STATE.program, instruction, param }) });
+      body: JSON.stringify({ program: STATE.program, instruction, param, session: SESSION }) });
     const d = await r.json();
     if (d.fatal) { log("sys", "edit failed: " + d.fatal, "err"); return; }
     render(d);
@@ -1003,7 +1006,7 @@ function renderGallery(seeds){
 async function adoptSeed(id, title){
   try {
     const d = await fetch("/api/adopt", { method:"POST", headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ seed: id }) }).then(r => r.json());
+      body: JSON.stringify({ seed: id, session: SESSION }) }).then(r => r.json());
     if(d.fatal){ log("sys", "load failed: " + d.fatal, "err"); return; }
     STATE.seedId = id;                                  // R24: the trusted seed for the agent stream
     render(d);
@@ -1020,7 +1023,7 @@ async function bootModel(){
   const first = SEEDS[0];
   try {
     const resp = await fetch("/api/adopt", { method:"POST", headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify(first ? { seed: first.id } : { program: SEED_FALLBACK }) });
+      body: JSON.stringify(first ? { seed: first.id, session: SESSION } : { program: SEED_FALLBACK, session: SESSION }) });
     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const d = await resp.json();
     if(d.fatal) throw new Error(d.fatal);
@@ -1075,7 +1078,7 @@ async function buildPlan(){
   if(!PENDING){ log("sys", "nothing to build — describe a change in Plan mode first.", "warn"); return; }
   try{
     const r = await fetch("/api/build", { method:"POST", headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ program: PENDING.program, ops: PENDING.ops }) });
+      body: JSON.stringify({ program: PENDING.program, ops: PENDING.ops, session: SESSION }) });
     const d = await r.json();
     if(d.fatal){ log("sys", "build failed: " + d.fatal, "err"); return; }
     render(d);

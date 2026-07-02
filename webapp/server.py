@@ -187,6 +187,15 @@ class Handler(BaseHTTPRequestHandler):
             if not safety.value_in_envelope(param.get(key)):
                 raise PermissionError("parameter value out of range — keep edits within a sane size.")
 
+    def _out_dir(self, req: dict) -> Path:
+        """The artifact directory for THIS request. Concurrent visitors on the shared public URL must not
+        clobber each other's `out/<id>.step` (last-write-wins → you could download someone else's file), so
+        each browser sends a random `session` and its artifacts land in out/<session>/. The token is
+        sanitised to [a-z0-9] (no traversal); a missing/blank one falls back to the shared OUT (local use)."""
+        raw = str(req.get("session") or "")
+        safe = "".join(c for c in raw if c.isalnum())[:32]
+        return (OUT / safe) if safe else OUT
+
     def do_POST(self) -> None:
         if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt",
                              "/api/preview", "/api/section", "/api/hole", "/api/plan", "/api/build"):
@@ -215,7 +224,8 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 if self.path == "/api/build":      # build a client-reviewed plan (validated ops, never exec'd)
                     from webapp.service import build_from_ops
-                    result = build_from_ops(req.get("program") or "", req.get("ops") or [])
+                    result = build_from_ops(req.get("program") or "", req.get("ops") or [],
+                                            out=self._out_dir(req))
                     self._send(200, json.dumps(result).encode(), "application/json")
                     return
                 prompt = (req.get("prompt") or "").strip()
@@ -230,7 +240,7 @@ class Handler(BaseHTTPRequestHandler):
                     result = explore_to_result(prompt, n=int(req.get("n") or 3))
             elif self.path == "/api/adopt":  # load a seed (or re-execute a chosen variant) — token-free
                 from webapp.service import adopt_to_result
-                result = adopt_to_result(self._program(req))
+                result = adopt_to_result(self._program(req), out=self._out_dir(req))
             elif self.path == "/api/preview":  # live direct-manipulation: geometry-only, no files/backends
                 program = self._program(req)
                 param = req.get("param") or {}
@@ -282,7 +292,8 @@ class Handler(BaseHTTPRequestHandler):
                 from webapp.service import edit_to_result
                 result = edit_to_result(program, instruction, param=param,
                                         rounds=min(int(req.get("rounds", 1)), 5),  # cap the repair-loop amplifier
-                                        allow_llm=not DEMO)   # demo: never exec model-authored code
+                                        allow_llm=not DEMO,   # demo: never exec model-authored code
+                                        out=self._out_dir(req))
             self._send(200, json.dumps(result).encode(), "application/json")
         except Exception as e:  # never 500 silently — the UI shows the reason
             self._send(200, json.dumps({"fatal": f"{type(e).__name__}: {e}"}).encode(),
