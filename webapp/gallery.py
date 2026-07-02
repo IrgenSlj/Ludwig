@@ -39,6 +39,12 @@ SEEDS = [
                  'clearance_hole(element, "M10", (0, 37.5))\n'
                  'clearance_hole(element, "M10", (-37.5, 0))\n'
                  'clearance_hole(element, "M10", (0, -37.5))\n')},
+    {"id": "machined_plate", "title": "Machined plate", "blurb": "100 × 60 × 12 · filleted edges · 2 counterbores · a slot",
+     "program": ('element = box("machined_plate", 100, 60, 12)\n'
+                 'fillet(element, 4)\n'
+                 'counterbore(element, 6.6, 11, 6, (-35, 0))\n'
+                 'counterbore(element, 6.6, 11, 6, (35, 0))\n'
+                 'slot(element, 10, 30, (0, 0))\n')},
     {"id": "precast_panel", "title": "Precast panel (BIM)",
      "blurb": "3000 × 2000 × 200 mm · two M16 cast-in anchors",
      "program": ('element = panel("precast_panel", 3000, 2000, 200)\n'
