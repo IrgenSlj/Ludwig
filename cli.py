@@ -679,6 +679,17 @@ def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2) -> int:
                 label = _LABELS.get(name, name)
                 parts.append(f"{label} {value}")
         print(" · ".join(parts))
+        # The registry swallows a per-backend failure so one bad view can't kill the others — but a
+        # FABRICATION file (STEP/IFC) that failed to write while the critic passed is a real failure the
+        # exit code must report (else a script sees 0 and assumes the .step exists). Derived views (SVG/
+        # section/shop drawing) failing stay non-fatal.
+        from backends import fabrication as _fab
+        fab_failed = sorted(n.removesuffix("_error") for n in artifacts
+                            if n.endswith("_error") and n.removesuffix("_error") in {b.name for b in _fab()})
+        if fab_failed:
+            print(f"FABRICATION INCOMPLETE — {', '.join(fab_failed)} failed to export (critic passed, "
+                  "but the fab file was not written)")
+            return 1
         return 0
     print(f"\nwrote recipe {recipe} · STEP withheld — critic not all-pass (fabrication gate)")
     return 1
