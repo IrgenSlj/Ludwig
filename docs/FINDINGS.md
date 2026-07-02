@@ -34,12 +34,14 @@ not prompt-fiddling vibes. (`cli.py --eval --live`, haiku codegen, first-pass, n
 | +prompt | **67%** (10/15) | `_api_and_standards` now documents the FULL toolkit (it had never told the model `stair()`/`cylinder()`/`sketch()`/`wall()` exist) | `stair_flight` |
 | +feature ops | **93%** (14/15) | promoted the oracle's proven cq methods to element-API ops: `fillet`/`chamfer`/`slot`/`counterbore`, documented | `slotted_plate`, `chamfered_spacer`, `counterbored_plate`, `l_profile` |
 
-The one remaining fail — `filtered_bracket` (a 5 mm fillet on all top edges + two holes) — is the genuine
-edge-op fragility the BRIEF warns about: fillet-vs-hole edge-selection order is brittle (the oracle
-fillets the box *before* drilling; the model doesn't always). A capability gap it is NOT — the op exists
-and the oracle builds it. **The load-bearing lesson:** the frozen eval's failures are a precise
-capability to-do list; each fail named exactly the op the model couldn't reach for, and adding it (not
-tuning the prompt) is what moved the number. Reproduce: `cli.py --eval --live`.
+The one remaining fail — `filtered_bracket` (a 5 mm fillet on all top edges + two holes) — is NOT an op
+or capability gap: the `fillet` op builds a valid solid whether the holes are drilled before OR after
+it (measured directly — `faces('>Z').fillet(5)` on a pre-drilled plate is valid, so the fillet-order
+"fragility" I first *assumed* here was wrong). It's single-brief first-pass variance from the model at
+`n=1` — the honest ~7% an LLM misses on one run. **The load-bearing lesson:** the frozen eval's failures
+are a precise capability to-do list; each fail named exactly the op the model couldn't reach for, and
+adding the capability (not tuning the prompt) is what moved the number 60→93. Reproduce: `cli.py --eval
+--live` (n=1/brief, so ±1 brief is noise).
 
 **R11 (span-identity binding) is obviated by R8 — measured, not assumed.** R11 was scheduled to kill
 the value-collision LLM fallback (a 30×30 square editing `length` moving `width` too). Measured: R8's
