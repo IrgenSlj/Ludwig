@@ -19,8 +19,14 @@ generator** that feeds the rest of the chain (Xometry/SendCutSend quotes, precas
   text→geometry inside Fusion; Zoo/Adam/Leo are funded. Betting on "better text→CAD" is betting against
   incumbents' distribution + owned kernels.
 - **The durable moat is trust.** A deterministic critic + `standards.yaml` (M8 → ⌀9.0, AD-K, min-wall,
-  anchor cover) + exact B-rep *guarantees the output is fabricable and shop-ready*. That's the thing
-  buyers can't get from an AI that hallucinates geometry, and that incumbents don't auto-provide.
+  anchor cover) + exact B-rep *guarantees the output is fabricable and shop-ready* — with the numbers a
+  buyer needs (verified **mass + material cost** from the real, holes-subtracted volume) and the sheet a
+  shop builds from (conventioned, dimensioned drawing + section). That's the thing buyers can't get from
+  an AI that hallucinates geometry, and that incumbents don't auto-provide.
+- **Direct manipulation without a kernel round-trip.** Every edit — slider, face-drag, hole-drag, sketch
+  re-solve, agent op — runs on the no-LLM evaluator (instant, $0), and each agent op is *validated data,
+  never exec'd code* (the Op-API): reviewable, invertible, injection-safe. A safer, cheaper edit loop
+  than exec'ing model-authored CAD scripts.
 - **BYO-inference = structurally low COGS.** Users bring their own AI key; we never resell tokens. The
   whole edit→verify→derive loop is no-LLM (R3–R9), so the product — and its public demo — is ~free to run.
 
@@ -37,8 +43,13 @@ generator** that feeds the rest of the chain (Xometry/SendCutSend quotes, precas
    is the opening. Bigger deals, longer cycle — pursue after 1–2 land.
 
 ## Product surfaces (the funnel)
-- **Free public demo** (`LUDWIG_DEMO=1`): load a part, drag dimensions, download a verified STEP — no
-  signup, no AI, ~$0/visitor. *This is the distribution engine* (see below).
+- **Free public demo** (`LUDWIG_DEMO=1`): a real CAD workspace, no signup, no AI, ~$0/visitor. Load a
+  gallery part (bracket, flange, precast panel, sketched L-section, …); **drag a dimension, grab a 3D
+  face and pull it, or slide a hole**; **type "height 20"** and a token-free agent applies it live; take
+  a **live section cut**; on a sketch part, edit the constrained 2D and watch 2D+3D re-solve together;
+  read the **mass + material cost** off the exact solid; **download the verified STEP / IFC / shop-DXF /
+  section-DXF** and see the conventioned shop drawing inline — every one of these token-free. *This is
+  the distribution engine* (see below).
 - **Local / open-core, BYO key**: the full thing incl. generation ("describe a part"). Open-core builds
   trust + a contributor moat on the substrate we don't want forked out from under us.
 - **Hosted Pro / Team** (the paid tier): cloud workspace, part/version library, shared standards.yaml,
@@ -57,7 +68,8 @@ integrators who want "verified DXF/STEP as a service." Free demo + local BYO as 
 
 ## Distribution / GTM motion
 1. **Demo-led.** Ship the free demo (done — `Dockerfile` + `DEPLOY.md`, Cloud Run ~$0/mo). One sharable
-   URL: "drag this bracket, download a fab-ready STEP." It proves the magic with zero cost/risk.
+   URL: "pull this flange to size, section it, read its mass + cost, download a fab-ready STEP + shop
+   drawing — free, in your browser, no signup." It proves the magic with zero cost/risk.
 2. **Wedge content.** Side-by-side "AI-CAD gives you a pretty mesh; Ludwig gives you a DFM-verified STEP +
    dimensioned DXF." Post where the ICP lives (r/MechanicalEngineering, hardware/maker, precast forums).
 3. **5–10 design partners** from ICP #1: real parts, measure time saved vs their CAD + drawing workflow.
