@@ -19,10 +19,22 @@ from __future__ import annotations
 _DEFAULT = {"mode": "auto", "param_edit": "auto", "structural": "confirm", "export": "confirm"}
 _MODES = ("auto", "plan", "locked")
 
+# A live mode override the Studio's mode-dial sets over HTTP (per-daemon; None → use the standards value).
+# It only overrides `mode` (auto/plan/locked); the per-class rules stay policy in standards.yaml.
+_RUNTIME_MODE: str | None = None
+
+
+def set_mode(mode: str | None) -> str:
+    """Set (or clear, with None) the live mode override; returns the effective mode. Rejects garbage."""
+    global _RUNTIME_MODE
+    _RUNTIME_MODE = mode if mode in _MODES else None
+    return policy()["mode"]
+
 
 def policy() -> dict:
     """The effective policy: standards.yaml's `permissions` block merged over the defaults (unknown keys
-    ignored). Never raises — a broken/absent standards file yields the permissive default."""
+    ignored), with `mode` overridden by the live dial setting if one is active. Never raises — a
+    broken/absent standards file yields the permissive default."""
     try:
         from toolkit.standards import load
         block = (load() or {}).get("permissions") or {}
@@ -31,6 +43,8 @@ def policy() -> dict:
     merged = {**_DEFAULT, **{k: v for k, v in block.items() if k in _DEFAULT}}
     if merged["mode"] not in _MODES:
         merged["mode"] = "auto"
+    if _RUNTIME_MODE in _MODES:
+        merged["mode"] = _RUNTIME_MODE
     return merged
 
 

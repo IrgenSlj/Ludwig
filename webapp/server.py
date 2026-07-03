@@ -92,6 +92,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(service.stamp({"demo": DEMO, "seeds": gallery.listing()})).encode(),
                        "application/json")
             return
+        if path == "/api/permissions":   # the mode-dial reads the effective policy (A3)
+            from agent import permissions
+            from webapp import service
+            self._send(200, json.dumps(service.stamp({"policy": permissions.policy()})).encode(),
+                       "application/json")
+            return
         if path == "/api/compile_stream":   # live Activity Rail (Server-Sent Events)
             self._compile_stream()
             return
@@ -246,6 +252,18 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(service.stamp({"ok": True})).encode(), "application/json")
             # shutdown() must not run in this handler thread (it would deadlock serve_forever) — off-thread it
             threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
+        if self.path == "/api/permissions":   # the mode-dial sets the live auto/plan/locked override (A3)
+            from agent import permissions
+            from webapp import service
+            try:
+                n = int(self.headers.get("Content-Length", 0) or 0)
+                body = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            except (ValueError, TypeError):
+                body = {}
+            eff = permissions.set_mode(body.get("mode"))
+            self._send(200, json.dumps(service.stamp({"mode": eff, "policy": permissions.policy()})).encode(),
+                       "application/json")
             return
         if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt",
                              "/api/preview", "/api/section", "/api/hole", "/api/plan", "/api/build"):

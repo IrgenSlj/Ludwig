@@ -96,6 +96,10 @@
   .icon-btn{ display:flex; align-items:center; justify-content:center; width:30px; height:28px;
     border:1px solid var(--hairline); border-radius:6px; color:var(--ink2); font-size:13px; }
   .icon-btn:hover{ border-color:var(--hairline); background:var(--surface2); }
+  .dial{ display:flex; align-items:center; gap:7px; height:28px; padding:0 10px; border:1px solid var(--hairline);
+    border-radius:6px; color:var(--ink); font-family:var(--mono); font-size:10px; letter-spacing:.1em; }
+  .dial:hover{ background:var(--surface2); }
+  .dial #perm-glyph{ font-size:11px; color:var(--ink2); }
 
   /* ---------- verifier readout ---------- */
   .verifier{ position:absolute; top:58px; left:16px; z-index:18; display:flex; flex-direction:column;
@@ -266,7 +270,9 @@
       <!-- v2: pack indicator awaits A8–A9 (pack loader) -->
     </div>
     <div class="tb-right">
-      <!-- v2: permission mode-dial awaits A3 (standards.yaml permissions) -->
+      <!-- permission mode-dial (A3) — agent authority; P cycles auto → plan → locked -->
+      <button class="dial" id="perm-dial" title="agent authority — P cycles (auto · plan · locked)">
+        <span id="perm-glyph">◉</span><span id="perm-mode">AUTO</span></button>
       <span class="units">mm · Z-up</span>
       <button class="icon-btn" id="theme" title="light / dark">☾</button>
     </div>
@@ -574,6 +580,7 @@ async function pumpHole(){
 }
 async function commitHole(from, to){
   if(from[0]===to[0] && from[1]===to[1]) return;
+  if(window.__ludwigLocked && window.__ludwigLocked()) return;   // A3: read-only in Locked
   log("you", `move hole (${from}) → (${to})`);
   try{
     const r = await fetch("/api/hole", { method:"POST", headers:{ "Content-Type":"application/json" },
@@ -865,6 +872,7 @@ async function pumpPreview() {
 }
 async function applyEdit(instruction, param) {
   if (!STATE.program) return;
+  if (window.__ludwigLocked && window.__ludwigLocked()) return;   // A3: read-only in Locked
   log("you", instruction);
   document.querySelectorAll("#props input").forEach(i => i.disabled = true);
   try {
@@ -1124,9 +1132,10 @@ function setCam(which){
    exec'd) you can read before committing; in BUILD mode the pending plan is applied through the fab
    gate. Generation is off in the public demo (the endpoints return a clear notice). */
 let PENDING = null;
-// v2: no permission dial yet (it lands in A3) — default to auto-apply (Build). The real permission
-// mode will gate this once standards.yaml permissions + the mode-dial exist.
-const agentIsPlan = () => false;
+// A3: the permission mode-dial governs the agent stream — 'plan' holds each result behind Accept/Discard
+// chips; 'auto' streams live; 'locked' is blocked upstream (__ludwigLocked). Direct manipulation
+// (sliders/face-drag) stays live in auto AND plan — only 'locked' freezes your own hand.
+const agentIsPlan = () => (typeof PERM !== "undefined" && PERM.mode === "plan");
 async function proposePlan(instruction){
   try{
     const r = await fetch("/api/plan", { method:"POST", headers:{ "Content-Type":"application/json" },
@@ -1213,6 +1222,7 @@ function runCommand(raw){
     log("sys","describe a parametric change (e.g. 'height 20', 'going 300') → streamed ops · Plan reviews, Build applies · Stop halts.");
     return;
   }
+  if(window.__ludwigLocked && window.__ludwigLocked()) return;   // A3: agent stream is read-only in Locked
   log("you",s);
   const scoped = scopeInstruction(s);                   // R12: scope to the selected element if any
   if(SELECTED && scoped!==s) log("sys", "scoped to '"+SELECTED+"'");
@@ -1232,6 +1242,23 @@ try{ THEME = localStorage.getItem("ludwig-theme")
        || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }catch(_){}
 applyTheme(THEME);
 $("#theme").onclick = ()=>{ THEME = THEME==="dark" ? "light" : "dark"; applyTheme(THEME); };
+
+// permission mode-dial (A3) — cycles auto → plan → locked; the server enforces the same policy on the
+// Op-API, so this governs BOTH the local hands (below) and any agent driving the daemon.
+const PERM = { mode:"auto" };
+const _permGlyph = { auto:"◉", plan:"◐", locked:"◌" };
+function applyPerm(mode){ PERM.mode = mode;
+  const g=$("#perm-glyph"), m=$("#perm-mode"); if(g) g.textContent=_permGlyph[mode]||"◉"; if(m) m.textContent=mode.toUpperCase(); }
+async function setPerm(mode){
+  try{ const r=await fetch("/api/permissions", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({mode}) });
+    const d=await r.json(); applyPerm(d.mode||mode); log("sys","agent authority · "+(d.mode||mode)); }
+  catch(e){ applyPerm(mode); }
+}
+function cyclePerm(){ const o=["auto","plan","locked"]; setPerm(o[(o.indexOf(PERM.mode)+1)%3]); }
+$("#perm-dial").onclick = cyclePerm;
+fetch("/api/permissions").then(r=>r.json()).then(d=>{ if(d.policy&&d.policy.mode) applyPerm(d.policy.mode); }).catch(()=>{});
+// Locked = read-only: refuse a local write with a calm note (the server refuses the Op-API path too).
+window.__ludwigLocked = ()=>{ if(PERM.mode==="locked"){ log("sys","authority is Locked (read-only) — dial to Auto or Plan to edit","warn"); return true; } return false; };
 
 // representation switcher — every option is a REAL engine path (3D · top-ortho · live section · 2D sketch)
 function setRepUI(id){ document.querySelectorAll(".rep").forEach(b=> b.classList.toggle("on", b.id===id)); }
@@ -1264,6 +1291,8 @@ window.addEventListener("keydown", e=>{
   if(meta && e.key.toLowerCase()==="k"){ e.preventDefault(); $("#intent").classList.contains("show") ? closeIntent() : openIntent(); }
   else if(meta && e.key==="/"){ e.preventDefault(); toggleShortcuts(); }
   else if(e.key==="Escape"){ closeIntent(); $("#shortcuts").classList.remove("show"); }
+  else if(e.key.toLowerCase()==="p" && !meta && !$("#intent").classList.contains("show")
+          && !/^(input|textarea)$/i.test((document.activeElement||{}).tagName||"")){ cyclePerm(); }  // A3: P cycles authority
 });
 
 // verifier readout — computed from the REAL critic on every payload (render() calls this hook)
