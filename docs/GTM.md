@@ -75,6 +75,12 @@ integrators who want "verified DXF/STEP as a service." Free demo + local BYO as 
 3. **5–10 design partners** from ICP #1: real parts, measure time saved vs their CAD + drawing workflow.
    Convert to paid Pro pilots; use the verified-output angle as the close.
 4. **Shop/integrator API** once a part library exists: "verified DXF/STEP endpoint" feeding quote/CNC.
+5. **MCP as a distribution channel** (shipped — [docs/MCP.md](MCP.md)). `claude mcp add ludwig` drops
+   Ludwig into every agent harness's tool list — Claude Code, opencode, Claude Desktop, Copilot. The pitch
+   isn't "another text-to-CAD": it's *the verified geometry hand* an agent can trust — ops validated as
+   data (never exec'd), a fab file that never leaves on a failing critic. We build zero agent chassis and
+   ride the harnesses users already run; the demo ("Claude Code designed and exported a critic-verified
+   precast panel through Ludwig") sells itself. Zero Ludwig-side inference when the caller's model drives.
 
 ## 30 / 60 / 90 (to first revenue)
 - **30:** deploy the free demo to a real URL; instrument it (loads, edits, STEP downloads). Land 5

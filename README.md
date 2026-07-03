@@ -66,7 +66,7 @@ python3 cli.py --eval [--live] [--repair]                                   # ge
 
 Point a harness at it: `claude mcp add ludwig -- python3 cli.py mcp` — then `ludwig_compile` /
 `ludwig_verify` / `ludwig_build` / `ludwig_export` (every result carries the critic verdict; export
-refuses on a failing critic).
+refuses on a failing critic). Full guide: **[docs/MCP.md](docs/MCP.md)**.
 
 Compiling needs the OCCT kernel (`cadquery`, `ifcopenshell`) and a `claude`-like CLI on PATH; run through
 the project venv (`./run.sh` knows it). `webapp/` is the Studio — the art-directed viewfinder
