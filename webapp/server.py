@@ -1,9 +1,10 @@
-"""A thin local web frontend onto the real compiler — the first wiring of UI ↔ engine.
+"""The local daemon that serves the Studio and the JSON+SSE contract (docs/CONTRACT.md).
 
-This is NOT the art-directed Tauri shell (that is P3 / `prototype/`). It is the smallest honest
-thing: a browser page where you type a prompt, the *real* loop compiles it, and you see the *real*
-critic verdicts, the *real* HLR drawing, and download the *real* STEP/IFC. It replaces the
-prototype's faked timer-loop with the genuine `webapp.service.compile_to_result`.
+It serves `studio.html` — the **Studio (v2)**: the art-directed viewfinder (full-bleed Stage,
+floating glass panels, ⌘K intent bar) wired to the *real* loop, so you see the *real* critic
+verdicts, the *real* HLR/section drawings, and download the *real* STEP/IFC. The art direction now
+lives in the live app; the old disconnected `prototype/` mock has been retired
+(docs/DESIGN_BRIEF_STUDIO_V2.md). `index.html` remains at `/index.html` as the classic prompt page.
 
 Local-first, BYO inference (it shells out to whatever `claude`-like CLI is on PATH via the existing
 inference seam). Stdlib only — no web framework — so it adds zero dependencies to the core.
@@ -46,14 +47,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
-        if path in ("/", "/index.html"):
-            # In demo, the front door is the Studio (gallery + free direct manipulation). index.html's
-            # prompt-compiler needs inference, which is disabled publicly — don't greet visitors with it.
-            page = "studio.html" if (DEMO and path == "/") else "index.html"
-            self._send(200, (ROOT / page).read_bytes(), "text/html")
-            return
-        if path in ("/studio", "/studio.html"):   # the rebuilt app shell (instant agentic CAD direction)
+        if path in ("/", "/studio", "/studio.html"):   # the Studio (v2) is the single front door
             self._send(200, (ROOT / "studio.html").read_bytes(), "text/html")
+            return
+        if path in ("/index.html", "/compile"):   # the classic prompt-compiler page (kept until the
+            self._send(200, (ROOT / "index.html").read_bytes(), "text/html")   # Studio intent bar absorbs fresh compile
             return
         if path == "/api/gallery":   # trusted seed listing (id/title/blurb) + demo flag; no programs leave
             from webapp import gallery, service

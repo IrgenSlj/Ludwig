@@ -61,8 +61,9 @@ python3 cli.py --eval [--live] [--repair]                                   # ge
 ```
 
 Compiling needs the OCCT kernel (`cadquery`, `ifcopenshell`) and a `claude`-like CLI on PATH; run through
-the project venv (`./run.sh` knows it). `webapp/` is the real UI ↔ engine seam (the [Stage](webapp/README.md),
-sliders, per-element selection); `prototype/` is the art-directed mock, not wired to the engine.
+the project venv (`./run.sh` knows it). `webapp/` is the Studio — the art-directed viewfinder
+([Stage](webapp/README.md), sliders, per-element selection, ⌘K intent bar) wired to the real engine
+(design: [docs/DESIGN_BRIEF_STUDIO_V2.md](docs/DESIGN_BRIEF_STUDIO_V2.md)).
 
 ## License
 

@@ -15,16 +15,17 @@ Needs the OCCT kernel (cadquery/ifcopenshell) and a `claude`-like CLI on PATH fo
 i.e. run it through the project venv (`./run.sh` knows the venv; or `.venv/bin/python cli.py --serve`).
 
 ## What this is / isn't
-- **Is:** the smallest honest UI — one prompt, the real engine, real artifacts. Stdlib only, zero
-  new dependencies; the server is just another *frontend* onto the loop, like the CLI ([H4] — the
-  loop is the truth, frontends/backends are swappable).
-- **Isn't:** the art-directed Stage & Director shell (that is P3 / `../prototype/`, a disconnected
-  three.js mock). This is the vertical "hello world" that proves the wiring; the rich shell builds
-  on top of this seam.
+- **Is:** the real engine behind a real UI. `studio.html` is the **Studio** — the art-directed
+  viewfinder (Stage · Intent Bar · Activity Rail · Point-to-Navigate · Ambient Correctness) wired to
+  the genuine loop and backends. The art direction is now applied to the live app itself; the old
+  disconnected `prototype/` mock has been retired (see `docs/DESIGN_BRIEF_STUDIO_V2.md`).
+- Stdlib only, zero new dependencies; the server is just another *frontend* onto the loop, like the
+  CLI ([H4] — the loop is the truth, frontends/backends are swappable).
 
 ## Files
 | File | What |
 |---|---|
-| `service.py` | `compile_to_result(prompt)` — the one real compile path, returned as JSON-safe data |
-| `server.py`  | stdlib `ThreadingHTTPServer`: `GET /`, `POST /api/compile`, `GET /out/<artifact>` |
-| `index.html` | self-contained UI (no CDN — works offline, unlike the prototype) |
+| `service.py`  | the real compile/edit/build/section paths, returned as JSON-safe data (`docs/CONTRACT.md`) |
+| `server.py`   | stdlib `ThreadingHTTPServer`: serves the Studio + the `/api/*` contract + `/out/<artifact>` |
+| `studio.html` | **the Studio** (v2) — full-bleed Stage, floating glass panels, ⌘K intent bar; offline, no CDN |
+| `index.html`  | the classic single-prompt compiler page (`/index.html`), kept until the intent bar absorbs fresh compile |
