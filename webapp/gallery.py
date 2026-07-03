@@ -94,11 +94,6 @@ SEEDS = [
 _BY_ID = {s["id"]: s for s in SEEDS}
 
 
-def by_id(seed_id: str) -> dict | None:
-    """The full seed (incl. trusted program) for a given id, or None."""
-    return _BY_ID.get(seed_id)
-
-
 def program_for(seed_id: str) -> str | None:
     """The trusted program text for a seed id, or None if unknown."""
     s = _BY_ID.get(seed_id)

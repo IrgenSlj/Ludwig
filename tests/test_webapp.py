@@ -105,6 +105,20 @@ def test_durable_span_edit_of_a_square_needs_no_llm(monkeypatch, tmp_path):
     assert 'box("square", 40, 30, 12)' in r["program"]
 
 
+def test_span_edit_preserves_fractional_value_without_llm(monkeypatch, tmp_path):
+    # Fix: str(int(30.5)) = "30" was truncating a fractional slider value, causing the bbox check to
+    # fail and falling back to the LLM. Now float(new).is_integer() gates int/float formatting.
+    monkeypatch.setattr(inference, "infer",
+                        lambda *a, **k: pytest.fail("LLM called — fractional span edit must be deterministic"))
+    service._GRAPH_CACHE.clear()
+    prog = 'element = box("square", 30, 30, 12)\n'
+    r = service.edit_to_result(prog, "make the length 30.5 mm",
+                               param={"name": "length", "old": 30, "new": 30.5}, out=tmp_path)
+    assert r.get("fast") is True and r.get("passed") is True
+    assert r["bbox"]["length"] == pytest.approx(30.5)
+    assert "30.5" in r["program"]   # fractional preserved, not truncated
+
+
 def test_node_spans_locate_box_extents():
     # the AST span map targets each positional extent of a box independently
     prog = 'element = box("s", 30, 30, 12)\n'

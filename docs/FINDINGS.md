@@ -43,6 +43,13 @@ are a precise capability to-do list; each fail named exactly the op the model co
 adding the capability (not tuning the prompt) is what moved the number 60→93. Reproduce: `cli.py --eval
 --live` (n=1/brief, so ±1 brief is noise).
 
+**Post-repair live pass-rate: 100% (15/15)** — the *deliverable* metric, since the product runs the
+generate→verify→**repair** loop. Measured `cli.py --eval --live --repair` (haiku codegen, opus repair):
+every frozen brief builds a critic-passing solid, including `filtered_bracket` (the lone first-pass
+miss). So first-pass 93% is the model's one-shot reach; 100% is what a user actually gets once the
+repair loop closes the ~7% variance. The whole verified-fabricability thesis — generate, verify with a
+deterministic critic, repair on failure — holds end-to-end against a live model.
+
 **R11 (span-identity binding) is obviated by R8 — measured, not assumed.** R11 was scheduled to kill
 the value-collision LLM fallback (a 30×30 square editing `length` moving `width` too). Measured: R8's
 `_try_span_edit` already routes the spacer's `length` 30→45 through the deterministic fast path with

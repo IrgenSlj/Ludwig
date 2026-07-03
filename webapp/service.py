@@ -39,6 +39,28 @@ def _dims(manifest) -> list[dict]:
     return list(seen.values())
 
 
+def _critic_json(critique) -> list[dict]:
+    """Serialize a Critique to a JSON-safe list of check dicts (the shared wire shape).
+    element_id + severity travel with each check so the UI can paint Ambient Correctness."""
+    return [
+        {"check": c.check, "status": c.status.value, "message": c.message,
+         "element_id": getattr(c, "element_id", None),
+         "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
+        for c in (critique.checks if critique else [])
+    ]
+
+
+def _diff_payload(old_program: str, new_program: str) -> dict:
+    """Compute a unified diff and return {added, removed, text} — the standard diff wire shape."""
+    diff = list(difflib.unified_diff(old_program.splitlines(), new_program.splitlines(),
+                                     lineterm="", n=1))
+    return {
+        "added": sum(1 for ln in diff if ln.startswith("+") and not ln.startswith("+++")),
+        "removed": sum(1 for ln in diff if ln.startswith("-") and not ln.startswith("---")),
+        "text": "\n".join(diff),
+    }
+
+
 # The deterministic text-substitution spine now lives in agent/ops.py (below the web layer, R14);
 # service imports it so the editing primitives have a single owner shared with the Op-API.
 from agent.ops import (  # noqa: E402
@@ -81,8 +103,7 @@ def _try_fast_edit(program: str, name: str, old: float, new: float, out: Path) -
         return None
     res = LoopResult(new_program, el, crit, True, 0, None)
     result = _assemble(res, out)
-    diff = list(difflib.unified_diff(program.splitlines(), new_program.splitlines(), lineterm="", n=1))
-    result["diff"] = {"added": 1, "removed": 1, "text": "\n".join(diff)}
+    result["diff"] = _diff_payload(program, new_program)
     result["fast"] = True
     return result
 
@@ -106,8 +127,7 @@ def _try_sketch_edit(program: str, name: str, old: float, new: float, out: Path)
         return None
     res = LoopResult(new_program, el, crit, True, 0, None)
     result = _assemble(res, out)
-    diff = list(difflib.unified_diff(program.splitlines(), new_program.splitlines(), lineterm="", n=1))
-    result["diff"] = {"added": 1, "removed": 1, "text": "\n".join(diff)}
+    result["diff"] = _diff_payload(program, new_program)
     result["fast"] = True
     return result
 
@@ -162,7 +182,7 @@ def _try_span_edit(program: str, name: str, old: float, new: float, out: Path) -
     if axis is None:
         return None
     entry = _graph_for(program)
-    if entry["graph"] is None or entry["el"] is None or entry["el"].children:
+    if entry["graph"] is None or entry["el"] is None:
         return None
     spans = _node_spans(program)
     targets = [spans[(nid, pname)] for (nid, pname) in _nodes_for_dim(entry["graph"], name, old)
@@ -178,7 +198,10 @@ def _try_span_edit(program: str, name: str, old: float, new: float, out: Path) -
         return None
     orig_bb = g.bbox(orig.geometry)
     lit = program[targets[0][0]:targets[0][1]]
-    txt = str(float(new)) if "." in lit else str(int(new))
+    if "." in lit:
+        txt = str(float(new))
+    else:
+        txt = str(int(new)) if float(new).is_integer() else "%g" % new
     new_program = program
     for a, b in sorted(targets, reverse=True):   # right-to-left so earlier spans stay valid
         new_program = new_program[:a] + txt + new_program[b:]
@@ -194,11 +217,7 @@ def _try_span_edit(program: str, name: str, old: float, new: float, out: Path) -
         return None
     res = LoopResult(new_program, el, crit, True, 0, None)
     result = _assemble(res, out)
-    diff = list(difflib.unified_diff(program.splitlines(), new_program.splitlines(), lineterm="", n=1))
-    result["diff"] = {
-        "added": sum(1 for ln in diff if ln.startswith("+") and not ln.startswith("+++")),
-        "removed": sum(1 for ln in diff if ln.startswith("-") and not ln.startswith("---")),
-        "text": "\n".join(diff)}
+    result["diff"] = _diff_payload(program, new_program)
     result["fast"] = True
     return result
 
@@ -278,12 +297,7 @@ def _assemble(res, out: Path, on_event=None) -> dict:
     result["dims"] = _dims(el.manifest)
     # element_id + severity travel with each check so the UI can paint Ambient Correctness onto the
     # geometry (a WARNING-severity fail is amber/below-spec; an ERROR/CRITICAL fail is red — UX_BRIEF).
-    result["critic"] = [
-        {"check": c.check, "status": c.status.value, "message": c.message,
-         "element_id": getattr(c, "element_id", None),
-         "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
-        for c in (res.critique.checks if res.critique else [])
-    ]
+    result["critic"] = _critic_json(res.critique)
 
     recipe = out / f"{el.id}.py"
     recipe.write_text(res.program + "\n")
@@ -339,12 +353,7 @@ def _variant_payload(program, el, crit) -> dict:
         payload["estimate"] = _mass_estimate(el, g)     # mass + indicative material cost
     # SAME critic serialization as _assemble — element_id + severity travel with each check so the
     # contact sheet can paint Ambient Correctness on every thumbnail.
-    payload["critic"] = [
-        {"check": c.check, "status": c.status.value, "message": c.message,
-         "element_id": getattr(c, "element_id", None),
-         "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
-        for c in (crit.checks if crit else [])
-    ]
+    payload["critic"] = _critic_json(crit)
     return payload
 
 
@@ -416,12 +425,7 @@ def build_to_result(program: str, plan, *, out: Optional[Path] = None) -> dict:
     passed = el is not None and crit is not None and crit.passed
     res = LoopResult(new_program, el, crit, passed, 0, err)
     result = _assemble(res, out)
-    diff = list(difflib.unified_diff(base.splitlines(), new_program.splitlines(), lineterm="", n=1))
-    result["diff"] = {
-        "added": sum(1 for ln in diff if ln.startswith("+") and not ln.startswith("+++")),
-        "removed": sum(1 for ln in diff if ln.startswith("-") and not ln.startswith("---")),
-        "text": "\n".join(diff),
-    }
+    result["diff"] = _diff_payload(base, new_program)
     result["inverse"] = _ops_json(inverse.ops)             # serialized inverse ops for a later undo
     result["built"] = True
     return result
@@ -527,7 +531,7 @@ def section_to_result(program: str, *, axis: Optional[str] = None,
         return {"ok": False, "reason": "empty section (plane misses the solid)", "axis": axis, "offset": offset}
 
     length, width, height = g.bbox(el.geometry)
-    span = {"x": (length, 0), "y": (width, 1), "z": (height, 2)}[axis][0]
+    span = {"x": length, "y": width, "z": height}[axis]
     return {"ok": True, "id": el.id, "type": el.type, "axis": axis, "offset": round(offset, 4),
             "mesh": mesh, "span": round(span, 4),
             "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)}}
@@ -584,12 +588,7 @@ def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = No
     result = _assemble(res, out)
     result["instruction"] = instruction
     result["fast"] = False
-    diff = list(difflib.unified_diff(program.splitlines(), res.program.splitlines(), lineterm="", n=1))
-    result["diff"] = {
-        "added": sum(1 for ln in diff if ln.startswith("+") and not ln.startswith("+++")),
-        "removed": sum(1 for ln in diff if ln.startswith("-") and not ln.startswith("---")),
-        "text": "\n".join(diff),
-    }
+    result["diff"] = _diff_payload(program, res.program)
     return result
 
 
@@ -711,8 +710,7 @@ def hole_move_to_result(program: str, old_xy, new_xy, *, out: Optional[Path] = N
         return {"fatal": "the moved hole fails the critic (off the part / too close to an edge)", "fast": False}
     res = LoopResult(new_program, el, crit, True, 0, None)
     result = _assemble(res, out)
-    diff = list(difflib.unified_diff(program.splitlines(), new_program.splitlines(), lineterm="", n=1))
-    result["diff"] = {"added": 1, "removed": 1, "text": "\n".join(diff)}
+    result["diff"] = _diff_payload(program, new_program)
     result["fast"] = True
     return result
 
@@ -768,11 +766,7 @@ def _preview_via_sketch_resolve(program: str, name: str, old: float, new: float,
         "program": new_program, "dims": _dims(el.manifest), "mesh": mesh, "children": [],
         "sketch2d": _sketch_loop_2d(el, g),
         "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)},
-        "critic": [
-            {"check": c.check, "status": c.status.value, "message": c.message,
-             "element_id": getattr(c, "element_id", None),
-             "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
-            for c in (crit.checks if crit else [])],
+        "critic": _critic_json(crit),
     }
 
 
@@ -813,11 +807,7 @@ def _preview_via_evaluator(entry: dict, nodes, name: str, new: float, tol: float
     return {"ok": True, "id": base.id, "type": base.type, "dims": dims,
             "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)},
             "mesh": mesh, "children": [],
-            "critic": [
-                {"check": c.check, "status": c.status.value, "message": c.message,
-                 "element_id": getattr(c, "element_id", None),
-                 "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
-                for c in (crit.checks if crit else [])],
+            "critic": _critic_json(crit),
             "engine": "evaluator", "rebuilt": sorted(rebuilt)}
 
 
@@ -856,15 +846,10 @@ def _preview_via_substitution(program: str, name: str, old: float, new: float, t
                 child["mesh"] = None
         out["children"].append(child)
     crit = verify(el, Brief(prompt=""))  # so Ambient Correctness repaints live (amber the moment it leaves spec)
-    out["critic"] = [
-        {"check": c.check, "status": c.status.value, "message": c.message,
-         "element_id": getattr(c, "element_id", None),
-         "severity": getattr(getattr(c, "severity", None), "name", "ERROR").lower()}
-        for c in (crit.checks if crit else [])
-    ]
+    out["critic"] = _critic_json(crit)
     return out
 
 
 __all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
            "build_to_result", "plan_to_result", "build_from_ops", "agent_stream", "section_to_result",
-           "preview_hole_move", "hole_move_to_result", "preview_edit", "_variant_payload", "OUT"]
+           "preview_hole_move", "hole_move_to_result", "preview_edit", "OUT"]

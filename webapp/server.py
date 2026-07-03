@@ -81,24 +81,31 @@ class Handler(BaseHTTPRequestHandler):
                 return
         self._send(404, b"not found", "text/plain")
 
-    def _compile_stream(self) -> None:
-        """Stream the compile as Server-Sent Events so the UI paints a live Activity Rail. The loop's
-        on_event fires in THIS handler thread (ThreadingHTTPServer), so writing each event here is safe.
-        Ends with a single `result` event carrying the full payload — identical to /api/compile."""
-        from urllib.parse import parse_qs, urlparse
-        q = parse_qs(urlparse(self.path).query)
+    def _sse_begin(self):
+        """Write SSE response headers and return the emit closure. Call once at the top of a stream
+        handler; use the returned function for every subsequent `data:` write."""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "close")
         self.end_headers()
 
-        def event(obj) -> None:
+        def emit(obj) -> None:
             try:
                 self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
                 self.wfile.flush()
             except Exception:
                 pass
+
+        return emit
+
+    def _compile_stream(self) -> None:
+        """Stream the compile as Server-Sent Events so the UI paints a live Activity Rail. The loop's
+        on_event fires in THIS handler thread (ThreadingHTTPServer), so writing each event here is safe.
+        Ends with a single `result` event carrying the full payload — identical to /api/compile."""
+        from urllib.parse import parse_qs, urlparse
+        q = parse_qs(urlparse(self.path).query)
+        event = self._sse_begin()
 
         try:
             if DEMO:  # the SSE twin of POST /api/compile — same lock: generation needs inference and
@@ -126,18 +133,7 @@ class Handler(BaseHTTPRequestHandler):
         import re
         from urllib.parse import parse_qs, urlparse
         q = parse_qs(urlparse(self.path).query)
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Connection", "close")
-        self.end_headers()
-
-        def event(obj) -> None:
-            try:
-                self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
-                self.wfile.flush()
-            except Exception:
-                pass
+        event = self._sse_begin()
 
         try:
             instruction = (q.get("instruction", [""])[0] or "").strip()
@@ -155,6 +151,13 @@ class Handler(BaseHTTPRequestHandler):
                 from agent.runtime import hybrid_infer
                 infer = hybrid_infer
             result = agent_stream(instruction, program, on_event=event, infer=infer)
+            if DEMO:  # defence-in-depth: re-check the produced program before surfacing it
+                from webapp import gallery, safety
+                final_prog = result.get("program", program)
+                if not safety.within_envelope(final_prog):
+                    raise PermissionError("result program contains out-of-range dimensions.")
+                if not safety.is_safe_derivative(final_prog, gallery.programs()):
+                    raise PermissionError("result program is not a safe derivative of a gallery seed.")
             event({"event": "result", "result": result})
         except Exception as e:
             event({"event": "error", "fatal": f"{type(e).__name__}: {e}"})
