@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ludwig Studio</title>
 <!--
-  Ludwig Studio — the rebuilt app shell (the "instant agentic CAD" direction).
-  Layout: top header (main actions) · large navigable 3D viewport · footer agent+CLI stripe ·
-  two hideable tool rails (2D/3D tools + model tree left, properties right).
-  R1: the viewport shows the REAL compiled B-rep from the engine — it boots by POSTing a vendored
-  bracket seed to /api/adopt (token-free, no LLM) and rendering the genuine tessellated solid via the
-  same mesh path as index.html. Honest empty-stage when there's no geometry. The agent lane + tool
-  palette are stubbed and LABELLED as not-yet-wired (no faked AI). Offline: vendored three.js, no CDN.
-  window.LUDWIG.render(_assemble dict) is the headless seam. Properties/critic become interactive in R5.
+  Ludwig Studio — the v2 viewfinder (Stage · Intent Bar · Activity Rail · Point-to-Navigate ·
+  Ambient Correctness). Full-bleed stage with floating glass panels; ⌘K summons the intent bar.
+  The whole engine layer below (three.js viewport, direct-manipulation, live section/2D, the agent
+  stream, the window.LUDWIG headless seam) is UNCHANGED from the prior shell — only the chrome is new.
+  It boots by POSTing a vendored seed to /api/adopt (token-free) and rendering the real tessellated
+  B-rep. Offline: vendored three.js, no CDN; system font stacks (a humanist grotesque + drafting mono
+  can be vendored later). Deferred v2 surfaces (permission dial · packs · foreign-hand · precedent)
+  are marked at their DOM slots — they land with their engine seams (A3/A8-9/A2-3/A6), never faked.
 -->
 <script type="importmap">
 { "imports": {
@@ -22,286 +22,346 @@
 </script>
 <style>
   :root{
-    --paper:#efece7; --chrome:#e7e3dc; --ink:#1c1a17; --muted:#6e675b; --ink-soft:#322e29;
-    --hair:rgba(28,26,23,.14); --hair2:rgba(28,26,23,.30); --accent:#8a5a2b;
-    --ok:#3a7d6b; --warn:#b07a2b; --fail:#9e3b30;
-    --sans:system-ui,-apple-system,"Inter","Segoe UI",Arial,sans-serif;
-    --mono:"SFMono-Regular","JetBrains Mono","IBM Plex Mono",ui-monospace,Menlo,monospace;
-    --rail-l:248px; --rail-r:272px; --foot:168px;
+    --sans: system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono: "SF Mono","SFMono-Regular",ui-monospace,"IBM Plex Mono",Menlo,monospace;
+    --amber:#C2913B; --red:#B5462E; --teal:#3C8C78;
+    /* compat aliases so the (unchanged) engine JS's inline var(--old) references resolve to v2 colors */
+    --ok:var(--teal); --warn:var(--amber); --fail:var(--red);
+    --muted:var(--ink3); --accent:var(--ink); --ink-soft:var(--ink2);
+    --paper:var(--surface); --chrome:var(--canvas); --hair:var(--hairline); --hair2:var(--hairline);
+  }
+  :root[data-theme="light"]{
+    --canvas:#F2EEE6; --surface:#F7F4ED; --surface2:#ECE7DC;
+    --ink:#262320; --ink2:#6E675B; --ink3:#A39B8C; --hairline:rgba(38,35,30,.16);
+    --hairline2:rgba(38,35,30,.08); --glass:rgba(247,244,237,.86);
+    --amber:#B5852E; --red:#AB4029; --teal:#347B68;
+    --stage:radial-gradient(120% 90% at 50% 6%, #F6F2EA 0%, #EDE8DE 55%, #E2DCD0 100%);
+  }
+  :root[data-theme="dark"]{
+    --canvas:#201D1A; --surface:#272320; --surface2:#1A1714;
+    --ink:#EBE6DC; --ink2:#9B9488; --ink3:#5F594F; --hairline:rgba(235,230,220,.16);
+    --hairline2:rgba(235,230,220,.07); --glass:rgba(39,35,32,.82);
+    --amber:#CE9C45; --red:#C2543B; --teal:#52A88F;
+    --stage:radial-gradient(120% 90% at 50% 6%, #241F1B 0%, #201D1A 55%, #17140F 100%);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;height:100%;}
   body{
-    height:100vh; display:grid; grid-template-rows:46px 1fr var(--foot);
-    background:var(--chrome); color:var(--ink); font-family:var(--sans);
-    font-size:13px; -webkit-font-smoothing:antialiased; overflow:hidden;
+    height:100vh; overflow:hidden; background:var(--canvas); color:var(--ink);
+    font-family:var(--sans); font-size:13px; -webkit-font-smoothing:antialiased;
   }
-  button{font-family:inherit; color:inherit; cursor:pointer;}
+  button{font-family:inherit; color:inherit; cursor:pointer; background:none; border:none;}
+  kbd{font-family:var(--mono); font-size:11px; border:1px solid var(--hairline); border-radius:5px;
+    padding:2px 6px; color:var(--ink); background:var(--surface2);}
+  @keyframes lud-rise{ from{opacity:0; transform:translateY(9px)} to{opacity:1; transform:translateY(0)} }
+  @keyframes lud-spin{ to{ transform:rotate(360deg) } }
+  @keyframes lud-boot{ from{width:8%} to{width:100%} }
+  .lud-scroll::-webkit-scrollbar{ width:7px; height:7px; }
+  .lud-scroll::-webkit-scrollbar-thumb{ background:var(--hairline); border-radius:4px; }
 
-  /* ---------- header ---------- */
-  header{
-    display:flex; align-items:center; gap:6px; padding:0 12px;
-    background:var(--paper); border-bottom:1px solid var(--hair2);
+  /* thin drafting range input */
+  input[type=range]{ -webkit-appearance:none; appearance:none; height:2px; background:var(--hairline);
+    border-radius:0; outline:none; width:100%; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:10px;
+    height:16px; background:var(--ink); border-radius:1px; cursor:ew-resize; }
+  input[type=range]::-moz-range-thumb{ width:10px; height:16px; background:var(--ink); border:none;
+    border-radius:1px; cursor:ew-resize; }
+
+  /* ---------- stage (full-bleed) ---------- */
+  .stage{ position:fixed; inset:0; background:var(--stage); overflow:hidden; }
+  #view{ display:block; width:100%; height:100%; cursor:grab; }
+  .vp-sketch{ position:absolute; inset:0; width:100%; height:100%; }
+  .vp-sketch[hidden]{ display:none; }
+  .vp-sketch .poche{ fill:color-mix(in srgb, var(--ink) 8%, transparent); stroke:var(--ink); stroke-width:1.4; stroke-linejoin:round; }
+  .vp-sketch .vtx{ fill:var(--ink); }
+  .vp-sketch .dimline{ stroke:var(--teal); stroke-width:1; }
+  .vp-sketch .dimtxt{ fill:var(--teal); font:600 11px var(--mono); }
+  .vp-sketch .grid{ stroke:var(--hairline2); stroke-width:1; }
+  .vp-empty{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:16px; text-align:center; pointer-events:none; }
+  .vp-empty[hidden]{ display:none; }
+  .vp-empty .k{ font-family:var(--mono); font-size:11px; letter-spacing:.32em; color:var(--ink3); }
+  .vp-empty .msg{ font-size:28px; font-weight:500; letter-spacing:-.015em; color:var(--ink2);
+    max-width:520px; line-height:1.25; }
+  .vp-empty .hint{ font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink3); }
+
+  /* ---------- top bar ---------- */
+  .topbar{ position:absolute; top:0; left:0; right:0; height:46px; display:flex; align-items:center;
+    justify-content:space-between; padding:0 16px; z-index:20; }
+  .tb-left,.tb-right{ display:flex; align-items:center; gap:12px; }
+  .wordmark{ font-weight:700; font-size:14px; letter-spacing:.34em; padding-left:.34em; }
+  .tb-div{ width:1px; height:14px; background:var(--hairline); }
+  .file{ font-family:var(--mono); font-size:11px; color:var(--ink2); letter-spacing:.04em; }
+  .units{ font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.06em; }
+  .icon-btn{ display:flex; align-items:center; justify-content:center; width:30px; height:28px;
+    border:1px solid var(--hairline); border-radius:6px; color:var(--ink2); font-size:13px; }
+  .icon-btn:hover{ border-color:var(--hairline); background:var(--surface2); }
+
+  /* ---------- verifier readout ---------- */
+  .verifier{ position:absolute; top:58px; left:16px; z-index:18; display:flex; flex-direction:column;
+    gap:6px; animation:lud-rise .4s ease both; }
+  .v-status{ display:flex; align-items:center; gap:8px; padding:7px 11px; background:var(--glass);
+    border:1px solid var(--hairline); border-radius:7px; backdrop-filter:blur(8px);
+    font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--ink); }
+  .v-dot{ width:7px; height:7px; border-radius:50%; background:var(--teal); }
+  .v-counts{ display:flex; gap:6px; }
+  .v-chip{ display:flex; align-items:center; gap:5px; padding:4px 8px; background:var(--glass);
+    border:1px solid var(--hairline); border-radius:6px; font-family:var(--mono); font-size:10px;
+    color:var(--ink2); }
+  .v-chip i{ font-style:normal; font-size:9px; }
+
+  /* ---------- floating glass panels ---------- */
+  .panel{ position:absolute; z-index:16; background:var(--glass); border:1px solid var(--hairline);
+    border-radius:9px; backdrop-filter:blur(10px); display:flex; flex-direction:column; overflow:hidden;
+    animation:lud-rise .35s ease both; }
+  .panel-h{ display:flex; align-items:center; gap:8px; padding:11px 13px; border-bottom:1px solid var(--hairline2);
+    font-family:var(--mono); font-size:10px; letter-spacing:.2em; color:var(--ink2); }
+  .panel-b{ overflow:auto; padding:10px 12px; min-height:0; }
+  .program{ top:150px; left:16px; bottom:96px; width:248px; }
+  .activity{ top:58px; right:16px; bottom:96px; width:258px; }
+  .inspector{ left:280px; bottom:78px; width:300px; max-height:60vh; }
+  .seclbl{ font-family:var(--mono); font-size:9px; letter-spacing:.18em; color:var(--ink3); margin:2px 0 8px; }
+
+  /* gallery (seed picker) */
+  .gallery{ display:flex; flex-direction:column; gap:5px; }
+  .gitem{ display:flex; flex-direction:column; align-items:flex-start; gap:1px; text-align:left;
+    padding:7px 9px; border:1px solid var(--hairline2); border-radius:6px; background:transparent; }
+  .gitem:hover{ border-color:var(--hairline); background:var(--surface2); }
+  .gitem .gt{ font-size:12px; color:var(--ink); font-weight:600; }
+  .gitem .gb{ font-family:var(--mono); font-size:10px; color:var(--ink3); }
+
+  /* program outline (tree) */
+  .tree{ font-family:var(--mono); font-size:11px; }
+  .tree .node{ padding:4px 7px; border-radius:4px; cursor:pointer; display:flex; gap:7px; align-items:center; }
+  .tree .node:hover{ background:var(--surface2); }
+  .tree .node.sel{ background:var(--surface2); box-shadow:inset 2px 0 0 var(--ink); }
+  .tree .ind{ color:var(--ink3); }
+  .tree .dot{ width:6px; height:6px; border-radius:50%; background:var(--teal); flex:none; }
+
+  /* activity rail (log) */
+  .activity .panel-h .spin{ width:9px; height:9px; border:1.5px solid var(--hairline);
+    border-top-color:var(--ink2); border-radius:50%; animation:lud-spin .8s linear infinite; }
+  .activity .panel-h .spin[hidden]{ display:none; }
+  .activity .panel-h .stop{ margin-left:auto; font-family:var(--mono); font-size:9px; letter-spacing:.12em;
+    color:var(--red); border:1px solid var(--hairline); border-radius:5px; padding:2px 7px; }
+  .activity .panel-h .stop[hidden]{ display:none; }
+  .log{ font-family:var(--mono); font-size:11px; line-height:1.55; }
+  .log .ln{ display:flex; gap:8px; padding:2px 0; animation:lud-rise .25s ease both; }
+  .log .who{ flex:none; width:40px; text-transform:uppercase; font-size:9px; letter-spacing:.1em; padding-top:2px; }
+  .log .who.you{ color:var(--ink); } .log .who.sys{ color:var(--ink3); } .log .who.agent{ color:var(--teal); }
+  .log .msg{ color:var(--ink2); white-space:pre-wrap; }
+  .log .msg.ok{ color:var(--teal); } .log .msg.warn{ color:var(--amber); } .log .msg.err{ color:var(--red); }
+  .logchips{ display:flex; align-items:center; gap:6px; padding:4px 0 4px 48px; font-size:11px; color:var(--ink3); }
+  .logchips .chip{ font:inherit; padding:2px 10px; border:1px solid var(--hairline); border-radius:11px; background:transparent; }
+  .logchips .chip:hover{ border-color:var(--ink3); }
+  .logchips .chip.ok{ color:var(--teal); border-color:color-mix(in srgb,var(--teal) 45%,transparent); }
+
+  /* inspector (properties + verdict + estimate + exports) */
+  .prop{ margin-bottom:11px; }
+  .prop .lbl{ display:flex; justify-content:space-between; align-items:baseline; font-size:11px; color:var(--ink3); margin-bottom:6px; }
+  .prop .lbl .nm{ color:var(--ink2); }
+  .prop .lbl .unit{ font-family:var(--mono); color:var(--ink); font-weight:500; }
+  .prop .row{ display:flex; gap:8px; align-items:center; }
+  .verdict{ margin-top:6px; padding:9px 10px; border:1px solid var(--hairline); border-radius:6px;
+    background:var(--surface2); font-size:11px; line-height:1.5; }
+  .verdict .dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .verdict .mono{ font-family:var(--mono); }
+  .estimate{ margin-top:11px; padding:9px 11px; border:1px solid var(--hairline); border-radius:6px; background:var(--surface2); }
+  .estimate .estline{ font-size:15px; color:var(--ink); }
+  .estimate .estline b{ font-weight:600; } .estimate .estcost{ color:var(--amber); }
+  .estimate .estsub{ font-size:10px; color:var(--ink3); font-family:var(--mono); margin-top:3px; }
+  .exports{ margin-top:12px; border-top:1px solid var(--hairline2); padding-top:11px; }
+  .exhead{ font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin-bottom:8px; }
+  .exhead .exok{ color:var(--teal); }
+  .exgrid{ display:flex; flex-wrap:wrap; gap:6px; }
+  .exchip{ display:flex; flex-direction:column; gap:1px; padding:6px 10px; border:1px solid var(--hairline);
+    border-radius:6px; text-decoration:none; color:var(--ink); background:transparent; min-width:64px; }
+  .exchip:hover{ border-color:var(--ink3); background:var(--surface2); }
+  .exchip b{ font-size:12px; font-weight:600; }
+  .exchip span{ font-family:var(--mono); font-size:9px; color:var(--ink3); letter-spacing:.04em; }
+  .exdraw{ display:block; margin-top:9px; border:1px solid var(--hairline); border-radius:6px; overflow:hidden; background:var(--surface); }
+  .exdraw:hover{ border-color:var(--ink3); }
+  .exdraw img{ display:block; width:100%; height:auto; }
+  .exdraw .cap{ font-size:9px; color:var(--ink3); padding:3px 7px; border-top:1px solid var(--hairline2); }
+
+  /* small buttons reused by the live-section controls (built into #props by the engine) */
+  .tool{ display:flex; align-items:center; justify-content:center; padding:6px 8px; border:1px solid var(--hairline);
+    border-radius:6px; background:transparent; font-size:11px; color:var(--ink2); }
+  .tool:hover{ border-color:var(--ink3); }
+  .tool.on{ border-color:var(--ink); color:var(--ink); background:var(--surface2); }
+  .secax.on{ border-color:var(--ink); color:var(--ink); }
+
+  /* ---------- bottom bar ---------- */
+  .bottombar{ position:absolute; bottom:18px; left:0; right:0; display:flex; align-items:center;
+    justify-content:center; gap:12px; z-index:18; }
+  .reps{ display:flex; align-items:center; background:var(--glass); border:1px solid var(--hairline);
+    border-radius:9px; backdrop-filter:blur(10px); padding:4px; gap:2px; }
+  .rep{ padding:8px 14px; border-radius:6px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--ink2); }
+  .rep:hover{ color:var(--ink); }
+  .rep.on{ background:var(--ink); color:var(--canvas); }
+  .describe{ display:flex; align-items:center; gap:9px; padding:10px 16px; background:var(--ink);
+    color:var(--canvas); border-radius:9px; font-size:13px; font-weight:500; box-shadow:0 4px 18px rgba(0,0,0,.14); }
+  .describe .k{ font-family:var(--mono); font-size:12px; opacity:.85; }
+
+  /* ---------- overlays (intent · shortcuts) ---------- */
+  .overlay{ position:absolute; inset:0; z-index:40; display:none; }
+  .overlay.show{ display:block; }
+  .ov-bg{ position:absolute; inset:0; background:rgba(20,18,16,.32); backdrop-filter:blur(3px); }
+  .ov-card{ position:absolute; left:50%; transform:translateX(-50%); background:var(--surface);
+    border:1px solid var(--hairline); border-radius:13px; box-shadow:0 24px 80px rgba(0,0,0,.3);
+    overflow:hidden; animation:lud-rise .2s ease both; }
+  .intent-card{ top:18vh; width:640px; max-width:90vw; }
+  .cli{ display:flex; align-items:center; gap:12px; padding:16px 18px; }
+  .cli.busy input{ opacity:.55; }
+  .cli .prefix{ font-family:var(--mono); font-size:15px; color:var(--ink3); }
+  .cli input{ flex:1; border:none; outline:none; background:transparent; font-family:var(--sans);
+    font-size:18px; color:var(--ink); font-weight:500; }
+  .cli input::placeholder{ color:var(--ink3); font-weight:400; }
+  .cli .send{ font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--ink2);
+    border:1px solid var(--hairline); border-radius:6px; padding:6px 9px; }
+  .cli .send:hover{ background:var(--surface2); }
+  .suggest{ border-top:1px solid var(--hairline2); padding:9px 14px 12px; }
+  .sug{ padding:8px 6px; border-radius:6px; font-size:13px; color:var(--ink); cursor:pointer; }
+  .sug:hover{ background:var(--surface2); }
+  .sc-card{ top:22vh; width:520px; max-width:92vw; }
+  .sc-h{ padding:16px 20px; border-bottom:1px solid var(--hairline2); font-size:15px; font-weight:600; letter-spacing:-.01em; }
+  .sc-grid{ display:grid; grid-template-columns:1fr 1fr; gap:0 34px; padding:12px 20px 18px; }
+  .sc-row{ display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--hairline2); }
+  .sc-row span{ font-size:13px; color:var(--ink2); }
+
+  /* ---------- splash ---------- */
+  .splash{ position:absolute; inset:0; z-index:90; background:var(--canvas); display:flex;
+    flex-direction:column; align-items:center; justify-content:center; gap:24px; transition:opacity .5s ease; }
+  .splash.gone{ opacity:0; pointer-events:none; }
+  .wordmark.big{ font-size:22px; }
+  .boot{ width:180px; height:2px; background:var(--hairline); border-radius:2px; overflow:hidden; }
+  .boot-fill{ height:100%; width:40%; background:var(--ink); animation:lud-boot 1s ease forwards; }
+  .boot-lbl{ font-family:var(--mono); font-size:10px; letter-spacing:.18em; color:var(--ink3); }
+
+  /* degradation: below the min window, panels give the stage room (design brief §9) */
+  @media (max-width:1000px){
+    .program{ display:none; } .inspector{ left:16px; width:280px; }
   }
-  .brand{font-weight:700; letter-spacing:.16em; font-size:12px; margin-right:4px;}
-  .brand .s{font-weight:400; color:var(--muted); letter-spacing:.04em;}
-  .file{font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-right:14px;}
-  .grp{display:flex; align-items:center; gap:2px; padding:0 8px; border-left:1px solid var(--hair);}
-  .grp:first-of-type{border-left:none;}
-  header .sp{flex:1;}
-  .btn{
-    border:1px solid transparent; background:none; border-radius:5px; padding:5px 9px;
-    font-size:12px; color:var(--ink-soft); white-space:nowrap;
-  }
-  .btn:hover{background:rgba(28,26,23,.06);}
-  .btn.on{background:var(--ink); color:var(--paper);}
-  .btn.ghost{border-color:var(--hair2);}
-  .seg{display:flex; border:1px solid var(--hair2); border-radius:6px; overflow:hidden;}
-  .seg .btn{border-radius:0; border:none; padding:5px 10px;}
-  .seg .btn+.btn{border-left:1px solid var(--hair);}
-  .modepill{font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
-    border:1px solid var(--hair2); border-radius:20px; padding:3px 9px;}
-  .modepill b{color:var(--accent);}
-
-  /* ---------- main row ---------- */
-  main{
-    display:grid; grid-template-columns:var(--rail-l) 1fr var(--rail-r);
-    min-height:0; background:var(--chrome);
-  }
-  body.no-left{ --rail-l:0px; }
-  body.no-right{ --rail-r:0px; }
-  .rail{
-    background:var(--paper); min-height:0; display:flex; flex-direction:column;
-    overflow:hidden; transition:width .12s ease;
-  }
-  .rail.l{border-right:1px solid var(--hair2);}
-  .rail.r{border-left:1px solid var(--hair2);}
-  .rail-h{display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid var(--hair);}
-  .rail-h .tab{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
-    padding:3px 0; cursor:pointer; border-bottom:2px solid transparent;}
-  .rail-h .tab.on{color:var(--ink); border-bottom-color:var(--accent);}
-  .rail-b{padding:10px; overflow:auto; min-height:0;}
-
-  /* tool palette */
-  .toolgrid{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:14px;}
-  .tool{display:flex; flex-direction:column; align-items:center; gap:5px; padding:9px 4px;
-    border:1px solid var(--hair); border-radius:6px; background:rgba(255,255,255,.4); font-size:11px;
-    color:var(--ink-soft);}
-  .tool:hover{border-color:var(--hair2);}
-  .tool.on{border-color:var(--accent); color:var(--accent); background:rgba(138,90,43,.06);}
-  .tool .ic{font-size:16px; line-height:1;}
-  .seclbl{font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
-    margin:2px 0 8px;}
-
-  /* gallery (demo seed picker) */
-  .gallery{display:flex; flex-direction:column; gap:5px; margin-bottom:6px;}
-  .gitem{display:flex; flex-direction:column; align-items:flex-start; gap:1px; text-align:left;
-    padding:7px 9px; border:1px solid var(--hair); border-radius:6px; background:rgba(255,255,255,.45);}
-  .gitem:hover{border-color:var(--accent); background:rgba(138,90,43,.06);}
-  .gitem .gt{font-size:12px; color:var(--ink-soft); font-weight:600;}
-  .gitem .gb{font-family:var(--mono); font-size:10px; color:var(--muted);}
-
-  /* model tree */
-  .tree{font-family:var(--mono); font-size:12px;}
-  .tree .node{padding:3px 6px; border-radius:4px; cursor:pointer; display:flex; gap:7px; align-items:center;}
-  .tree .node:hover{background:rgba(28,26,23,.05);}
-  .tree .node.sel{background:rgba(138,90,43,.10);}
-  .tree .ind{color:var(--muted);}
-  .tree .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;}
-
-  /* properties */
-  .prop{margin-bottom:13px;}
-  .prop .lbl{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:4px;}
-  .prop .lbl .nm{color:var(--ink-soft);}
-  .prop .row{display:flex; gap:8px; align-items:center;}
-  .prop input[type=number]{width:74px; font-family:var(--mono); font-size:12.5px; padding:4px 6px;
-    border:1px solid var(--hair2); border-radius:5px; background:#fff; color:var(--ink);}
-  .prop input[type=range]{flex:1; accent-color:var(--accent);}
-  .prop .unit{font-size:11px; color:var(--muted);}
-  .verdict{margin-top:6px; padding:9px 10px; border:1px solid var(--hair); border-radius:6px;
-    background:rgba(255,255,255,.4); font-size:11.5px; line-height:1.5;}
-  .verdict .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;}
-  .verdict .mono{font-family:var(--mono);}
-  .estimate{margin-top:12px; padding:9px 11px; border:1px solid var(--hair); border-radius:6px; background:rgba(255,255,255,.4);}
-  .estimate .estline{font-size:15px; color:var(--ink);}
-  .estimate .estline b{font-weight:600;}
-  .estimate .estcost{color:var(--accent);}
-  .estimate .estsub{font-size:10.5px; color:var(--muted); font-family:var(--mono); margin-top:3px;}
-  .exports{margin-top:14px; border-top:1px solid var(--hair); padding-top:12px;}
-  .exhead{font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); margin-bottom:8px;}
-  .exhead .exok{color:var(--ok);}
-  .exgrid{display:flex; flex-wrap:wrap; gap:6px;}
-  .exchip{display:flex; flex-direction:column; gap:1px; padding:6px 10px; border:1px solid var(--hair2);
-    border-radius:6px; text-decoration:none; color:var(--ink); background:var(--paper); min-width:66px;}
-  .exchip:hover{border-color:var(--accent); background:rgba(138,90,43,.06);}
-  .exchip b{font-size:12px; font-weight:600;}
-  .exchip span{font-family:var(--mono); font-size:9px; color:var(--muted); letter-spacing:.04em;}
-  .exdraw{display:block; margin-top:9px; border:1px solid var(--hair2); border-radius:6px; overflow:hidden; background:#fff;}
-  .exdraw:hover{border-color:var(--accent);}
-  .exdraw img{display:block; width:100%; height:auto;}
-  .exdraw .cap{font-size:9.5px; color:var(--muted); padding:3px 7px; border-top:1px solid var(--hair); background:var(--paper);}
-  .logchips{display:flex; align-items:center; gap:6px; padding:3px 0 3px 54px; font-size:11.5px; color:var(--muted);}
-  .logchips .chip{font:inherit; padding:2px 10px; border:1px solid var(--hair2); border-radius:11px; background:var(--paper); cursor:pointer;}
-  .logchips .chip:hover{border-color:var(--accent);}
-  .logchips .chip.ok{color:var(--ok); border-color:rgba(58,125,107,.4);}
-  .cli.busy input{opacity:.6;}
-
-  /* ---------- viewport ---------- */
-  .stage{position:relative; min-width:0; background:
-    radial-gradient(120% 90% at 50% 8%, #f3f1ec 0%, #e4e0d9 55%, #d6d1c8 100%);}
-  #view{display:block; width:100%; height:100%;}
-  .vp-sketch{position:absolute; inset:0; width:100%; height:100%;}
-  .vp-sketch[hidden]{display:none;}
-  .vp-sketch .poche{fill:rgba(138,90,43,.10); stroke:var(--accent); stroke-width:1.6; stroke-linejoin:round;}
-  .vp-sketch .vtx{fill:var(--accent);}
-  .vp-sketch .dimline{stroke:var(--ok); stroke-width:1;}
-  .vp-sketch .dimtxt{fill:var(--ok); font:600 11px var(--mono,monospace);}
-  .vp-sketch .grid{stroke:rgba(28,26,23,.07); stroke-width:1;}
-  .vp-tools{position:absolute; top:10px; right:12px; display:flex; gap:4px; background:rgba(239,236,231,.85);
-    border:1px solid var(--hair2); border-radius:7px; padding:3px; backdrop-filter:blur(3px);}
-  .vp-tools .btn{padding:4px 8px; font-size:11px;}
-  .vp-tools .sep{width:1px;background:var(--hair);margin:3px 1px;}
-  .vp-badge{position:absolute; left:12px; top:10px; font-family:var(--mono); font-size:10.5px;
-    color:var(--muted); letter-spacing:.04em;}
-  .vp-units{position:absolute; left:12px; bottom:10px; font-family:var(--mono); font-size:10.5px; color:var(--muted);}
-  .vp-empty{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
-    justify-content:center; gap:9px; text-align:center; padding:0 30px; pointer-events:none;}
-  .vp-empty[hidden]{display:none;}
-  .vp-empty .k{font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted);}
-  .vp-empty .msg{font:600 19px/1.35 Georgia,"Times New Roman",serif; color:var(--ink-soft); max-width:430px;}
-  .railtab{position:absolute; top:50%; transform:translateY(-50%); width:16px; height:54px;
-    background:var(--paper); border:1px solid var(--hair2); display:flex; align-items:center;
-    justify-content:center; cursor:pointer; color:var(--muted); font-size:11px; z-index:3;}
-  .railtab.l{left:0; border-left:none; border-radius:0 6px 6px 0;}
-  .railtab.r{right:0; border-right:none; border-radius:6px 0 0 6px;}
-  body:not(.no-left) .railtab.l{display:none;}
-  body:not(.no-right) .railtab.r{display:none;}
-
-  /* ---------- footer: agent + CLI ---------- */
-  footer{display:flex; flex-direction:column; background:var(--paper); border-top:1px solid var(--hair2); min-height:0;}
-  .foot-h{display:flex; align-items:center; gap:10px; padding:5px 12px; border-bottom:1px solid var(--hair);}
-  .foot-h .ttl{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted);}
-  .foot-h .hint{font-size:11px; color:var(--muted); margin-left:auto; font-family:var(--mono);}
-  .log{flex:1; overflow:auto; padding:8px 12px; font-family:var(--mono); font-size:12px; line-height:1.6;}
-  .log .ln{display:flex; gap:9px; padding:1px 0;}
-  .log .who{flex:none; width:52px; text-transform:uppercase; font-size:9.5px; letter-spacing:.1em; padding-top:3px;}
-  .log .who.you{color:var(--accent);}
-  .log .who.sys{color:var(--muted);}
-  .log .who.agent{color:var(--ok);}
-  .log .msg{color:var(--ink-soft); white-space:pre-wrap;}
-  .log .msg.ok{color:var(--ok);} .log .msg.warn{color:var(--warn);} .log .msg.err{color:var(--fail);}
-  .cli{display:flex; align-items:center; gap:9px; padding:8px 12px; border-top:1px solid var(--hair);}
-  .cli .prefix{font-family:var(--mono); color:var(--accent); font-size:13px;}
-  .cli input{flex:1; border:none; outline:none; background:none; font-family:var(--mono); font-size:13px; color:var(--ink);}
-  .cli input::placeholder{color:var(--muted);}
-  .cli .send{border:1px solid var(--hair2); border-radius:6px; padding:5px 12px; font-size:12px; background:none;}
-  .cli .send:hover{background:rgba(28,26,23,.06);}
 </style>
 </head>
 <body>
 
-  <!-- ============ HEADER ============ -->
-  <header>
-    <span class="brand">LUDWIG<span class="s"> studio</span></span>
-    <span class="file" id="file">untitled.ldw</span>
-    <div class="grp">
-      <button class="btn ghost" id="b-new">New</button>
-      <button class="btn ghost" id="b-open">Open</button>
-      <button class="btn ghost" id="b-save">Save</button>
+  <!-- ============ FULL-BLEED STAGE ============ -->
+  <div class="stage">
+    <canvas id="view"></canvas>
+    <svg id="sketch2d" class="vp-sketch" hidden></svg>
+    <div class="vp-empty" id="empty" hidden>
+      <div class="k">EMPTY STAGE</div>
+      <div class="msg">No model loaded.</div>
+      <div class="hint">PRESS ⌘K TO DESCRIBE</div>
     </div>
-    <div class="grp">
-      <div class="seg"><button class="btn on" id="rep-3d">3D</button><button class="btn" id="rep-2d">2D</button></div>
+  </div>
+
+  <!-- ============ TOP BAR ============ -->
+  <header class="topbar">
+    <div class="tb-left">
+      <span class="wordmark">LUDWIG</span>
+      <span class="tb-div"></span>
+      <span class="file" id="badge">no model — loading…</span>
+      <!-- v2: pack indicator awaits A8–A9 (pack loader) -->
     </div>
-    <div class="grp">
-      <div class="seg">
-        <button class="btn on" id="cam-persp">Persp</button><button class="btn" id="cam-ortho">Ortho</button>
-      </div>
-      <button class="btn" id="b-fit">Fit</button>
+    <div class="tb-right">
+      <!-- v2: permission mode-dial awaits A3 (standards.yaml permissions) -->
+      <span class="units">mm · Z-up</span>
+      <button class="icon-btn" id="theme" title="light / dark">☾</button>
     </div>
-    <span class="sp"></span>
-    <button class="btn" id="t-left" title="toggle left rail">⮜ Tools</button>
-    <button class="btn" id="t-right" title="toggle right rail">Props ⮞</button>
-    <span class="modepill" id="agentmode">agent · <b>Plan</b></span>
   </header>
 
-  <!-- ============ MAIN: rails + viewport ============ -->
-  <main>
-    <!-- LEFT RAIL: tools + model tree -->
-    <aside class="rail l">
-      <div class="rail-h">
-        <span class="tab" data-ltab="tools">Tools</span>
-        <span class="tab on" data-ltab="model">Model</span>
-      </div>
-      <div class="rail-b" id="ltab-tools" hidden>
-        <div class="seclbl">3D</div>
-        <div class="toolgrid">
-          <button class="tool" data-tool="stair"><span class="ic">▟</span>Stair</button>
-          <button class="tool" data-tool="box"><span class="ic">▢</span>Box</button>
-          <button class="tool" data-tool="extrude"><span class="ic">⬓</span>Extrude</button>
-          <button class="tool" data-tool="boolean"><span class="ic">◑</span>Boolean</button>
-          <button class="tool" data-tool="fillet"><span class="ic">◜</span>Fillet</button>
-          <button class="tool" data-tool="wall"><span class="ic">▥</span>Wall</button>
-        </div>
-        <div class="seclbl">2D</div>
-        <div class="toolgrid">
-          <button class="tool" data-tool="line"><span class="ic">╱</span>Line</button>
-          <button class="tool" data-tool="rect"><span class="ic">▭</span>Rect</button>
-          <button class="tool" data-tool="circle"><span class="ic">◯</span>Circle</button>
-          <button class="tool" data-tool="dim"><span class="ic">⊢</span>Dim</button>
-          <button class="tool" data-tool="constrain"><span class="ic">⟂</span>Constrain</button>
-          <button class="tool" data-tool="section"><span class="ic">⊟</span>Section</button>
-        </div>
-      </div>
-      <div class="rail-b" id="ltab-model">
-        <div class="seclbl">Gallery · click to load</div>
-        <div class="gallery" id="gallery"><span class="ind" style="font-size:11px">loading…</span></div>
-        <div class="seclbl" style="margin-top:12px">Model</div>
-        <div class="tree" id="tree"><span class="ind">— nothing loaded yet</span></div>
-      </div>
-    </aside>
-
-    <!-- VIEWPORT -->
-    <section class="stage">
-      <canvas id="view"></canvas>
-      <svg id="sketch2d" class="vp-sketch" hidden></svg>
-      <div class="vp-badge" id="badge">no model — loading…</div>
-      <div class="vp-units">mm · Z-up</div>
-      <div class="vp-empty" id="empty" hidden>
-        <div class="k">Empty stage</div>
-        <div class="msg">No model loaded.</div>
-      </div>
-      <div class="vp-tools">
-        <button class="btn" data-view="iso">Iso</button>
-        <button class="btn" data-view="top">Top</button>
-        <button class="btn" data-view="front">Front</button>
-        <div class="sep"></div>
-        <button class="btn" id="vp-fit">⤢ Fit</button>
-      </div>
-      <div class="railtab l" id="show-left">⮞</div>
-      <div class="railtab r" id="show-right">⮜</div>
-    </section>
-
-    <!-- RIGHT RAIL: properties -->
-    <aside class="rail r">
-      <div class="rail-h"><span class="tab on">Properties</span><span class="tab" style="color:var(--muted)">Inspector</span></div>
-      <div class="rail-b" id="props"></div>
-    </aside>
-  </main>
-
-  <!-- ============ FOOTER: agent + CLI ============ -->
-  <footer>
-    <div class="foot-h">
-      <span class="ttl">Agent &amp; command line</span>
-      <span class="hint" id="foot-hint">type a command — e.g. <b>iso</b> · <b>ortho</b> · or <b>help</b></span>
+  <!-- ============ VERIFIER READOUT (Ambient Correctness summary) ============ -->
+  <div class="verifier" id="verifier" style="display:none">
+    <div class="v-status"><span class="v-dot" id="v-dot"></span><span id="v-label">…</span></div>
+    <div class="v-counts">
+      <span class="v-chip"><i style="color:var(--teal)">●</i><span id="v-ok">0 OK</span></span>
+      <span class="v-chip"><i style="color:var(--amber)">●</i><span id="v-warn">0 WARN</span></span>
+      <span class="v-chip"><i style="color:var(--red)">●</i><span id="v-fail">0 FAIL</span></span>
     </div>
-    <div class="log" id="log"></div>
-    <div class="cli">
-      <span class="prefix" id="cli-prefix">›</span>
-      <input id="cli" autocomplete="off" spellcheck="false"
-             placeholder="type a change — 'height 20', 'going 300' (free, no AI) — or a view: iso · top · front · ortho · fit">
-      <button class="send" id="cli-send">Run</button>
+  </div>
+
+  <!-- ============ PROGRAM OUTLINE (left) ============ -->
+  <aside class="panel program">
+    <div class="panel-h">PROGRAM</div>
+    <div class="panel-b lud-scroll">
+      <div class="seclbl">PARTS · CLICK TO LOAD</div>
+      <div class="gallery" id="gallery"><span class="ind" style="font-size:11px;color:var(--ink3)">loading…</span></div>
+      <div class="seclbl" style="margin-top:14px">OUTLINE</div>
+      <div class="tree" id="tree"><span class="ind" style="color:var(--ink3)">— nothing loaded yet</span></div>
     </div>
-  </footer>
+  </aside>
+
+  <!-- ============ ACTIVITY RAIL (right) ============ -->
+  <aside class="panel activity">
+    <div class="panel-h">ACTIVITY <span class="spin" id="agent-spin" hidden></span>
+      <button class="stop" id="agent-stop" hidden>STOP</button></div>
+    <div class="panel-b lud-scroll log" id="log"></div>
+  </aside>
+
+  <!-- ============ INSPECTOR (params · verdict · estimate · exports) ============ -->
+  <aside class="panel inspector">
+    <div class="panel-h">INSPECTOR</div>
+    <div class="panel-b lud-scroll" id="props"></div>
+  </aside>
+
+  <!-- ============ BOTTOM: representation switcher + describe ============ -->
+  <div class="bottombar">
+    <div class="reps">
+      <button class="rep on" id="rep-3d">3D</button>
+      <button class="rep" id="rep-plan">PLAN</button>
+      <button class="rep" id="rep-section">SECTION</button>
+      <button class="rep" id="rep-2d">2D</button>
+    </div>
+    <button class="describe" id="describe"><span class="k">⌘K</span>Describe</button>
+  </div>
+
+  <!-- ============ INTENT BAR (⌘K) ============ -->
+  <div class="overlay" id="intent">
+    <div class="ov-bg" id="intent-bg"></div>
+    <div class="ov-card intent-card">
+      <div class="cli">
+        <span class="prefix">›</span>
+        <input id="cli" autocomplete="off" spellcheck="false"
+               placeholder="Describe a change — 'height 20', 'going 300' — or a view: iso · top · front · fit">
+        <button class="send" id="cli-send">Run ⏎</button>
+      </div>
+      <div class="suggest">
+        <div class="seclbl">TRY</div>
+        <div class="sug" data-sug="height 20">↳ make the height 20 mm</div>
+        <div class="sug" data-sug="iso">↳ frame it — iso view</div>
+        <div class="sug" data-sug="help">↳ what can I say here?</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SHORTCUTS (⌘/) ============ -->
+  <div class="overlay" id="shortcuts">
+    <div class="ov-bg" id="shortcuts-bg"></div>
+    <div class="ov-card sc-card">
+      <div class="sc-h">Keyboard</div>
+      <div class="sc-grid">
+        <div class="sc-row"><span>Describe / change</span><kbd>⌘ K</kbd></div>
+        <div class="sc-row"><span>This overlay</span><kbd>⌘ /</kbd></div>
+        <div class="sc-row"><span>Dismiss / close</span><kbd>Esc</kbd></div>
+        <div class="sc-row"><span>Orbit / frame</span><kbd>Drag</kbd></div>
+        <div class="sc-row"><span>Select element</span><kbd>Click</kbd></div>
+        <div class="sc-row"><span>Fit view</span><kbd>Dbl-click</kbd></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SPLASH (boot cover) ============ -->
+  <div class="splash" id="splash">
+    <div class="wordmark big">LUDWIG</div>
+    <div class="boot"><div class="boot-fill"></div></div>
+    <div class="boot-lbl">STARTING DAEMON · ADOPTING SEED</div>
+  </div>
+
+  <!-- v2: foreign-hand plan card + export confirmation await A2–A3 (MCP client field) -->
+  <!-- v2: precedent line + read-only compare await A6 (precedent store) -->
+  <!-- v2: graceful crystallization is P2–P3 [H3]; not faked here -->
 
 <script type="module">
 import * as THREE from 'three';
@@ -655,6 +715,7 @@ function render(payload) {
 
   buildTree(payload);
   buildProps(payload);
+  if(window.__ludwigUpdateVerifier) window.__ludwigUpdateVerifier(payload);   // v2: verifier readout chip
 }
 
 // Left · model tree (R6): payload-driven + click-to-isolate. Clicking the head pulses the whole
@@ -947,6 +1008,7 @@ function emptyStage(msg) {
   $("#tree").innerHTML = '<span class="ind">— nothing loaded yet</span>';
   $("#props").innerHTML =
     `<div style="color:var(--muted);font-size:12px;padding:8px 0">${m}</div>`;
+  if(window.__ludwigUpdateVerifier) window.__ludwigUpdateVerifier(null);   // v2: hide the verifier chip
 }
 
 // A small automation/debug seam (browser console + headless E2E) — the controller, not a network
@@ -1054,15 +1116,17 @@ const VIEWDIR={ top:[0,0,1], bottom:[0,0,-1], front:[0,-1,0], back:[0,1,0],
 function setView(name){ const d=VIEWDIR[name]; if(d){ userMoved=false; frame(new THREE.Vector3(...d)); } }
 function setCam(which){
   cam = which==="ortho"? ortho : persp; controls.object=cam;
-  $("#cam-persp").classList.toggle("on", which!=="ortho");
-  $("#cam-ortho").classList.toggle("on", which==="ortho");
+  const _cp=$("#cam-persp"); if(_cp) _cp.classList.toggle("on", which!=="ortho");   // optional cockpit indicators
+  const _co=$("#cam-ortho"); if(_co) _co.classList.toggle("on", which==="ortho");   // (absent in the v2 shell)
   frame(); controls.update();
 }
 /* R18 — reviewable agent edits: in PLAN mode a request is proposed as validated ops (data, never
    exec'd) you can read before committing; in BUILD mode the pending plan is applied through the fab
    gate. Generation is off in the public demo (the endpoints return a clear notice). */
 let PENDING = null;
-const agentIsPlan = () => $("#agentmode").textContent.includes("Plan");
+// v2: no permission dial yet (it lands in A3) — default to auto-apply (Build). The real permission
+// mode will gate this once standards.yaml permissions + the mode-dial exist.
+const agentIsPlan = () => false;
 async function proposePlan(instruction){
   try{
     const r = await fetch("/api/plan", { method:"POST", headers:{ "Content-Type":"application/json" },
@@ -1094,7 +1158,9 @@ async function buildPlan(){
    The Run button becomes Stop while a stream is open (R25) — closing it cancels cleanly. */
 let _es = null, RUNNING = false;
 function setRunning(on){ RUNNING = on; const b=$("#cli-send"); if(b) b.textContent = on ? "Stop" : "Run";
-  $(".cli") && $(".cli").classList.toggle("busy", on); }
+  $(".cli") && $(".cli").classList.toggle("busy", on);
+  const sp=$("#agent-spin"); if(sp) sp.hidden = !on;                     // v2: activity-rail spinner + stop
+  const st=$("#agent-stop"); if(st) st.hidden = !on; }
 function stopAgent(){ if(_es){ _es.close(); _es=null; log("sys","stopped","warn"); } setRunning(false); }
 function commitStream(r){
   showGeometry(r, { refit:false });
@@ -1153,42 +1219,79 @@ function runCommand(raw){
   streamAgent(scoped);                                  // R24: stream the change through the agent lane
 }
 
-/* ===================== wiring ===================== */
-function tagActive(sel, el){ document.querySelectorAll(sel).forEach(b=>b.classList.remove("on")); el.classList.add("on"); }
-document.querySelectorAll("[data-view]").forEach(b=> b.addEventListener("click", ()=>setView(b.dataset.view)));
-$("#b-fit").onclick = ()=>{ userMoved=false; frame(); };
-$("#vp-fit").onclick = ()=>{ userMoved=false; frame(); };
-$("#cam-persp").onclick=()=>setCam("persp"); $("#cam-ortho").onclick=()=>setCam("ortho");
-$("#rep-3d").onclick=()=>setRep("3d"); $("#rep-2d").onclick=()=>setRep("2d");   // R34: 3D extrude ⇄ 2D sketch
-$("#t-left").onclick =()=>document.body.classList.toggle("no-left");
-$("#t-right").onclick=()=>document.body.classList.toggle("no-right");
-$("#show-left").onclick =()=>document.body.classList.remove("no-left");
-$("#show-right").onclick=()=>document.body.classList.remove("no-right");
-$("#agentmode").onclick=()=>{ const e=$("#agentmode"); const plan=e.textContent.includes("Plan");
-  e.innerHTML="agent · <b>"+(plan?"Build":"Plan")+"</b>"; log("sys","agent mode: "+(plan?"Build":"Plan")); };
-document.querySelectorAll("[data-ltab]").forEach(t=> t.addEventListener("click", ()=>{
-  tagActive("[data-ltab]", t);
-  $("#ltab-tools").hidden = t.dataset.ltab!=="tools";
-  $("#ltab-model").hidden = t.dataset.ltab!=="model";
-}));
-document.querySelectorAll(".tool").forEach(t=> t.addEventListener("click", ()=>{
-  if(t.dataset.tool==="section"){ toggleSection(); return; }   // R33: live cut plane (own active state)
-  tagActive(".tool", t);
-  // reframe the not-yet-authoring tools as a guided nudge to what IS live and free today.
-  log("sys", `the ${t.dataset.tool} tool is on the roadmap — today: load a gallery part, then `
-    + `drag its dimensions or a 3D face, click Section for a live cut, or toggle 2D on a sketch part.`, "warn");
-}));
-["b-new","b-open","b-save"].forEach(id=> $("#"+id).addEventListener("click",
-  ()=> log("sys", id.slice(2)+" — file ops not wired yet (shell).","warn")));
-const cli=$("#cli");
-$("#cli-send").onclick=()=>{ runCommand(cli.value); cli.value=""; };
-cli.addEventListener("keydown", e=>{ if(e.key==="Enter"){ runCommand(cli.value); cli.value=""; } });
+
+/* ===================== wiring (v2 viewfinder shell) ===================== */
+// theme — a pure-CSS flip (the three.js canvas is alpha, the CSS --stage shows through)
+function applyTheme(t){
+  document.documentElement.setAttribute("data-theme", t);
+  try{ localStorage.setItem("ludwig-theme", t); }catch(_){}
+  const b=$("#theme"); if(b) b.textContent = t==="dark" ? "☀" : "☾";
+}
+let THEME = "light";
+try{ THEME = localStorage.getItem("ludwig-theme")
+       || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }catch(_){}
+applyTheme(THEME);
+$("#theme").onclick = ()=>{ THEME = THEME==="dark" ? "light" : "dark"; applyTheme(THEME); };
+
+// representation switcher — every option is a REAL engine path (3D · top-ortho · live section · 2D sketch)
+function setRepUI(id){ document.querySelectorAll(".rep").forEach(b=> b.classList.toggle("on", b.id===id)); }
+$("#rep-3d").onclick     = ()=>{ if(SECTION.on) toggleSection(); setCam("persp"); setRep("3d"); setRepUI("rep-3d"); };
+$("#rep-plan").onclick   = ()=>{ if(SECTION.on) toggleSection(); setRep("3d"); setCam("ortho"); setView("top"); setRepUI("rep-plan"); };
+$("#rep-section").onclick= ()=>{ toggleSection(); setRepUI(SECTION.on ? "rep-section" : "rep-3d"); };
+$("#rep-2d").onclick     = ()=>{ if(SECTION.on) toggleSection(); setRep("2d"); setRepUI("rep-2d"); };
+
+// intent bar (⌘K) — the single command surface, replacing the old always-on CLI stripe
+function openIntent(){ $("#intent").classList.add("show"); const i=$("#cli"); i.value=""; setTimeout(()=>i.focus(),20); }
+function closeIntent(){ $("#intent").classList.remove("show"); }
+function submitIntent(){ const v=$("#cli").value; closeIntent(); $("#cli").value=""; if(v.trim()) runCommand(v); }
+$("#describe").onclick = openIntent;
+$("#intent-bg").onclick = closeIntent;
+$("#cli-send").onclick = submitIntent;
+$("#cli").addEventListener("keydown", e=>{
+  if(e.key==="Enter"){ e.preventDefault(); submitIntent(); }
+  else if(e.key==="Escape"){ closeIntent(); }
+});
+document.querySelectorAll(".sug").forEach(s=> s.onclick = ()=>{ $("#cli").value = s.dataset.sug; submitIntent(); });
+
+// shortcuts (⌘/) + the rail's Stop control
+function toggleShortcuts(){ $("#shortcuts").classList.toggle("show"); }
+$("#shortcuts-bg").onclick = ()=> $("#shortcuts").classList.remove("show");
+$("#agent-stop").onclick = ()=> stopAgent();
+
+// global keys
+window.addEventListener("keydown", e=>{
+  const meta = e.metaKey || e.ctrlKey;
+  if(meta && e.key.toLowerCase()==="k"){ e.preventDefault(); $("#intent").classList.contains("show") ? closeIntent() : openIntent(); }
+  else if(meta && e.key==="/"){ e.preventDefault(); toggleShortcuts(); }
+  else if(e.key==="Escape"){ closeIntent(); $("#shortcuts").classList.remove("show"); }
+});
+
+// verifier readout — computed from the REAL critic on every payload (render() calls this hook)
+function updateVerifier(d){
+  const el=$("#verifier"); if(!el) return;
+  if(!d || !d.id){ el.style.display="none"; return; }
+  const checks = d.critic || [];
+  const fails = checks.filter(c=>c.status==="fail");
+  const warns = fails.filter(c=>c.severity==="warning");
+  const errs  = fails.filter(c=>c.severity!=="warning");
+  const oks   = checks.filter(c=>c.status==="pass");
+  const status = errs.length ? "fail" : warns.length ? "warn" : "ok";
+  el.style.display="";
+  el.querySelector("#v-dot").style.background = status==="fail" ? "var(--red)" : status==="warn" ? "var(--amber)" : "var(--teal)";
+  el.querySelector("#v-label").textContent = status==="fail" ? "NEEDS REPAIR" : status==="warn" ? "CHECK WARNINGS" : "VERIFIED · FABRICABLE";
+  el.querySelector("#v-ok").textContent   = oks.length + " OK";
+  el.querySelector("#v-warn").textContent = warns.length + " WARN";
+  el.querySelector("#v-fail").textContent = errs.length + " FAIL";
+}
+window.__ludwigUpdateVerifier = updateVerifier;   // render()/emptyStage() call this so the chip tracks the critic
 
 /* ===================== boot ===================== */
+// the splash covers the real /api/adopt round-trip, then reveals the seeded stage
+(function(){ const s=$("#splash"); if(!s) return; setTimeout(()=>{ s.classList.add("gone"); setTimeout(()=>s.remove(), 520); }, 900); })();
 bootModel();
 setView("iso");
-log("sys", "Ludwig Studio (R1) — fetching real OCCT B-rep via /api/adopt…");
-log("sys", "Commands: iso · top · front · ortho · persp · fit · left · right · help");
+log("sys", "Ludwig Studio — fetching the real OCCT B-rep via /api/adopt…");
+log("sys", "⌘K to describe a change · drag a dimension or a 3D face · SECTION for a live cut · 2D on a sketch part.");
 </script>
 </body>
 </html>
