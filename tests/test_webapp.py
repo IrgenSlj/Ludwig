@@ -283,7 +283,7 @@ def test_plan_and_build_endpoints_service_layer(monkeypatch, tmp_path):
     assert proposed["summary"][0].startswith("add box 'bracket'")   # human review lines
     assert not (tmp_path / "bracket.step").exists()                 # propose writes nothing
 
-    built = service.build_from_ops("", proposed["ops"], out=tmp_path)   # client-reviewed ops → build
+    built = service.build_from_ops("", proposed["ops"], out=tmp_path, confirm=True)  # reviewed → build (A3 gate)
     assert built["passed"] and built["program"] == GOOD
     assert (tmp_path / built["artifacts"]["step"]).exists()
 

@@ -497,12 +497,22 @@ def plan_to_result(instruction: str, *, program: str = "", brief=None) -> dict:
 
 
 @_versioned
-def build_from_ops(program: str, ops_json, *, out: Optional[Path] = None) -> dict:
+def build_from_ops(program: str, ops_json, *, out: Optional[Path] = None, confirm: bool = False) -> dict:
     """Build a client-reviewed plan given as JSON op-dicts (R18): strict-validate to a Plan (unknown op /
-    bad shape → raise, never exec) then run the deterministic build path. Token-free."""
-    from agent.ops import parse_plan
+    bad shape → raise, never exec) then run the deterministic build path. Token-free.
 
-    return build_to_result(program, parse_plan(ops_json), out=out)
+    A3 — the permission gate (agent.permissions) sits here, the one place both /api/build and the MCP
+    `ludwig_build` tool pass through. `locked` → denied; a class/mode that needs confirmation returns the
+    plan WITHOUT applying it (so a headless agent can re-call with confirm=True, or a human can Accept)."""
+    from agent.ops import parse_plan, summarize
+    from agent import permissions
+
+    plan = parse_plan(ops_json)                              # malformed → ValueError, nothing built
+    verdict, reason = permissions.decide("build", plan, confirm)
+    if verdict != "allow":
+        return {"built": False, verdict: True, "reason": reason,
+                "ops": _ops_json(plan.ops), "summary": [summarize(op) for op in plan.ops]}
+    return build_to_result(program, plan, out=out)
 
 
 @_versioned

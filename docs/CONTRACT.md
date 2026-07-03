@@ -165,6 +165,22 @@ Validation guarantees (enforced by `parse_plan`):
 literal in the program, the inverse would corrupt those occurrences on undo — it raises rather than produce
 a lossy undo. Serialized ops (the `inverse[]` / `ops[]` wire form) are `{"op": "<Kind>", ...fields}`.
 
+### 4.1 The permission gate (A3)
+
+Applying a plan (HTTP `/api/build`, MCP `ludwig_build`) and writing fab files (MCP `ludwig_export`) pass
+through one policy — `standards.yaml: permissions` (`mode: auto|plan|locked` + per-class
+`param_edit`/`structural`/`export` = `auto|confirm`). A missing block is permissive (back-compat). For a
+headless caller **"confirm" is an explicit re-call, not a dialog**: the write refuses unless the call
+carries `confirm=true`. Outcomes a build/export payload may carry instead of applying:
+
+- `{"built": false, "needs_confirmation": true, "reason": "...", "ops": [...], "summary": ["..."]}` — a
+  `confirm` policy (or `plan` mode) held the plan; re-call with `confirm=true` to apply.
+- `{"built": false, "denied": true, "reason": "permissions: locked …"}` — `locked` (read-only) mode.
+- `ludwig_build` on malformed ops → `{"rejected": true, "built": false, "error": "..."}` — `parse_plan`
+  rejected the data; **nothing executed**.
+- `ludwig_export` carries the critic verdict inline; it returns `needs_confirmation`/`denied` (no
+  `artifacts_abs`) until both the fab gate (critic passes) and the permission gate (confirmed) clear.
+
 ---
 
 ## 5. SSE event stream

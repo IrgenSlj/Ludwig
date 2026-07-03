@@ -274,8 +274,9 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 if self.path == "/api/build":      # build a client-reviewed plan (validated ops, never exec'd)
                     from webapp.service import build_from_ops
+                    # a human clicking Build IS the confirmation; the permission mode-dial refines this.
                     result = build_from_ops(req.get("program") or "", req.get("ops") or [],
-                                            out=self._out_dir(req))
+                                            out=self._out_dir(req), confirm=bool(req.get("confirm", True)))
                     self._send(200, json.dumps(result).encode(), "application/json")
                     return
                 prompt = (req.get("prompt") or "").strip()

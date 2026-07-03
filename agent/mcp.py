@@ -67,15 +67,49 @@ def build_server(name: str = "ludwig"):
         return service.verify_to_result(program)
 
     @server.tool()
-    def ludwig_export(program: str) -> dict:
-        """Execute + verify a program and, if the critic passes, write the derived fabrication files.
-
-        The pre-export critic gate is INSIDE this tool: on a failing critic it refuses and returns the
-        report with no `artifacts_abs`, exactly as `cli.py` does — no fab file ever leaves on an
-        unverified model. On success returns absolute paths to the STEP / IFC / DXF / recipe.
+    def ludwig_plan(instruction: str, program: str = "") -> dict:
+        """Propose a reviewable plan of Ops for `instruction` against `program` — writes NOTHING and
+        builds nothing. Returns validated ops (data, never code) + one-line summaries. Ludwig runs one
+        inference call here to author the plan; review it, then apply with `ludwig_build`.
         """
-        r = service.adopt_to_result(program)
+        return service.plan_to_result(instruction, program=program)
+
+    @server.tool()
+    def ludwig_build(program: str, ops: list, confirm: bool = False) -> dict:
+        """Apply a plan of Ops (as data) to `program` — the security boundary in one call. The ops are
+        strict-validated (`parse_plan`): an unknown op kind, an unexpected field, or a bad value type is
+        REJECTED with a structured error and NOTHING is executed — Ludwig never runs model-authored code.
+
+        The permission policy gates *applying*: a SetParam-only (param-edit) plan applies live, but a
+        structural plan (adds/assembles geometry) or a `locked`/`plan` mode returns `needs_confirmation`
+        with the plan's summary until you re-call with `confirm=true`. On success returns the new
+        `program`, the critic verdict, the unified `diff`, and the `inverse` plan (for undo). Token-free.
+        """
+        try:
+            return service.build_from_ops(program, ops, confirm=confirm)
+        except (ValueError, TypeError) as e:                # malformed ops → rejected, nothing built
+            return {"rejected": True, "built": False, "error": f"{type(e).__name__}: {e}"}
+
+    @server.tool()
+    def ludwig_export(program: str, confirm: bool = False) -> dict:
+        """Execute + verify a program and, if it passes BOTH gates, write the derived fabrication files.
+
+        Two gates, both inside this tool: (1) the critic — no fab file ever leaves on a failing critic;
+        (2) the export permission — a `confirm` policy returns `needs_confirmation` (with the critic
+        verdict inline) until you re-call with `confirm=true`. On success returns absolute paths to the
+        STEP / IFC / DXF / recipe under `artifacts_abs`.
+        """
+        from agent import permissions
+
+        v = service.verify_to_result(program)               # the verdict the confirmation shows inline
+        if not v.get("passed"):                             # gate 1: the fab gate
+            return {**v, "exported": False, "artifacts_abs": {}}
+        verdict, reason = permissions.decide("export", None, confirm)   # gate 2: the permission gate
+        if verdict != "allow":
+            return {**v, "exported": False, "artifacts_abs": {}, verdict: True, "reason": reason}
+        r = service.adopt_to_result(program)                # both gates clear → write the files
         r["artifacts_abs"] = _abs_artifacts(r, out) if r.get("passed") else {}
+        r["exported"] = bool(r.get("passed"))
         return r
 
     return server

@@ -78,10 +78,48 @@ def test_mcp_stdio_verify_roundtrip():
 
 
 def test_mcp_stdio_export_gates_on_the_critic():
-    # a verified model → the fab gate lets STEP through, as an absolute path the caller can open
-    ok = _data(_call_tool("ludwig_export", {"program": GOOD}))
+    # a verified + confirmed model → the fab gate lets STEP through, as an absolute path the caller opens
+    ok = _data(_call_tool("ludwig_export", {"program": GOOD, "confirm": True}))
     assert ok["passed"] is True
     assert "step" in ok["artifacts_abs"] and Path(ok["artifacts_abs"]["step"]).exists()
-    # a non-building model → refused: no artifacts leave
-    bad = _data(_call_tool("ludwig_export", {"program": BAD}))
+    # a non-building model → refused by the fab gate; confirm can't override a failing critic
+    bad = _data(_call_tool("ludwig_export", {"program": BAD, "confirm": True}))
     assert bad["passed"] is not True and not bad["artifacts_abs"]
+
+
+# --------------------------------------------------------------------------- #
+# A3 — the Op-API over MCP + the permission gate
+# --------------------------------------------------------------------------- #
+
+def test_mcp_stdio_build_param_edit_applies_and_inverts():
+    # a SetParam-only plan is `param_edit` → applies live (no confirm needed) and hands back an inverse
+    built = _data(_call_tool("ludwig_build", {"program": GOOD,
+                  "ops": [{"op": "SetParam", "name": "length", "old": 80, "new": 120}]}))
+    assert built["built"] is True and built["bbox"]["length"] == 120
+    inv = built["inverse"]
+    assert inv and inv[0]["op"] == "SetParam" and inv[0]["new"] == 80
+    # applying the inverse round-trips back to the original 80
+    back = _data(_call_tool("ludwig_build", {"program": built["program"], "ops": inv}))
+    assert back["built"] is True and back["bbox"]["length"] == 80
+
+
+def test_mcp_stdio_build_structural_needs_confirmation():
+    add = {"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [0, 0]]}
+    # a structural plan asks first (nothing applied)…
+    pend = _data(_call_tool("ludwig_build", {"program": GOOD, "ops": [add]}))
+    assert pend["built"] is False and pend.get("needs_confirmation") is True and pend["summary"]
+    # …and applies once confirmed
+    done = _data(_call_tool("ludwig_build", {"program": GOOD, "ops": [add], "confirm": True}))
+    assert done["built"] is True
+
+
+def test_mcp_stdio_build_rejects_malformed_ops_and_executes_nothing():
+    res = _data(_call_tool("ludwig_build", {"program": GOOD,
+                "ops": [{"op": "RunShell", "cmd": "rm -rf /"}]}))
+    assert res.get("rejected") is True and res["built"] is False and "error" in res
+
+
+def test_mcp_stdio_export_permission_gate_asks_then_writes():
+    # export policy defaults to `confirm`: no token, no files until confirmed
+    ask = _data(_call_tool("ludwig_export", {"program": GOOD}))
+    assert ask["passed"] is True and ask.get("needs_confirmation") is True and not ask["artifacts_abs"]

@@ -253,6 +253,25 @@ def selftest() -> int:
     check("A2: MCP server imports SDK-free; registers compile/verify/export when the SDK is present",
           _mcp_ok, _detail)
 
+    # A3 — the permission gate. Headless-correct: 'confirm' is an explicit re-call, not a human dialog.
+    # A SetParam-only (param-edit) plan applies live; a structural plan (or plan/locked mode) asks first.
+    from agent import permissions as _perm
+    from agent.ops import AddFeature as _AF3
+    from agent.ops import Plan as _Plan3
+    from agent.ops import SetParam as _SP3
+    _param_plan = _Plan3((_SP3("length", 80, 120),))
+    _struct_plan = _Plan3((_AF3("clearance_hole", ("M8", (0, 0))),))
+    _auto = {"mode": "auto", "param_edit": "auto", "structural": "confirm", "export": "confirm"}
+    check("A3: permission policy classifies + gates by op class and mode",
+          _perm.classify(_param_plan) == "param_edit" and _perm.classify(_struct_plan) == "structural"
+          and _perm.decide("build", _param_plan, False, pol=_auto)[0] == "allow"
+          and _perm.decide("build", _struct_plan, False, pol=_auto)[0] == "needs_confirmation"
+          and _perm.decide("build", _struct_plan, True, pol=_auto)[0] == "allow"
+          and _perm.decide("export", None, False, pol=_auto)[0] == "needs_confirmation"
+          and _perm.decide("build", _param_plan, False, pol={**_auto, "mode": "plan"})[0] == "needs_confirmation"
+          and _perm.decide("build", _param_plan, False, pol={**_auto, "mode": "locked"})[0] == "denied",
+          "auto/plan/locked · param/structural/export")
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:
@@ -598,7 +617,7 @@ def selftest() -> int:
                   _pb.get("passed") is True and "step" in _pb["artifacts"], f"passed={_pb.get('passed')}")
             # R18: /api/build's service path — build a client-reviewed plan from raw JSON ops, token-free
             from webapp.service import build_from_ops as _bfo
-            _wb = _bfo("", _json_plan, out=_td)
+            _wb = _bfo("", _json_plan, out=_td, confirm=True)   # a reviewed structural build (A3 gate)
             check("R18: build_from_ops builds a verified solid from client JSON ops (token-free)",
                   _wb.get("passed") is True and _wb.get("diff", {}).get("added") == 3
                   and "step" in _wb["artifacts"], f"passed={_wb.get('passed')}")

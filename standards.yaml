@@ -128,6 +128,16 @@ stairs:
     general:       {rise_max: 190, going_min: 250, pitch_max: 38, width_min: 1000}
     institutional: {rise_max: 180, going_min: 280, pitch_max: 38, width_min: 1200}
 
+# Permission policy (A3) — the shared gate over the agent-facing WRITE surface, honoured identically by
+# the HTTP daemon (/api/build) and the MCP tools (ludwig_build/ludwig_export). For a HEADLESS caller an
+# agent over stdio) "confirm" means the tool refuses and asks unless the call passes confirm=true; in the
+# Studio the mode-dial + a human Accept supplies that confirm. A missing block = permissive (auto).
+permissions:
+  mode: auto             # auto (per-class) | plan (nothing applies without confirm) | locked (read-only)
+  param_edit: auto       # a SetParam-only plan (a slider tweak as data): auto | confirm
+  structural: confirm    # a plan that adds/assembles/places geometry:      auto | confirm
+  export: confirm        # writing fabrication files (STEP/IFC/DXF):         auto | confirm
+
 # Inference policy (provider-blind; never sell inference). Model tiering per BRIEF §5.
 inference:
   codegen_tier: cheap        # bulk candidate generation
