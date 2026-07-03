@@ -10,6 +10,7 @@ spine (no kernel, no inference); it grows a real OCCT build once the geometry se
 """
 from __future__ import annotations
 
+import os
 import sys
 
 
@@ -224,6 +225,16 @@ def selftest() -> int:
           and _svc.stamp({"a": 1})["schema_version"] == _svc.SCHEMA_VERSION
           and _svc.stamp({"schema_version": "9.9"})["schema_version"] == "9.9",
           f"version={_svc.SCHEMA_VERSION!r}")
+
+    # D1 — the loopback-auth boundary the embedding shell relies on. No token → open (back-compat);
+    # a token → an exact, constant-time match is required, and a missing/wrong one is rejected.
+    from webapp.server import token_ok as _tok
+    check("D1: token_ok is open with no token, strict with one (the daemon auth boundary)",
+          _tok(None, None) is True and _tok(None, "anything") is True
+          and _tok("s3cret", "s3cret") is True
+          and _tok("s3cret", "wrong") is False and _tok("s3cret", None) is False
+          and _tok("s3cret", "") is False,
+          "loopback token gate")
 
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
@@ -786,10 +797,17 @@ def main(argv: list[str]) -> int:
     if "--serve" in argv:
         from webapp.server import serve
         port = 8765
+        token = os.environ.get("LUDWIG_TOKEN") or None   # the embedding shell may pass one via env or --token
         for i, a in enumerate(argv):
             if a == "--serve" and i + 1 < len(argv) and argv[i + 1].isdigit():
-                port = int(argv[i + 1])
-        return serve(port)
+                port = int(argv[i + 1])                   # back-compat: --serve <port>
+            elif a == "--port" and i + 1 < len(argv):
+                port = int(argv[i + 1])                   # --port <n> (0 = ephemeral, prints PORT=<chosen>)
+            elif a == "--token" and i + 1 < len(argv):
+                token = argv[i + 1]                       # loopback auth: require this token on /api/* + /out/*
+            elif a == "--no-token":
+                token = None                              # explicit open (the default)
+        return serve(port, token=token)
 
     # Parse --candidates N or --candidates=N (default 1). The space form consumes the NEXT token as its
     # value, so that index must be excluded from the positional args — else `--candidates 3 "prompt"`
@@ -822,7 +840,8 @@ def main(argv: list[str]) -> int:
         return compile_prompt(pos[0], candidates=candidates)
     raise SystemExit(
         'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  '
-        '--plan/--apply <recipe.py> "<change>"  |  --serve [port]  |  --selftest  |  --eval [--live] [--repair].'
+        '--plan/--apply <recipe.py> "<change>"  |  --serve [port] [--port N] [--token T | --no-token]  |  '
+        '--selftest  |  --eval [--live] [--repair].'
     )
 
 

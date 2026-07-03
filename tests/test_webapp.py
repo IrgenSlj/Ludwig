@@ -422,3 +422,75 @@ def test_server_blocks_path_traversal():
     from webapp.server import OUT
     escaped = (OUT / "../cli.py").resolve()
     assert OUT.resolve() not in escaped.parents  # cli.py is a sibling of out/, not inside it
+
+
+# --------------------------------------------------------------------------- #
+# D1 — daemon hardening for embedding (health / shutdown / token / ephemeral port)
+# --------------------------------------------------------------------------- #
+
+def _spawn(token=None):
+    """Start a real daemon on an ephemeral port in a background thread; return (httpd, port, thread)."""
+    import threading
+    from webapp import server as srv
+    httpd = srv.make_server(0, token=token)                 # port 0 → OS picks a free one
+    port = httpd.server_address[1]
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    return httpd, port, t
+
+
+def _req(port, path, *, method="GET", body=None, token=None, query=False):
+    import urllib.request
+    url = f"http://127.0.0.1:{port}{path}" + (f"?token={token}" if (query and token) else "")
+    data = json.dumps(body).encode() if body is not None else None
+    r = urllib.request.Request(url, data=data, method=method,
+                               headers={"Content-Type": "application/json"})
+    if token and not query:
+        r.add_header("X-Ludwig-Token", token)
+    return urllib.request.urlopen(r, timeout=10)
+
+
+def test_daemon_health_is_token_free_and_two_daemons_coexist():
+    h1, p1, _ = _spawn(token="s3cret")
+    h2, p2, _ = _spawn()                                     # a second daemon, no token
+    try:
+        assert p1 != p2 and p1 > 0 and p2 > 0                # ephemeral ports don't collide
+        # /api/health answers WITHOUT a token on the token'd daemon (the boot-readiness probe)
+        body = json.loads(_req(p1, "/api/health").read())
+        assert body["ok"] is True and body["name"] == "ludwig" and "schema_version" in body
+    finally:
+        h1.shutdown(); h2.shutdown()
+
+
+def test_daemon_token_gates_the_write_surface():
+    import urllib.error
+    httpd, port, _ = _spawn(token="s3cret")
+    try:
+        # a protected route without the token → 401, nothing executed
+        with pytest.raises(urllib.error.HTTPError) as ei:
+            _req(port, "/api/adopt", method="POST", body={"seed": "bracket"})
+        assert ei.value.code == 401
+        # the SAME request WITH the token (header — fetch's form) succeeds
+        r = _req(port, "/api/adopt", method="POST", body={"seed": "bracket"}, token="s3cret")
+        assert r.status == 200 and json.loads(r.read()).get("id") == "bracket"
+        # the ?token= form is for the GET/SSE surface (EventSource can't set headers). A protected GET
+        # without it → 401; with it → auth opens (then 404 for the missing artifact — enough to prove it).
+        with pytest.raises(urllib.error.HTTPError) as e1:
+            _req(port, "/out/nope.step", method="GET")
+        assert e1.value.code == 401
+        with pytest.raises(urllib.error.HTTPError) as e2:
+            _req(port, "/out/nope.step", method="GET", token="s3cret", query=True)
+        assert e2.value.code == 404
+    finally:
+        httpd.shutdown()
+
+
+def test_daemon_shutdown_endpoint_stops_the_server():
+    httpd, port, t = _spawn(token="s3cret")
+    try:
+        r = _req(port, "/api/shutdown", method="POST", body={}, token="s3cret")
+        assert r.status == 200 and json.loads(r.read())["ok"] is True
+        t.join(timeout=5)
+        assert not t.is_alive()                              # serve_forever returned → the child is reapable
+    finally:
+        httpd.shutdown()   # idempotent / harmless if already stopped

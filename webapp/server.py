@@ -14,6 +14,7 @@ inference seam). Stdlib only — no web framework — so it adds zero dependenci
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT.parent / "out"
+
+
+def token_ok(configured: str | None, provided: str | None) -> bool:
+    """The loopback-auth rule (D1). No token configured → open (local dev + the public demo, which
+    set none — back-compat). A token configured → require an exact, constant-time match. This is the
+    whole security boundary the embedding shell relies on; keep it a pure function so --selftest can
+    exercise it without a socket."""
+    if not configured:
+        return True
+    return bool(provided) and hmac.compare_digest(str(provided), str(configured))
 
 # DEMO mode (env LUDWIG_DEMO=1) is the safe public face. The browser may NOT submit a fresh program to
 # exec (that is RCE — see webapp/safety.py): it picks trusted seeds by id and only NUMERIC parameter
@@ -45,8 +56,31 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _authed(self) -> bool:
+        """True if this request may touch the protected surface. The token (set by the embedding shell)
+        arrives as an `X-Ludwig-Token` header OR a `?token=` query param; a daemon with no token stays
+        open (D1)."""
+        from urllib.parse import parse_qs, urlparse
+        tok = getattr(self.server, "ludwig_token", None)   # per-server, not module-global (two daemons coexist)
+        got = self.headers.get("X-Ludwig-Token") or parse_qs(urlparse(self.path).query).get("token", [""])[0]
+        return token_ok(tok, got)
+
+    def _unauthorized(self) -> None:
+        from webapp import service
+        self._send(401, json.dumps(service.stamp({"error": "unauthorized"})).encode(), "application/json")
+
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
+        if path == "/api/health":   # token-FREE readiness probe — the embedding shell polls it at boot
+            from webapp import service
+            self._send(200, json.dumps(service.stamp(
+                {"ok": True, "name": "ludwig", "demo": DEMO, "tools": {}})).encode(), "application/json")
+            return
+        # Static UI is open (so the page can load); the API + fabrication artifacts are the guarded
+        # surface — a local daemon that writes fab files must not answer every process on the machine.
+        if (path.startswith("/api/") or path.startswith("/out/")) and not self._authed():
+            self._unauthorized()
+            return
         if path in ("/", "/studio", "/studio.html"):   # the Studio (v2) is the single front door
             self._send(200, (ROOT / "studio.html").read_bytes(), "text/html")
             return
@@ -203,6 +237,16 @@ class Handler(BaseHTTPRequestHandler):
         return (OUT / safe) if safe else OUT
 
     def do_POST(self) -> None:
+        if not self._authed():   # every POST is a protected /api/* write — gate before reading a body
+            self._unauthorized()
+            return
+        if self.path == "/api/shutdown":   # the embedding shell reaps the daemon on window close
+            import threading
+            from webapp import service
+            self._send(200, json.dumps(service.stamp({"ok": True})).encode(), "application/json")
+            # shutdown() must not run in this handler thread (it would deadlock serve_forever) — off-thread it
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
         if self.path not in ("/api/compile", "/api/edit", "/api/explore", "/api/adopt",
                              "/api/preview", "/api/section", "/api/hole", "/api/plan", "/api/build"):
             self._send(404, b"not found", "text/plain")
@@ -310,11 +354,25 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-def serve(port: int = 8765) -> int:
+def make_server(port: int = 8765, *, token: str | None = None) -> ThreadingHTTPServer:
+    """Build (but don't run) the daemon. `port=0` binds an OS-assigned ephemeral port — read it back
+    from `.server_address[1]`. The token is stored on the server instance (not a module global) so two
+    daemons can coexist on one machine with distinct tokens. Split from serve() so tests can drive it."""
     OUT.mkdir(exist_ok=True)
     host = os.environ.get("LUDWIG_HOST", "127.0.0.1")  # 0.0.0.0 in a container (set in the Dockerfile)
     httpd = ThreadingHTTPServer((host, port), Handler)
-    print(f"Ludwig web UI on http://{host}:{port}  (Ctrl-C to stop)")
+    httpd.ludwig_token = token
+    return httpd
+
+
+def serve(port: int = 8765, *, token: str | None = None) -> int:
+    httpd = make_server(port, token=token)
+    host = httpd.server_address[0]
+    chosen = httpd.server_address[1]                   # the actual port (== port, or the ephemeral one)
+    print(f"Ludwig daemon on http://{host}:{chosen}  (Ctrl-C to stop)")
+    print(f"PORT={chosen}", flush=True)                # machine-readable line for the embedding shell
+    if token:
+        print("token auth: on (send X-Ludwig-Token header or ?token=)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
