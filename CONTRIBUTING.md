@@ -36,8 +36,8 @@ at package import — so the skeleton and CI stay green before they are present.
 ## Conventions
 
 - Python 3.11+. mm everywhere, units explicit. Measure, don't assert (back claims with an `--eval` run).
-- One session/deliverable per branch/PR; keep CLI back-compat. See [docs/ROADMAP_SESSIONS.md](docs/ROADMAP_SESSIONS.md)
-  for the session plan and what's next.
+- One session/deliverable per branch/PR; keep CLI back-compat. See [HARNESS_BRIEF.md](HARNESS_BRIEF.md)
+  (A-series) and [docs/MACOS_APP_PLAN.md](docs/MACOS_APP_PLAN.md) (D-series) for the current plan.
 - Inference is bring-your-own via a CLI on `PATH` (`claude` default, `opencode` for any model). Never hard-wire a
   model or sell inference. Trusted toolkit only — no untrusted third-party skills (a tool that emits fabrication
   files cannot run untrusted code).

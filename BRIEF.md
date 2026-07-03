@@ -170,7 +170,7 @@ The old vision critic was noise-limited (per-brief swings > the deltas we chased
 
 ## 7. Phased roadmap
 
-Each phase ships something usable to **one** beachhead while extending the **same** IR. The canonical session-level breakdown is `docs/REBUILD_ROADMAP.md` (R1–R34, complete); the original P0–P4 breakdown in `docs/ROADMAP_SESSIONS.md` is kept as historical. One PR per session.
+Each phase ships something usable to **one** beachhead while extending the **same** IR. The canonical session-level breakdown is now `HARNESS_BRIEF.md` (A-series) + `docs/MACOS_APP_PLAN.md` (D-series); `docs/REBUILD_ROADMAP.md` (R1–R34) is the complete/historical interaction-core plan. One PR per session.
 
 ### P0 — The spine
 Build: `Element`/`Part`, program-as-source, generate→verify→repair, **STEP** + (P0.5) **HLR→SVG** backends, CLI, `--selftest`, `--edit` (minimal-diff), and **[H6] the first-pass-geometric-pass-rate instrument** over a frozen held-out brief set.

@@ -19,5 +19,7 @@ the finding that motivated the deterministic-first critic).
 - **Anything that remains a ranking uses pairwise** judging, not absolute scores (lower variance).
 
 ## Status
-Brief set + harness land in **P0/S2** (`cli.py`-driven, no hand-tuning). The mesh-era brief suite and
-`results.jsonl` were retired in the re-foundation (recoverable at the git tag `mesh-era-m4`).
+The frozen brief set + harness are live (`cli.py --eval [--live] [--repair]`, no hand-tuning): 100%
+oracle, ~93% live first-pass, 100% post-repair. The A-series adds a companion **external-agent
+pass-rate** (the frozen briefs driven through MCP — `cli.py --eval --mcp`, A4). The mesh-era brief suite
+and `results.jsonl` were retired in the re-foundation (recoverable at the git tag `mesh-era-m4`).

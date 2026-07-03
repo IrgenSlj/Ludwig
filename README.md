@@ -10,6 +10,9 @@ re-promptable. Named for Mies van der Rohe. *Less is more.*
 > demo. Current direction (post-R34): the **A-series** ([HARNESS_BRIEF.md](HARNESS_BRIEF.md)) — an MCP
 > server so every agent harness becomes a Ludwig frontend, plus two memory stores and domain packs — and
 > the **D-series** ([docs/MACOS_APP_PLAN.md](docs/MACOS_APP_PLAN.md)) — a signed, notarized macOS app.
+> Shipped so far: the versioned JSON+SSE contract ([docs/CONTRACT.md](docs/CONTRACT.md)), the MCP server
+> (`cli.py mcp` — compile/verify/build/export with a server-side permission gate), daemon hardening for
+> embedding, and the Studio v2 viewfinder.
 > Ludwig was previously a mesh render tool; the mesh era is preserved at the git tag `mesh-era-m4`.
 
 ## The idea
@@ -44,8 +47,8 @@ See **[BRIEF.md](BRIEF.md)** for the founding architecture and first principles;
 **[HARNESS_BRIEF.md](HARNESS_BRIEF.md)** for the post-R34 agentic-harness direction (the A-series) and
 **[docs/MACOS_APP_PLAN.md](docs/MACOS_APP_PLAN.md)** for the signed macOS app (the D-series) — the current
 canonical schedule; **[docs/REBUILD_ROADMAP.md](docs/REBUILD_ROADMAP.md)** for the completed interaction-core
-plan (R1–R34, supersedes the earlier `docs/ROADMAP_SESSIONS.md`);
-**[docs/UX_BRIEF.md](docs/UX_BRIEF.md)** for the desktop UI/UX direction (Phase 3).
+plan (R1–R34); **[docs/UX_BRIEF.md](docs/UX_BRIEF.md)** + **[docs/DESIGN_BRIEF_STUDIO_V2.md](docs/DESIGN_BRIEF_STUDIO_V2.md)**
+for the Studio UI/UX.
 
 ```
 ir/ geometry/ backends/ critic/ agent/ toolkit/ prompts/ store/ standards.yaml cli.py webapp/
@@ -55,10 +58,15 @@ ir/ geometry/ backends/ critic/ agent/ toolkit/ prompts/ store/ standards.yaml c
 
 ```
 python3 cli.py "a steel bracket, 80 x 40 x 6 mm, two M8 clearance holes"   # compile → out/<id>.{py,step,ifc,svg}
-python3 cli.py --serve                                                      # web UI on http://localhost:8765
+python3 cli.py --serve                                                      # the Studio on http://localhost:8765
+python3 cli.py mcp                                                          # MCP server (stdio) — drive Ludwig from any harness
 python3 cli.py --selftest                                                   # the regression gate (no LLM tokens)
 python3 cli.py --eval [--live] [--repair]                                   # geometric pass-rate
 ```
+
+Point a harness at it: `claude mcp add ludwig -- python3 cli.py mcp` — then `ludwig_compile` /
+`ludwig_verify` / `ludwig_build` / `ludwig_export` (every result carries the critic verdict; export
+refuses on a failing critic).
 
 Compiling needs the OCCT kernel (`cadquery`, `ifcopenshell`) and a `claude`-like CLI on PATH; run through
 the project venv (`./run.sh` knows it). `webapp/` is the Studio — the art-directed viewfinder

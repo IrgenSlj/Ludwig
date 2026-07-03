@@ -25,7 +25,7 @@ canonical session-by-session schedule is now two workstreams that run in paralle
   surface the MCP server exposes.
 
 **[docs/REBUILD_ROADMAP.md](docs/REBUILD_ROADMAP.md)** (R1–R34, the interaction-core rebuild) is **complete
-and historical** — superseded here the same way it superseded the earlier `docs/ROADMAP_SESSIONS.md`.
+and historical** — superseded here the same way the R-series superseded the earlier P-series roadmap.
 **[docs/DESIGN_BRIEF_STUDIO_V2.md](docs/DESIGN_BRIEF_STUDIO_V2.md)** is the P3/Studio-v2 UI seam (extends
 **[docs/UX_BRIEF.md](docs/UX_BRIEF.md)**).
 
@@ -53,14 +53,18 @@ and historical** — superseded here the same way it superseded the earlier `doc
   cannot execute untrusted code).
 - **Measure, don't assert.** Back claims with a pass-rate run, not vibes (`docs/FINDINGS.md`).
 
-## Key facts about the current code (P0 skeleton — being filled in)
+## Key facts about the current code (interaction core R1–R34 complete; A/D-series in progress)
 - `ir/` — the typed element model (`Element`, `Param`, `Relation`, `NamedDim`, `ProgramNode`, crystallization).
-- `geometry/` — the OCCT/CadQuery service + `BRepHandle` (heavy deps imported lazily).
-- `backends/` — derived projections; `render_toolkit.py` is the salvaged `L_*` Blender toolkit (P1 render backend).
-- `critic/` — the deterministic verifier panel.
-- `agent/` — `inference.py` (the provider-blind seam, salvaged) + `loop.py` (generate→verify→repair).
-- `toolkit/` — the thin element-API codegen registers against.
-- `cli.py` — entry + `--selftest`. `standards.yaml` — the project-standards file.
+- `geometry/` — the OCCT/CadQuery service + `BRepHandle` (heavy deps imported lazily) + the DAG evaluator.
+- `backends/` — derived projections (STEP/IFC/DXF/section/shop-drawing/present); addable without loop changes.
+- `critic/` — the deterministic verifier panel (register a check, no loop change [H4]).
+- `agent/` — `inference.py` (BYO seam) · `loop.py` (generate→verify→repair) · `ops.py` (the Op-API — validated
+  data-ops, never exec'd) · `runtime.py` (streaming op planner) · `mcp.py` (the MCP server, A2/A3, lazy SDK) ·
+  `permissions.py` (the A3 permission gate).
+- `webapp/` — the daemon: `server.py` (stdlib HTTP+SSE; `/api/*` contract, health/shutdown/token, permissions)
+  + `service.py` (the JSON payloads, `docs/CONTRACT.md`) + `studio.html` (the Studio v2 viewfinder).
+- `toolkit/` — the thin element-API codegen registers against. `store/` — SQLite scaffolding for the A5/A6 stores.
+- `cli.py` — entry (`--selftest`, `--serve`, `mcp`, `--eval`, compile/`--edit`/`--plan`). `standards.yaml` — project standards + `permissions`.
 
 ## Conventions
 - Python 3.11+ (dev env is 3.14). Core stays dependency-light; heavy kernels (cadquery, ifcopenshell, bpy)

@@ -4,6 +4,27 @@ All notable changes to Ludwig are documented here.
 
 ## [Unreleased]
 
+### Added — the agentic harness (A-series) + macOS embed prep (D-series) + Studio v2
+- **The wire contract (A1).** Every result payload carries `schema_version`, stamped at the service layer
+  so HTTP, SSE, MCP, CLI and tests agree. `docs/CONTRACT.md` documents the result payload, the critic
+  report, the Op schema, the SSE events, and the versioning policy. Plan of record repointed to the
+  A-series (`HARNESS_BRIEF.md`) + D-series (`docs/MACOS_APP_PLAN.md`); R1–R34 marked complete/historical.
+- **MCP server (A2).** `cli.py mcp` (`agent/mcp.py`, FastMCP, lazy SDK) exposes `ludwig_compile` /
+  `ludwig_verify` / `ludwig_build` / `ludwig_export` — any harness drives Ludwig. Every result carries the
+  critic verdict; export refuses on a failing critic (the pre-export gate is inside the tool). One daemon,
+  one payload shape, many clients — the tools back onto the same `webapp.service` the Studio uses.
+- **Op-API over MCP + the permission gate (A3).** `ludwig_build` applies agent-supplied ops as DATA
+  (malformed → rejected, nothing exec'd) and returns an inverse plan for undo. A `permissions` block in
+  `standards.yaml` (`agent/permissions.py`, mode auto/plan/locked + per-class rules) is enforced in the one
+  shared write path (`build_from_ops`) — headless-correct: "confirm" is an explicit re-call, not a dialog.
+  The Studio's permission mode-dial (`/api/permissions`) governs the local hands to match.
+- **Daemon hardening for embedding (D1).** `/api/health`, `/api/shutdown`, `--port 0` (ephemeral, prints
+  `PORT=`), and a loopback session `--token` guarding `/api/*` + `/out/*` — the surface the macOS shell and
+  MCP embed. Open by default (back-compat).
+- **Studio v2 (design).** The Studio moved from a cockpit to the viewfinder: full-bleed Stage, floating
+  glass panels, a ⌘K intent bar, two calm themes, and the permission dial — engine wiring unchanged. The
+  disconnected `prototype/` mock was retired; `/` now serves the Studio.
+
 ### Fixed — bare-prompt critic coverage: dims + hole-count extraction
 - A live/inline compile (`cli.py "<prompt>"`, webapp) auto-extracts named dims and the hole count from
   the prompt so the deterministic critic verifies them. Three latent bugs left that coverage empty:
@@ -141,7 +162,7 @@ All notable changes to Ludwig are documented here.
 ### Changed — Re-foundation (mesh → precision CAD/BIM compiler)
 - Pivoted from a mesh render tool to an AI-native precision CAD/BIM **compiler**: a typed semantic
   IR (the truth) over OCCT/CadQuery, a deterministic critic, and derived backends (STEP/IFC/drawing/
-  render/present). See `BRIEF.md` (founding architecture), `docs/ROADMAP_SESSIONS.md`, `docs/UX_BRIEF.md`.
+  render/present). See `BRIEF.md` (founding architecture), `docs/UX_BRIEF.md`.
 - New skeleton: `ir/ geometry/ backends/ critic/ agent/ toolkit/ prompts/ store/ standards.yaml cli.py`.
 - Salvaged: the provider-blind inference seam (`agent/inference.py`) and the `L_*` render toolkit
   (`backends/render_toolkit.py`, for the P1 render backend).
