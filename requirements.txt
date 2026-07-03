@@ -8,6 +8,8 @@ ifcopenshell>=0.8    # P1/S9 — IFC (BIM) authoring (imported lazily)
 # --- installed per phase, imported lazily inside the modules that use them ---
 # ezdxf>=1.1         # P0.5/S7 — DXF drawing writer (HLR → DXF/SVG)
 # ifcopenshell       # P1     — IFC backend (IfcOpenShell authoring)
+# mcp>=1.2           # A2 — the MCP SDK for `cli.py mcp` (S-MCP). Imported lazily inside agent/mcp.py
+#                    #      only, so the spine + --selftest stay green without it. Install to serve MCP.
 # (Blender / bpy is BYO, headless, out-of-process — NOT a pip dependency)
 
 # --- dev/test (CI installs these) ---

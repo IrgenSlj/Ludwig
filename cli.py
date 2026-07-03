@@ -236,6 +236,23 @@ def selftest() -> int:
           and _tok("s3cret", "") is False,
           "loopback token gate")
 
+    # A2 — the MCP server module imports WITHOUT the SDK (the SDK is lazy, inside build_server), so the
+    # spine stays green on a machine that never runs `ludwig mcp`. If the SDK IS present, the v1 tool
+    # surface (compile/verify/export) registers.
+    import agent.mcp as _mcp
+    _mcp_ok = callable(_mcp.build_server) and callable(_mcp.main)
+    try:
+        import asyncio as _aio
+
+        import mcp as _mcp_sdk  # noqa: F401
+        _tools = {t.name for t in _aio.run(_mcp.build_server().list_tools())}
+        _mcp_ok = _mcp_ok and {"ludwig_compile", "ludwig_verify", "ludwig_export"} <= _tools
+        _detail = f"tools={sorted(_tools)}"
+    except ImportError:
+        _detail = "SDK absent — module import checked (lazy SDK)"
+    check("A2: MCP server imports SDK-free; registers compile/verify/export when the SDK is present",
+          _mcp_ok, _detail)
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:
@@ -808,6 +825,9 @@ def main(argv: list[str]) -> int:
             elif a == "--no-token":
                 token = None                              # explicit open (the default)
         return serve(port, token=token)
+    if argv and argv[0] == "mcp":   # `cli.py mcp` — the MCP server (S-MCP, A2), stdio transport
+        from agent.mcp import main as mcp_main
+        return mcp_main()
 
     # Parse --candidates N or --candidates=N (default 1). The space form consumes the NEXT token as its
     # value, so that index must be excluded from the positional args — else `--candidates 3 "prompt"`
@@ -841,7 +861,7 @@ def main(argv: list[str]) -> int:
     raise SystemExit(
         'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  '
         '--plan/--apply <recipe.py> "<change>"  |  --serve [port] [--port N] [--token T | --no-token]  |  '
-        '--selftest  |  --eval [--live] [--repair].'
+        'mcp  |  --selftest  |  --eval [--live] [--repair].'
     )
 
 

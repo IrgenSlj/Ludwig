@@ -432,6 +432,22 @@ def adopt_to_result(program: str, *, out: Optional[Path] = None) -> dict:
 
 
 @_versioned
+def verify_to_result(program: str) -> dict:
+    """Execute a program and run the deterministic critic — token-free, writing NO files. The 'is this
+    correct and fabricable?' check the MCP `ludwig_verify` tool binds to. Same file-free payload shape as
+    an exploration variant (program · passed · critic[] · bbox · dims · estimate)."""
+    from agent.loop import Brief, execute, verify
+
+    el, err = execute(program)
+    crit = verify(el, Brief(prompt="")) if el is not None else None
+    payload = _variant_payload(program, el, crit)
+    payload["program"] = program
+    if err:
+        payload["error"] = err
+    return payload
+
+
+@_versioned
 def build_to_result(program: str, plan, *, out: Optional[Path] = None) -> dict:
     """Build a reviewed Plan (R15): render its ADD ops onto `program` (empty → a fresh recipe), thread any
     SetParam edits, then run the SAME execute → verify → _assemble pipeline as adopt (the fab gate is
@@ -888,5 +904,5 @@ def _preview_via_substitution(program: str, name: str, old: float, new: float, t
 
 __all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
            "build_to_result", "plan_to_result", "build_from_ops", "agent_stream", "section_to_result",
-           "preview_hole_move", "hole_move_to_result", "preview_edit", "OUT",
+           "preview_hole_move", "hole_move_to_result", "preview_edit", "verify_to_result", "OUT",
            "SCHEMA_VERSION", "stamp"]
