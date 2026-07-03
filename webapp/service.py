@@ -10,10 +10,34 @@ from __future__ import annotations
 
 import ast
 import difflib
+import functools
 from pathlib import Path
 from typing import Optional
 
 OUT = Path("out")
+
+# The wire-contract version (docs/CONTRACT.md). It stamps every result payload so a client can tell
+# which shape it is reading. Bump ONLY on a breaking change to the result payload, Op schema, or SSE
+# event shapes — and ship one release of dual support before the bump lands (HARNESS_BRIEF §3.1).
+SCHEMA_VERSION = "1.0"
+
+
+def stamp(payload: dict) -> dict:
+    """Stamp SCHEMA_VERSION onto an outgoing result dict, idempotently — an already-set version (from a
+    nested builder, say) is preserved; a non-dict passes through untouched."""
+    if isinstance(payload, dict):
+        payload.setdefault("schema_version", SCHEMA_VERSION)
+    return payload
+
+
+def _versioned(fn):
+    """Decorate a public result builder so its returned payload always carries schema_version. The
+    contract version thus travels with the DATA for every client — HTTP, SSE, MCP, CLI, tests — not
+    only the web transport (principle: one daemon, one payload shape, many clients — HARNESS_BRIEF §2)."""
+    @functools.wraps(fn)
+    def wrap(*args, **kwargs):
+        return stamp(fn(*args, **kwargs))
+    return wrap
 
 # extent dims a slider can tweak deterministically, mapped to their bbox axis (x,y,z)
 _EXTENT_AXIS = {"length": 0, "width": 1, "thickness": 1, "height": 2}
@@ -357,6 +381,7 @@ def _variant_payload(program, el, crit) -> dict:
     return payload
 
 
+@_versioned
 def explore_to_result(prompt: str, n: int = 3, *, out: Optional[Path] = None) -> dict:
     """Generate `n` INDEPENDENT first-pass variants of a prompt and rank them by the deterministic
     critic — the exploration contact sheet (token-free to adopt; only generation costs tokens).
@@ -388,6 +413,7 @@ def explore_to_result(prompt: str, n: int = 3, *, out: Optional[Path] = None) ->
     return {"prompt": prompt, "variants": ranked}
 
 
+@_versioned
 def adopt_to_result(program: str, *, out: Optional[Path] = None) -> dict:
     """Adopt an explored variant: re-execute its program and run the FULL `_assemble` (artifacts + the
     fab gate). NO generation happens — adoption is token-free; the program text already exists from the
@@ -405,6 +431,7 @@ def adopt_to_result(program: str, *, out: Optional[Path] = None) -> dict:
     return result
 
 
+@_versioned
 def build_to_result(program: str, plan, *, out: Optional[Path] = None) -> dict:
     """Build a reviewed Plan (R15): render its ADD ops onto `program` (empty → a fresh recipe), thread any
     SetParam edits, then run the SAME execute → verify → _assemble pipeline as adopt (the fab gate is
@@ -438,6 +465,7 @@ def _ops_json(ops) -> list:
     return [{"op": type(o).__name__, **asdict(o)} for o in ops]
 
 
+@_versioned
 def plan_to_result(instruction: str, *, program: str = "", brief=None) -> dict:
     """Propose a reviewable plan (R18): one best-tier inference call → a validated ops.Plan, serialized to
     JSON with per-op summaries. Writes NOTHING and builds nothing — the review step before /api/build.
@@ -452,6 +480,7 @@ def plan_to_result(instruction: str, *, program: str = "", brief=None) -> dict:
             "summary": [summarize(op) for op in plan.ops]}
 
 
+@_versioned
 def build_from_ops(program: str, ops_json, *, out: Optional[Path] = None) -> dict:
     """Build a client-reviewed plan given as JSON op-dicts (R18): strict-validate to a Plan (unknown op /
     bad shape → raise, never exec) then run the deterministic build path. Token-free."""
@@ -460,6 +489,7 @@ def build_from_ops(program: str, ops_json, *, out: Optional[Path] = None) -> dic
     return build_to_result(program, parse_plan(ops_json), out=out)
 
 
+@_versioned
 def agent_stream(instruction: str, program: str, *, on_event=None, should_cancel=None, infer=None) -> dict:
     """Run the streaming agent runtime (R23/R26) over a program and return the final geometry payload
     (_variant_payload shape). Each op/applied/done event mirrors to `on_event` for a live agent lane. The
@@ -490,6 +520,7 @@ def agent_stream(instruction: str, program: str, *, on_event=None, should_cancel
     return payload
 
 
+@_versioned
 def section_to_result(program: str, *, axis: Optional[str] = None,
                       offset: Optional[float] = None) -> dict:
     """A live, re-promptable cut plane (R33). Execute the program token-free, slice the solid at the
@@ -537,6 +568,7 @@ def section_to_result(program: str, *, axis: Optional[str] = None,
             "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)}}
 
 
+@_versioned
 def compile_to_result(prompt: str, *, candidates: int = 1, rounds: int = 2,
                       out: Optional[Path] = None, on_event=None) -> dict:
     """Compile a prompt to real artifacts and return a JSON-safe result.
@@ -553,6 +585,7 @@ def compile_to_result(prompt: str, *, candidates: int = 1, rounds: int = 2,
     return result
 
 
+@_versioned
 def edit_to_result(program: str, instruction: str, *, param: Optional[dict] = None,
                    rounds: int = 1, out: Optional[Path] = None, allow_llm: bool = True) -> dict:
     """Re-prompt an existing program with a change, aiming for a MINIMAL diff (the editability thesis,
@@ -631,6 +664,7 @@ def _nodes_for_dim(graph, name: str, old: float, tol: float = 1e-6) -> list[tupl
     return out
 
 
+@_versioned
 def preview_edit(program: str, name: str, old: float, new: float) -> dict:
     """Geometry-only LIVE preview for a slider drag — the direct-manipulation path.
 
@@ -655,6 +689,7 @@ def preview_edit(program: str, name: str, old: float, new: float) -> dict:
     return _preview_via_substitution(program, name, old, new, tol)
 
 
+@_versioned
 def preview_hole_move(program: str, old_xy, new_xy) -> dict:
     """Live preview for dragging a hole (R13): substitute just that hole's position literal, re-bore and
     tessellate in-process (no files, no LLM), and ACCEPT only if a cylindrical feature actually landed at
@@ -684,6 +719,7 @@ def preview_hole_move(program: str, old_xy, new_xy) -> dict:
             "bbox": {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)}}
 
 
+@_versioned
 def hole_move_to_result(program: str, old_xy, new_xy, *, out: Optional[Path] = None) -> dict:
     """Commit a hole move (R13 release): substitute the position literal, re-bore, verify + assemble
     (artifacts + fab gate) and return the +1/−1 diff. Deterministic and token-free — the plan-drag
@@ -852,4 +888,5 @@ def _preview_via_substitution(program: str, name: str, old: float, new: float, t
 
 __all__ = ["compile_to_result", "edit_to_result", "explore_to_result", "adopt_to_result",
            "build_to_result", "plan_to_result", "build_from_ops", "agent_stream", "section_to_result",
-           "preview_hole_move", "hole_move_to_result", "preview_edit", "OUT"]
+           "preview_hole_move", "hole_move_to_result", "preview_edit", "OUT",
+           "SCHEMA_VERSION", "stamp"]

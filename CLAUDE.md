@@ -9,12 +9,25 @@ file. The loop is `generate → verify → repair`. Engine, backends, and critic
 
 > Ludwig is a **compiler**: natural language + a hierarchical program → the IR (the truth) →
 > derived backends. CadQuery/OCCT is the geometry *service*; IFC/STEP are *backends*; neither is
-> the truth. See **[BRIEF.md](BRIEF.md)** — the founding architecture & roadmap. Read it first, every session.
+> the truth. See **[BRIEF.md](BRIEF.md)** — the founding architecture & roadmap — then
+> **[HARNESS_BRIEF.md](HARNESS_BRIEF.md)**, which AMENDS it with the post-R34 agentic-harness direction.
+> Read BRIEF.md first, then HARNESS_BRIEF.md, every session.
 
 ## The plan of record
-**[BRIEF.md](BRIEF.md)** is the spec (architecture, first principles, P0–P4). **[docs/REBUILD_ROADMAP.md](docs/REBUILD_ROADMAP.md)**
-is the canonical session-by-session schedule (R1–R34, complete; supersedes the earlier
-`docs/ROADMAP_SESSIONS.md`, kept as historical). **[docs/UX_BRIEF.md](docs/UX_BRIEF.md)** is the P3 UI/UX seam.
+**[BRIEF.md](BRIEF.md)** is the founding spec (architecture, first principles, P0–P4); **[HARNESS_BRIEF.md](HARNESS_BRIEF.md)**
+AMENDS it with the post-R34 direction (Ludwig as the trusted geometry hand of the agentic ecosystem). The
+canonical session-by-session schedule is now two workstreams that run in parallel:
+- **A-series — [HARNESS_BRIEF.md](HARNESS_BRIEF.md)** (A1–A10): the three surfaces, locked ordering
+  **S-MCP → S-MEM → S-PACK** — an MCP server so any harness drives Ludwig, two memory stores, domain
+  packs in the Agent Skills format.
+- **D-series — [docs/MACOS_APP_PLAN.md](docs/MACOS_APP_PLAN.md)** (D1–D8): the `desktop/` scaffold → a
+  signed, notarized Ludwig.app (PyInstaller onedir daemon). **D1 runs before A2** — it hardens the daemon
+  surface the MCP server exposes.
+
+**[docs/REBUILD_ROADMAP.md](docs/REBUILD_ROADMAP.md)** (R1–R34, the interaction-core rebuild) is **complete
+and historical** — superseded here the same way it superseded the earlier `docs/ROADMAP_SESSIONS.md`.
+**[docs/DESIGN_BRIEF_STUDIO_V2.md](docs/DESIGN_BRIEF_STUDIO_V2.md)** is the P3/Studio-v2 UI seam (extends
+**[docs/UX_BRIEF.md](docs/UX_BRIEF.md)**).
 
 ## Phase discipline (non-negotiable)
 - **One session deliverable per branch/PR.** Implement only the current session's slice; do not skip ahead.

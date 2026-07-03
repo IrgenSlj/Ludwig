@@ -216,6 +216,15 @@ def selftest() -> int:
     check("R26: hybrid keeps a plain '<dim> <number>' edit on the free grammar (no inference call)",
           len(_hops) == 1 and type(_hops[0]).__name__ == "SetParam" and not _called)
 
+    # A1 — the wire contract carries a version. stamp() adds SCHEMA_VERSION when absent and NEVER
+    # overwrites one already set (a nested builder's version wins), so every client can read the shape.
+    from webapp import service as _svc
+    check("A1: schema_version stamped onto payloads, idempotently (the wire contract version)",
+          isinstance(_svc.SCHEMA_VERSION, str) and _svc.SCHEMA_VERSION
+          and _svc.stamp({"a": 1})["schema_version"] == _svc.SCHEMA_VERSION
+          and _svc.stamp({"schema_version": "9.9"})["schema_version"] == "9.9",
+          f"version={_svc.SCHEMA_VERSION!r}")
+
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:
@@ -565,6 +574,9 @@ def selftest() -> int:
             check("R18: build_from_ops builds a verified solid from client JSON ops (token-free)",
                   _wb.get("passed") is True and _wb.get("diff", {}).get("added") == 3
                   and "step" in _wb["artifacts"], f"passed={_wb.get('passed')}")
+            # A1 — a REAL built payload carries the contract version (the _versioned decorator, end to end)
+            check("A1: a real result payload carries schema_version",
+                  _wb.get("schema_version") == _svc.SCHEMA_VERSION, f"got {_wb.get('schema_version')!r}")
 
         # R13 — hole-position edit: move a hole deterministically (substitute its literal + re-bore),
         # gated by a cylindrical-centre re-measure — token-free, the plan-drag analogue of face-drag.

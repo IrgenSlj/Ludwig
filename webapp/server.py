@@ -56,8 +56,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, (ROOT / "studio.html").read_bytes(), "text/html")
             return
         if path == "/api/gallery":   # trusted seed listing (id/title/blurb) + demo flag; no programs leave
-            from webapp import gallery
-            self._send(200, json.dumps({"demo": DEMO, "seeds": gallery.listing()}).encode(),
+            from webapp import gallery, service
+            self._send(200, json.dumps(service.stamp({"demo": DEMO, "seeds": gallery.listing()})).encode(),
                        "application/json")
             return
         if path == "/api/compile_stream":   # live Activity Rail (Server-Sent Events)
@@ -304,7 +304,8 @@ class Handler(BaseHTTPRequestHandler):
                                         out=self._out_dir(req))
             self._send(200, json.dumps(result).encode(), "application/json")
         except Exception as e:  # never 500 silently — the UI shows the reason
-            self._send(200, json.dumps({"fatal": f"{type(e).__name__}: {e}"}).encode(),
+            from webapp import service
+            self._send(200, json.dumps(service.stamp({"fatal": f"{type(e).__name__}: {e}"})).encode(),
                        "application/json")
 
     def log_message(self, *_args) -> None:  # quiet by default
