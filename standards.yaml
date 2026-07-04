@@ -148,3 +148,9 @@ inference:
   tiers:
     cheap: haiku
     best: opus
+
+# Memory stores (S-MEM). Each is MEASURED before it ships default-on (HARNESS_BRIEF §12): a store
+# exists on-by-default only if a frozen-set eval shows it moves pass-rate, repair rounds, or tokens.
+memory:
+  repair_corpus: off   # A5 — inject remembered (critic-failure→fix) pairs into repair. off until measured.
+                       # Build it: `cli.py --mine-repairs`. Override at runtime: LUDWIG_REPAIR_CORPUS=on|off.

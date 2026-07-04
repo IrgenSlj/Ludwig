@@ -40,6 +40,25 @@ def selftest() -> int:
     check("throttle-detect: a normal error does NOT match",
           not _THROTTLE_RE.search("SyntaxError: invalid syntax on line 3"))
 
+    # Repair corpus (A5) — off by default (measure-don't-assert), and a record→retrieve round-trip
+    # keys on the normalized failure signature. Pure-Python; the loop is untouched when the corpus is off.
+    from pathlib import Path
+    from store import repairs as _rc
+    check("repair corpus: OFF by default (unmeasured → default off)", _rc.enabled() is False)
+    check("repair corpus: signature folds sub-checks to base names",
+          _rc.signature_of([{"check": "min_wall"}, {"check": "cover:anchor_1"}]) == "cover min_wall")
+    _c = _rc.connect(Path(__file__).resolve().parent / "store" / "_selftest.sqlite")
+    _c.execute("DELETE FROM repair")
+    _rc.record(_c, broken="hole(e,(35,0))", fixed="hole(e,(28,0))", source="pool_x",
+               failures=[{"check": "min_wall", "message": "0.5 < 1.5"}])
+    _hit = _rc.retrieve(_c, [{"check": "min_wall"}])
+    check("repair corpus: retrieval keys on failure signature + renders a diff",
+          bool(_hit) and _hit[0]["signature"] == "min_wall" and _rc.as_prompt(_hit).strip() != "")
+    check("repair corpus: exclude_source guards against leakage",
+          _rc.retrieve(_c, [{"check": "min_wall"}], exclude_source="pool_x") == [])
+    _c.close()
+    (Path(__file__).resolve().parent / "store" / "_selftest.sqlite").unlink(missing_ok=True)
+
     # crystallization clamps to [0,1] and is a scalar only ([H3]).
     e = Element(id="x", crystallization=2.5)
     check("crystallization clamps", e.crystallization == 1.0, f"got {e.crystallization}")
@@ -764,6 +783,34 @@ def _run_eval_mcp(briefs=None):
     return rate, results
 
 
+def mine_repairs(*, rounds: int = 2) -> int:
+    """--mine-repairs (A5): run the full loop over the MINING pool (`eval/pool.py`, disjoint from the
+    frozen set) and record every fail→pass repair into the corpus (`store/repairs.sqlite`). Costs live
+    inference. This BUILDS the corpus; measuring its effect is `--eval --live --repair` with
+    `LUDWIG_REPAIR_CORPUS=on` vs `off`. No frozen brief is ever mined (no train-on-test)."""
+    try:
+        import cadquery  # noqa: F401
+    except ImportError:
+        print("mining needs the OCCT kernel (`pip install cadquery`).")
+        return 1
+    from agent.loop import Brief, run
+    from eval.pool import POOL
+    from store import repairs
+
+    conn = repairs.connect()
+    before = conn.execute("SELECT COUNT(*) FROM repair").fetchone()[0]
+    mined = 0
+    for b in POOL:
+        res = run(Brief.from_dict(b), rounds=rounds, mine=b["id"])   # mine=id → record fail→pass pairs
+        status = "pass" if res.passed else "FAIL"
+        print(f"  [{status}] {b['id']} · {res.rounds} repair round(s)")
+    after = conn.execute("SELECT COUNT(*) FROM repair").fetchone()[0]
+    mined = after - before
+    print(f"mined {mined} new (failure→fix) pair(s) into {repairs.DEFAULT_PATH.name} "
+          f"({after} total). Measure the effect: LUDWIG_REPAIR_CORPUS=on cli.py --eval --live --repair.")
+    return 0
+
+
 def run_eval(*, live: bool = False, repair: bool = False, via_mcp: bool = False) -> int:
     """First-pass geometric pass-rate over the frozen held-out brief set ([H6]).
 
@@ -947,6 +994,8 @@ def main(argv: list[str]) -> int:
         if "--repair" in argv and "--live" not in argv:
             print("note: --repair applies only to --live codegen; the reference-oracle eval ignores it.")
         return run_eval(live="--live" in argv, repair="--repair" in argv, via_mcp="--mcp" in argv)
+    if "--mine-repairs" in argv:                      # A5: mine (failure→fix) pairs from the pool
+        return mine_repairs(rounds=2)
     if "--serve" in argv:
         from webapp.server import serve
         port = 8765
@@ -997,7 +1046,7 @@ def main(argv: list[str]) -> int:
     raise SystemExit(
         'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  '
         '--plan/--apply <recipe.py> "<change>"  |  --serve [port] [--port N] [--token T | --no-token]  |  '
-        'mcp  |  --selftest  |  --eval [--live] [--repair] [--mcp].'
+        'mcp  |  --selftest  |  --eval [--live] [--repair] [--mcp]  |  --mine-repairs.'
     )
 
 

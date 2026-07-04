@@ -6,6 +6,8 @@ __pycache__/
 .venv/
 projects/
 *.db
+*.sqlite
+store/*.sqlite
 .pytest_cache/
 out/
 # Tauri desktop shell — native build artifacts (huge; produced by `npm run tauri build`)

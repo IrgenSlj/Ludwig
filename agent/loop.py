@@ -199,20 +199,50 @@ def _codegen_prompt(brief: Brief) -> str:
     )
 
 
-def _repair_prompt(program: str, brief: Brief, critique: Optional[Critique], err: Optional[str]) -> str:
+def _repair_prompt(program: str, brief: Brief, critique: Optional[Critique], err: Optional[str],
+                   remembered: str = "") -> str:
     if err:
         issues = err
     elif critique:
         issues = "; ".join(f"{c.check}: {c.message}" for c in critique.failures) or "unspecified"
     else:
         issues = "unspecified"
+    mem = f"{remembered}\n" if remembered else ""   # A5: remembered fixes for a similar failure (flag-gated)
     return (
-        f"{_read('repair.md')}\n\n{_api_and_standards()}\n"
+        f"{_read('repair.md')}\n\n{_api_and_standards()}\n{mem}"
         f"## The program\n{program}\n\n"
         f"## Critic failures — fix ONLY these, keep everything that passes\n{issues}\n\n"
         f"## Brief (unchanged intent)\n{brief.prompt} | dims {brief.named_dims} | holes {brief.holes}\n\n"
         "Return ONLY the full corrected Python program — no prose, no fences."
     )
+
+
+# --------------------------------------------------------------------------- #
+# repair corpus (S-MEM / A5) — remembered (failure → fix) pairs, flag-gated, no-op when off
+# --------------------------------------------------------------------------- #
+
+def _corpus_conn(mine: Optional[str]):
+    """Open the repair corpus iff it's switched on OR we're actively mining. None otherwise (the loop
+    is byte-for-byte the original when the corpus is off — measure-don't-assert)."""
+    try:
+        from store import repairs
+        if mine is None and not repairs.enabled():
+            return None
+        return repairs.connect()
+    except Exception:
+        return None
+
+
+def _remembered(conn, critique: Optional[Critique], err: Optional[str],
+                exclude_source: Optional[str] = None) -> str:
+    if conn is None:
+        return ""
+    try:
+        from store import repairs
+        fails = critique.failures if critique is not None else None
+        return repairs.as_prompt(repairs.retrieve(conn, fails, err, exclude_source=exclude_source))
+    except Exception:
+        return ""
 
 
 def _edit_prompt(program: str, instruction: str) -> str:
@@ -354,7 +384,7 @@ def _weighted_failures(crit: Optional[Critique]) -> tuple:
 
 
 def run(brief: Brief, *, candidates: int = 1, rounds: int = 2, model: Optional[str] = None,
-        on_event=None) -> LoopResult:
+        on_event=None, mine: Optional[str] = None) -> LoopResult:
     """Generate → execute → verify → repair until pass or rounds exhausted.
 
     Codegen uses the CHEAP model tier; repair uses the BEST model tier (BRIEF §5).
@@ -365,6 +395,11 @@ def run(brief: Brief, *, candidates: int = 1, rounds: int = 2, model: Optional[s
     `on_event(dict)` is an optional progress callback the compiler driver fires at each stage
     (codegen / execute / critic / select / repair) so a frontend can paint a live Activity Rail
     (UX_BRIEF §Activity Rail). It never changes behavior — when None, this is the original loop.
+
+    `mine` (A5): a provenance tag. When set, every repair that flips fail→pass is recorded into the
+    repair corpus under this source — the mining hook. The frozen eval NEVER passes `mine` (no
+    training-on-test leakage). Retrieval into the repair prompt is separate and flag-gated
+    (`memory.repair_corpus`); it's a no-op when the corpus is off.
     """
     def emit(**ev):
         if on_event:
@@ -398,14 +433,26 @@ def run(brief: Brief, *, candidates: int = 1, rounds: int = 2, model: Optional[s
         emit(stage="select", status="done", candidates=candidates,
              passed=(crit.passed if crit else False))
 
+    conn = _corpus_conn(mine)                    # A5: open the corpus iff on OR mining; else None
     rnd = 0
     while rnd < rounds and (el is None or not crit.passed):
         emit(stage="repair", status="running", round=rnd + 1)
-        program = _strip_fences(inference.infer(_repair_prompt(program, brief, crit, err), model=critic_model))
+        broken, fail_crit, fail_err = program, crit, err   # the state fed to this repair (for mining)
+        remembered = _remembered(conn, crit, err, exclude_source=mine) if conn is not None else ""
+        program = _strip_fences(inference.infer(
+            _repair_prompt(program, brief, crit, err, remembered), model=critic_model))
         el, err = execute(program)
         crit = verify(el, brief) if el is not None else None
         emit(stage="repair", status="done", round=rnd + 1,
              passed=(crit.passed if crit else False), message=err)
+        if mine and conn is not None and el is not None and crit is not None and crit.passed:
+            try:                                 # a fail→pass repair: remember it under this provenance
+                from store import repairs
+                repairs.record(conn, broken=broken, fixed=program, source=mine,
+                               failures=(fail_crit.failures if fail_crit is not None else None),
+                               err=fail_err)
+            except Exception:
+                pass
         rnd += 1
     passed = el is not None and crit is not None and crit.passed
     return LoopResult(program, el, crit, passed, rnd, err)
