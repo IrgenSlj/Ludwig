@@ -38,7 +38,6 @@ def evaluate(el, brief) -> Critique:
         if not declared:
             return Critique(checks=[CheckResult("dimensional", Status.NA,
                                                 "no declared or registered extent dims", el.id)])
-        self_verify = True
 
     g = GeometryService()
     length, width, height = g.bbox(el.geometry)

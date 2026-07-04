@@ -116,7 +116,7 @@ Element
 | Geometry kernel | OpenCASCADE via **CadQuery** | P0 |
 | BIM I/O | **IfcOpenShell** | P1–P2 |
 | 2D vector drawings | OCCT **HLR** → **ezdxf** (DXF) + SVG; dims queried from model | P0.5 (parts) → P2 (conventioned) |
-| 3D render | **Blender headless (bpy)** as backend; reuse the salvaged `L_*` toolkit (`backends/render_toolkit.py`) | P1 |
+| 3D render | **Blender headless (bpy)** as backend; the salvaged `L_*` toolkit lives at tag `mesh-era-m4` | *deferred — non-goal per HARNESS_BRIEF §6* |
 | Live viewport | three.js / pythreejs (GL, fast) | P3 |
 | Agent orchestration | **thin CLI-on-PATH seam** (provider-blind); Anthropic Agent SDK is **one adapter behind it [H5]**, not the foundation | P0 |
 | Critic / verifier | OCCT checks + IDS/IFC rules + vision (demoted) | P0 → P2 |
@@ -178,7 +178,7 @@ Test fixture: a steel bracket (`80×40×6mm, two M8 holes`). The bracket is **no
 **Gate:** prompt → exact-dim B-rep (bbox ±1e-3, holes correct) → critic all-pass → STEP opens in FreeCAD → `--edit` produces a minimal diff. (The HLR→SVG elevation is P0.5, deliberately *outside* the spine gate — OCCT HLR is fragile and must not block proving the solid spine.)
 
 ### P1 — Components & domain (→ a fabrication shop has a real tool)
-Build: `Assembly`, `Panel`/`Profile` types, **IFC** (IfcOpenShell) + **render** (Blender; wire in `backends/render_toolkit.py`) backends, judge panel + pairwise critic, real min-wall, hole-clearance from `standards.yaml`. **Validate [H7] here:** does the one IR genuinely serve fab + first BIM type without contortion?
+Build: `Assembly`, `Panel`/`Profile` types, **IFC** (IfcOpenShell) + ~~render (Blender)~~ *(render deferred — tag `mesh-era-m4`)* backends, judge panel + pairwise critic, real min-wall, hole-clearance from `standards.yaml`. **Validate [H7] here:** does the one IR genuinely serve fab + first BIM type without contortion?
 **Gate:** "a precast wall panel, 3000×2000×200, two M16 cast-in anchors, 40mm cover" → IFC4precast + STEP + shop drawing + render, all critic-verified.
 
 ### P2 — Buildings (→ an architect does)
@@ -212,7 +212,7 @@ ludwig/
   ir/                 # Element, Param, Relation, NamedDim, ProgramNode, crystallization
   geometry/           # CadQuery/OCCT service + BRepHandle (lazy)
   backends/
-    step.py  drawing.py  ifc.py  render.py  render_toolkit.py(salvaged L_*)  present.py
+    step.py  drawing.py  shopdrawing.py  section.py  ifc.py  present.py   # (render backend deferred — non-goal per HARNESS_BRIEF; L_* salvage at tag mesh-era-m4)
   critic/             # geometric.py dimensional.py semantic.py compliance.py aesthetic.py (pairwise judge)
   agent/              # inference.py (provider-blind seam), loop.py, subagents, plan-mode, permissions, hooks
   toolkit/            # the thin element-API ops codegen registers against (the new L_*)

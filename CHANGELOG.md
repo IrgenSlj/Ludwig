@@ -24,6 +24,38 @@ All notable changes to Ludwig are documented here.
   transient limit self-heals. Result: **external-agent pass-rate 93% (14/15) — the gap to the native
   first-pass rate is 0** (the §8 harness thesis, quantified; the clean run needed zero retries). FINDINGS +
   STATUS updated with the honest number.
+- **Repair corpus infra (A5).** `store/repairs.py` — remembered (critic-failure → fix) pairs, keyed on a
+  normalized failure signature (base check-names / build-error class), ranked by overlap, rendered to repair
+  as a minimal diff. Mined from `eval/pool.py` (disjoint from the frozen set — no train-on-test) via
+  `cli.py --mine-repairs`; injected into the repair prompt when `memory.repair_corpus` is on. **Default OFF
+  and unmeasured** — flips default-on only if an on/off frozen-set eval moves repair rounds/rate. Byte-for-byte
+  the original loop when off. 4 selftest anchors.
+- **Public-demo runtime verified (A4 follow-up).** Drove the demo end-to-end as the container runs it
+  (`LUDWIG_DEMO=1 --serve`): token-free adopt → verified STEP/IFC + a live mass/cost estimate, all safety
+  gates holding (generation refused; arbitrary programs rejected). Recorded in `DEPLOY.md` — the GTM "demo is
+  done" claim is now backed by a check.
+
+### Changed — critic hardening + plumbing cleanup
+- **Dimensional check self-verifies registered extents.** With no brief-declared dims (gallery seeds, adopt,
+  bare compile), the dimensional critic now checks the element's own registered extent dims against the
+  measured solid instead of reporting a vacuous `no declared dims` n/a — so the headline check runs green
+  (the Studio bracket now shows dimensional verified), and any op that desyncs a registered extent is caught.
+  Brief-declared paths are unchanged.
+- **MCP `ludwig_export` no longer builds twice.** It executed + ran the full critic panel, then re-executed
+  and re-verified the same solid before writing. Factored `service.execute_and_verify` + `verify_payload`;
+  export now builds once and writes from the same `(el, crit)` — roughly halved export latency. `verify_to_result`
+  and `build_to_result` share the helper.
+
+### Removed — inert scaffolding off the current direction (recoverable at tag `mesh-era-m4`)
+- **The Blender render backend** (`backends/render.py` + `backends/render_toolkit.py`, ~535 lines): an
+  unimplemented, never-registered stub for the artist/render vertical (an explicit A-series non-goal).
+- **`store/db.py`** — the project/run/artifact SQLite stub (BRIEF §4) with zero writers, superseded by the
+  measured memory stores (`store/repairs.py`); `store/` is now the memory-stores home.
+- **4 dead `standards.yaml` keys** (`units.assert_units`, `tolerances.angular`, `manufacturing.default_material`,
+  `drawing.hlr_algorithm` — a documented toggle that read nowhere). Every remaining key is consumed.
+- **Dead code**: `Critique.repair_hints()` was unused and duplicated inline in the repair path (loop now calls
+  it); a dead local in the dimensional critic.
+
 - **Op-API over MCP + the permission gate (A3).** `ludwig_build` applies agent-supplied ops as DATA
   (malformed → rejected, nothing exec'd) and returns an inverse plan for undo. A `permissions` block in
   `standards.yaml` (`agent/permissions.py`, mode auto/plan/locked + per-class rules) is enforced in the one
@@ -180,8 +212,11 @@ All notable changes to Ludwig are documented here.
 - Removed the mesh-substrate / wrong-shell scaffolding (the M0–M4 daemon, Next.js web, Blender adapter,
   vision-critic-as-primary). The mesh era is preserved at the git tag **`mesh-era-m4`**.
 
+---
+
+## Mesh era (historical — the render-tool origin; retired in the re-foundation above, preserved at tag `mesh-era-m4`)
+
 ### Added
-- **Core loop**: prompt → Claude writes Blender Python → headless render →
 - **Core loop**: prompt → Claude writes Blender Python → headless render →
   Claude vision-critiques the render → iterate.
 - **Judge panel**: N diverse candidates per round, scored on a 5-axis rubric

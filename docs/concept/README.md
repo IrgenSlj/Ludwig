@@ -44,7 +44,7 @@ Stage now holds a *building* and its *drawings*.
 Both founding handoffs frame Ludwig as *at the spike stage* — the design brief says
 designing real screens now would be "designing for a product that does not yet exist."
 **In this repo that premise is already obsolete:** the B-rep loop converges and is measured
-(60% first-pass / 100% post-repair — `docs/FINDINGS.md`), the conventioned shop-drawing
+(~93% first-pass / 100% post-repair — `docs/FINDINGS.md`), the conventioned shop-drawing
 engine ships (`backends/shopdrawing.py`), and the webapp (`cli.py --serve`) already
 re-derives drawings on re-prompt. So this concept's central question is not aspirational —
 **it's demonstrable today.** That's a stronger pitch position; the board is written to lean

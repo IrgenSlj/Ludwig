@@ -38,6 +38,17 @@ also now backs off *longer* on rate-limit-shaped stderr so a single transient li
 whole product. The 93% run needed **zero** throttle-retries — pacing alone prevented the burst. Reproduce:
 `.venv/bin/python cli.py --eval --mcp`. Watch it happen (token-free, no inference): `examples/mcp_walkthrough.py`.
 
+**Repair corpus (A5) — infra built, UNMEASURED, default OFF (the entry principle #12 owes).** `store/repairs.py`
+remembers (critic-failure → fix) pairs, keyed on a normalized failure signature, and injects the nearest past
+fixes into the repair prompt as minimal diffs. It is **not yet measured**, so it ships **default off**
+(`memory.repair_corpus`). *The measurement, still to run:* mine the corpus from the disjoint pool
+(`cli.py --mine-repairs`, never the frozen set — no train-on-test), then `--eval --live --repair` with
+`LUDWIG_REPAIR_CORPUS=on` vs `off`, comparing **average repair rounds** and post-repair rate. *Kill criterion:*
+if the on/off delta on the frozen set is within n=1 noise (no reduction in repair rounds or tokens), it stays
+default-off — the infra remains for the harder print3d/pack briefs where repair headroom is larger. Note the
+thin frozen-set headroom (already 100% post-repair in ≤2 rounds) means the honest signal is in *rounds*, not
+rate; measure accordingly.
+
 ## Interaction-core (rebuild R1–R34) — measured state, 2026-07-01
 
 The no-LLM interaction core (recorded FeatureGraph → deterministic evaluator + targeted literal
