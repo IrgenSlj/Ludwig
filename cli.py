@@ -460,6 +460,19 @@ def selftest() -> int:
               and all(c.status.value == "pass" for c in _dim),
               f"got {[(c.check, c.status.value) for c in _dim]}")
 
+        # A cylinder's diameter and a panel's thickness are verified against the MEASURED solid, not just
+        # their registered value — so the check is real, not vacuous. flange ⌀100 self-verifies to PASS;
+        # a DECLARED ⌀90 on the same ⌀100 solid must FAIL (measured 100 ≠ declared 90).
+        from toolkit import cylinder as _cyl
+        _fl = _cyl("fl", 100, 12)
+        _fl_ok = _panel.evaluate(_fl, Brief(prompt="flange")).checks
+        _fld = next((c for c in _fl_ok if c.check == "dim:diameter"), None)
+        check("cylinder diameter self-verifies against the measured solid",
+              _fld is not None and _fld.status.value == "pass")
+        _fl_bad = _panel.evaluate(_fl, Brief(prompt="", named_dims={"diameter": 90.0}))
+        check("a declared diameter that mismatches the solid FAILS (non-vacuous)",
+              any(c.check == "dim:diameter" and c.status.value == "fail" for c in _fl_bad.checks))
+
         # R22 — Wall + Opening: a generic rect boolean cuts a door/window void; the wall stays a valid
         # solid with less material, and the Opening is hosted via a 'hosts' relation.
         from toolkit import opening as _opening, wall as _wall
