@@ -13,6 +13,17 @@ All notable changes to Ludwig are documented here.
   `ludwig_verify` / `ludwig_build` / `ludwig_export` — any harness drives Ludwig. Every result carries the
   critic verdict; export refuses on a failing critic (the pre-export gate is inside the tool). One daemon,
   one payload shape, many clients — the tools back onto the same `webapp.service` the Studio uses.
+- **A4 — the demo, the docs, the second number.** A *runnable* trust-story proof
+  (`examples/mcp_walkthrough.py`) spawns the real stdio MCP server and drives the whole arc — verify →
+  agent param-edit op + its inverse → **reject** a `RunShell "rm -rf /"` op (nothing executes) → critic
+  catches a 0.5 mm-wall fabrication defect → **export refused** on the failing critic → confirmed export
+  writes a verified STEP — asserting each invariant (exit ≠ 0 if any breaks), token-free. `docs/MCP.md`
+  now leads with the one command. The `--eval --mcp` external-agent harness is hardened against inference
+  throttling (paces between briefs + retries only throttle-shaped failures with real backoff; genuine
+  geometry misses are never retried), and the inference seam backs off longer on rate-limit stderr so a
+  transient limit self-heals. Result: **external-agent pass-rate 93% (14/15) — the gap to the native
+  first-pass rate is 0** (the §8 harness thesis, quantified; the clean run needed zero retries). FINDINGS +
+  STATUS updated with the honest number.
 - **Op-API over MCP + the permission gate (A3).** `ludwig_build` applies agent-supplied ops as DATA
   (malformed → rejected, nothing exec'd) and returns an inverse plan for undo. A `permissions` block in
   `standards.yaml` (`agent/permissions.py`, mode auto/plan/locked + per-class rules) is enforced in the one

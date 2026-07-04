@@ -7,8 +7,10 @@ them. Update it as sessions land. Last updated 2026-07-04.*
 
 ## Tracked numbers ([H6])
 - **First-pass geometric pass-rate** (frozen set, `cli.py --eval --live`): ~93% first-pass · 100% post-repair.
-- **External-agent pass-rate** (`cli.py --eval --mcp`, A4 companion): harness built; a clean full-set number
-  is **pending a non-throttled inference run** (the first run was rate-limited mid-batch — see FINDINGS).
+- **External-agent pass-rate** (`cli.py --eval --mcp`, A4 companion): **93% (14/15)** — an external agent
+  driving Ludwig over MCP matches the native first-pass rate; **the gap to native is 0** (§8 thesis
+  quantified). Harness now robust to inference throttling (paces + retries throttle-shaped fails only); the
+  clean run needed zero retries. Lone miss = `stair_flight`, a genuine n=1 codegen miss, not an artifact.
 
 ## Shipped (post-R34; R1–R34 = the complete/historical interaction core)
 - **A1** — versioned wire contract: `schema_version` on every payload + `docs/CONTRACT.md`; plan-of-record repointed.
@@ -21,8 +23,11 @@ them. Update it as sessions land. Last updated 2026-07-04.*
 - **A3** — Op-API over MCP + the permission gate (`agent/permissions.py`, `standards.yaml: permissions`,
   `/api/permissions` + the Studio dial). Headless-correct ("confirm" = explicit re-call). Enforced in the one
   shared write path (`build_from_ops`).
-- **A4 (partial)** — `docs/MCP.md` (harness walkthrough) + GTM motion + the `--eval --mcp` harness (with
-  per-brief failure reasons). **Remaining:** the clean full-set number + the reproducible demo doc/recording.
+- **A4** — the demo, the docs, the second number. **Runnable** walkthrough (`examples/mcp_walkthrough.py`)
+  drives the real stdio server through the whole trust arc (verify → build+inverse → reject a `rm -rf /` op
+  → critic catches a 0.5 mm wall → export refused → confirmed export writes STEP), asserting each invariant,
+  token-free. `docs/MCP.md` leads with the one command. `--eval --mcp` hardened against throttling →
+  **external-agent pass-rate 93% (14/15), gap-to-native 0** (FINDINGS). GTM motion in `docs/GTM.md`.
 - **Cleanup** — removed `docs/ROADMAP_SESSIONS.md` + empty dirs; refreshed README/CHANGELOG/CLAUDE/eval docs.
 
 ## The one honest deferral
@@ -31,10 +36,10 @@ them. Update it as sessions land. Last updated 2026-07-04.*
   rail). Tracked as its own task; do before/with A4's demo. The permission dial + Op-API gate already shipped.
 
 ## Remaining plan (one session = one PR; `--selftest` stays green, token-free)
-**A-series (S-MCP done → S-MEM → S-PACK):**
+**A-series (S-MCP done → S-MEM next → S-PACK):**
 - Shared-daemon seam (foreign-hand unblocker) — MCP-over-HTTP or stdio→daemon proxy; SSE events gain a `client` field.
-- **A4** finish — clean `--eval --mcp` number (non-throttled) + reproducible demo (Claude Code + opencode) + FINDINGS gap.
-- **A5** — repair corpus (`store/repairs.sqlite`, nearest-failure injection); measure on/off; ship default-on only if it moves the number.
+- *(A4 nice-to-haves, not blockers)* an opencode cross-provider run (proves provider-blindness on the same harness) + an asciinema/GIF of `examples/mcp_walkthrough.py` for GTM.
+- **A5** (next) — repair corpus (`store/repairs.sqlite`, nearest-failure injection); measure on/off; ship default-on only if it moves the number.
 - **A6** — precedent store (FTS5, top-k into codegen, flag-gated); result payload gains `precedents[]` (unblocks the Studio "informed by" line).
 - **A7** — STL backend + `critic/printability.py` (min-wall/overhang/envelope/bed-contact).
 - **A8** — pack format + `packs/print3d/` (SKILL.md to agentskills.io spec; loader deep-merges standards, registers critic, no loop change).

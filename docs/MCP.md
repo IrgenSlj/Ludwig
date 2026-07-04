@@ -42,19 +42,33 @@ Every result carries the critic verdict and `schema_version`. **MCP calls are to
 side** for verify/plan-application/export — the *caller's* model does the reasoning; when a harness drives
 Ludwig by emitting ops, Ludwig runs zero inference.
 
-## A reproducible walkthrough
+## A reproducible walkthrough — one command
 
-1. **Compile.** `ludwig_compile("steel bracket 80×40×6 mm, two M8 clearance holes")` → `passed: true`
-   over the critic's checks, and `artifacts_abs.step` — a STEP file on disk. (A brief that can't be made
-   fabricable returns its failing report and **no** fab file.)
-2. **Or the agent plans + builds** (token-free on Ludwig's side): `ludwig_build(program, [{"op":"SetParam",
-   "name":"length","old":80,"new":120}])` → the edited solid + an `inverse` op that undoes it. A structural
-   op (`{"op":"AddFeature","func":"clearance_hole","args":["M8",[0,0]]}`) returns `needs_confirmation` until
-   re-called with `confirm=true` (see Permissions).
-3. **Reject the bad.** `ludwig_build(program, [{"op":"RunShell","cmd":"rm -rf /"}])` → `{"rejected": true}`
-   — the op is not a known kind, so it is refused and **nothing is executed**.
-4. **Export.** `ludwig_export(program, confirm=true)` → `artifacts_abs` with the verified STEP/IFC/DXF paths;
-   on a failing critic it refuses with the report and no files.
+Don't take the trust story on faith; **run it**. This script spawns the real stdio server (exactly as a
+harness would) and drives the whole arc, asserting each invariant (exit ≠ 0 if any breaks):
+
+```bash
+.venv/bin/python examples/mcp_walkthrough.py            # token-free — needs no inference
+.venv/bin/python examples/mcp_walkthrough.py --compile  # also runs ludwig_compile (needs a `claude` CLI)
+```
+
+You'll watch, against the live server:
+
+1. **verify** — the deterministic critic passes a good bracket (token-free).
+2. **build** — an agent's `{"op":"SetParam","name":"length","old":80,"new":120}` applies and returns its
+   own `inverse` op (undo). Data in, never code.
+3. **REJECT** — the agent's `{"op":"RunShell","cmd":"rm -rf /"}` is refused (`unknown op kind`); **nothing
+   executes**. This is the security boundary, live.
+4. **critic** — the same bracket with one hole 0.5 mm from the edge **FAILS** (`min wall thickness
+   0.500 mm < 1.5 mm`) — a real fabrication defect a text-to-CAD tool would emit without noticing.
+5. **gate** — exporting that bad part is **refused**; `artifacts_abs = {}`; no fab file leaves.
+6. **export** — the good part returns `needs_confirmation` (the permission gate), then on `confirm=true`
+   writes a verified STEP to disk.
+
+The core (2–6) runs **zero Ludwig inference** — the caller's model does the reasoning; Ludwig only
+validates and executes. `--compile` prepends `ludwig_compile("… bracket …") → passed: true + a STEP
+path`, then drives the rest off the compiled program. (A brief that can't be made fabricable returns its
+failing report and **no** fab file.)
 
 ## Permissions
 

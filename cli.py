@@ -31,6 +31,15 @@ def selftest() -> int:
     except ValueError:
         check("param requires unit", True)
 
+    # Inference throttle-detection (A4): a rate/usage-limit stderr triggers the longer backoff so a
+    # transient limit self-heals instead of surfacing as an empty program (the eval throttling artifact).
+    from agent.inference import _THROTTLE_RE
+    check("throttle-detect: rate-limit signatures match",
+          all(_THROTTLE_RE.search(s) for s in ("429 Too Many Requests", "usage limit reached",
+                                               "overloaded_error", "please try again later")))
+    check("throttle-detect: a normal error does NOT match",
+          not _THROTTLE_RE.search("SyntaxError: invalid syntax on line 3"))
+
     # crystallization clamps to [0,1] and is a scalar only ([H3]).
     e = Element(id="x", crystallization=2.5)
     check("crystallization clamps", e.crystallization == 1.0, f"got {e.crystallization}")
@@ -666,9 +675,19 @@ def _run_eval_mcp(briefs=None):
     """External-agent pass-rate (A4, the second tracked number): drive each frozen brief through the MCP
     `ludwig_compile` tool over ONE stdio session — Ludwig as someone else's tool — execute the returned
     program, and grade it with the SAME geometric gate as native. The gap to the native live rate is how
-    much of Ludwig's reliability survives the harness boundary (§8)."""
+    much of Ludwig's reliability survives the harness boundary (§8).
+
+    Robust to inference throttling (the A4 measurement artifact, FINDINGS 2026-07-04): the run *paces*
+    itself between briefs and *retries throttle-shaped* failures (empty program / tool error / timeout —
+    the CLI session limit, not Ludwig) with real backoff, so the number reflects codegen reliability,
+    not the provider's rate window. A genuine geometry miss (built, off dims) is NOT retried — that is
+    an honest first-pass fail, counted exactly as native `--live` counts it. Tunables:
+      LUDWIG_EVAL_PACE_S    inter-brief pacing seconds        (default 6)
+      LUDWIG_EVAL_RETRIES   throttle retries per brief        (default 3; backoff 20s→40s→80s)
+    """
     import asyncio
     import json as _json
+    import os as _os
     import sys as _sys
 
     from mcp import ClientSession, StdioServerParameters
@@ -682,36 +701,56 @@ def _run_eval_mcp(briefs=None):
 
     briefs = briefs if briefs is not None else BRIEFS
     geom, tol = GeometryService(), bbox_gate()
+    pace_s = float(_os.environ.get("LUDWIG_EVAL_PACE_S", "6"))
+    retries = int(_os.environ.get("LUDWIG_EVAL_RETRIES", "3"))
+
+    async def _attempt(s, b):
+        """One compile→execute→grade pass. Returns (ok, reason, throttled)."""
+        try:
+            res = await asyncio.wait_for(s.call_tool("ludwig_compile", {"brief": b["prompt"]}), 420)
+            d = res.structuredContent or _json.loads(res.content[0].text)
+            prog = d.get("program") or ""
+            if not prog:                       # codegen produced nothing — throttle-shaped, retry it
+                return False, "no-program (codegen empty — inference rate/session limit?)", True
+            el, err = execute(prog)
+            if el is None:                     # a program that won't build is a REAL codegen miss, not throttle
+                return False, f"build-error: {err}", False
+            if not harness.geometric_pass(el, b, geom, tol):
+                return False, "geom-miss (built, but off the declared dims/holes)", False
+            return True, "", False
+        except Exception as e:                 # tool error / timeout = harness/inference artifact, retry it
+            return False, f"tool-error: {type(e).__name__}: {e}", True
 
     async def _drive():
         params = StdioServerParameters(command=_sys.executable, args=["cli.py", "mcp"], cwd=".")
-        out = []
+        out, retried = [], 0
         async with stdio_client(params) as (r, w):
             async with ClientSession(r, w) as s:
                 await asyncio.wait_for(s.initialize(), 30)
-                for b in briefs:
-                    ok, reason = False, ""
-                    try:
-                        res = await asyncio.wait_for(s.call_tool("ludwig_compile", {"brief": b["prompt"]}), 180)
-                        d = res.structuredContent or _json.loads(res.content[0].text)
-                        prog = d.get("program") or ""
-                        if not prog:                       # codegen produced nothing (often an inference throttle/limit)
-                            reason = "no-program (codegen empty — check for inference rate/session limits)"
-                        else:
-                            el, err = execute(prog)
-                            if el is None:
-                                reason = f"build-error: {err}"
-                            elif not harness.geometric_pass(el, b, geom, tol):
-                                reason = "geom-miss (built, but off the declared dims/holes)"
-                            else:
-                                ok = True
-                    except Exception as e:                 # a tool error / timeout is a HARNESS/inference artifact, not a geom miss
-                        reason = f"tool-error: {type(e).__name__}: {e}"
+                for i, b in enumerate(briefs):
+                    ok = reason = None
+                    for attempt in range(retries + 1):
+                        ok, reason, throttled = await _attempt(s, b)
+                        if ok or not throttled:
+                            break              # success, or an HONEST geometry/build miss — do not burn retries
+                        if attempt < retries:
+                            retried += 1
+                            backoff = 20 * (2 ** attempt)   # 20s, 40s, 80s — spans the rate window
+                            print(f"  … {b['id']}: throttle-shaped fail (try {attempt + 1}/{retries + 1}), "
+                                  f"backing off {backoff}s", flush=True)
+                            await asyncio.sleep(backoff)
                     out.append((b["id"], ok, reason))
-        return out
+                    print(f"  [{'ok  ' if ok else 'FAIL'}] {b['id']}"
+                          + (f" — {reason}" if not ok else ""), flush=True)
+                    if pace_s and i < len(briefs) - 1:
+                        await asyncio.sleep(pace_s)         # pace so we don't burst the limit in the first place
+        return out, retried
 
-    results = asyncio.run(_drive())
+    results, retried = asyncio.run(_drive())
     rate = sum(o for _, o, _ in results) / len(results) if results else 0.0
+    if retried:
+        print(f"  (recovered through {retried} throttle-retr{'y' if retried == 1 else 'ies'}; "
+              "set LUDWIG_EVAL_PACE_S / LUDWIG_EVAL_RETRIES to tune)", flush=True)
     return rate, results
 
 
@@ -735,15 +774,13 @@ def run_eval(*, live: bool = False, repair: bool = False, via_mcp: bool = False)
         except ImportError:
             print("the --mcp eval needs the MCP SDK (`pip install mcp`).")
             return 1
-        rate, results = _run_eval_mcp()
-        for bid, ok, reason in results:
-            print(f"  [{'ok  ' if ok else 'FAIL'}] {bid}" + (f" — {reason}" if not ok else ""))
+        rate, results = _run_eval_mcp()   # prints each brief live (paced + throttle-retried)
         passed = sum(o for _, o, _ in results)
         artifacts = sum(1 for _, o, r in results if not o and r.startswith(("tool-error", "no-program")))
         print(f"external-agent pass-rate (via MCP ludwig_compile): {rate * 100:.0f}%  ({passed}/{len(results)})")
         if artifacts:
-            print(f"  note: {artifacts} fail(s) were codegen/tool errors (likely inference rate/session throttling "
-                  "over a long sequential run), NOT geometry — re-run in a non-throttled window for the clean number.")
+            print(f"  caveat: {artifacts} fail(s) STILL throttle-shaped after retries (empty program / tool "
+                  "error, not geometry) — raise LUDWIG_EVAL_RETRIES / LUDWIG_EVAL_PACE_S and re-run for the clean number.")
         return 0 if rate == 1.0 else 1
     from eval import harness
     if live:

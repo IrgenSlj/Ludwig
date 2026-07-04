@@ -16,26 +16,44 @@ to override tier selection. Tier names are provider-specific (e.g. "sonnet" for 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
 
+# Signatures of a provider rate/usage/session limit (vs a plain transient error). A throttle is not a
+# codegen failure — it is the measurement apparatus, not Ludwig, saying "slow down". We back off *longer*
+# on these so a single transient limit self-heals instead of bubbling up as an empty program (which the
+# eval would otherwise miscount as a geometry miss — the A4 throttling artifact, FINDINGS 2026-07-04).
+_THROTTLE_RE = re.compile(
+    r"rate.?limit|429|overloaded|usage limit|quota|too many requests|try again|"
+    r"capacity|throttl|please wait|resource_exhausted",
+    re.IGNORECASE,
+)
+
 
 def _run_cli(cmd: list[str], *, timeout: int, retries: int, who: str) -> str:
-    """Run an inference CLI headlessly with retry/backoff on transient failures."""
+    """Run an inference CLI headlessly with retry/backoff on transient failures.
+
+    Rate/usage limits get a longer, throttle-aware backoff (base 8s, capped) so a burst of sequential
+    calls — an eval batch, a repair storm — rides out the limit window instead of failing hard.
+    """
     last = ""
     for attempt in range(retries + 1):
+        throttled = False
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             if proc.returncode == 0 and proc.stdout.strip():
                 return proc.stdout.strip()
             last = proc.stderr.strip() or "empty response"
+            throttled = bool(_THROTTLE_RE.search(proc.stderr or ""))
         except FileNotFoundError:
             raise RuntimeError(f"{who} not found on PATH")
         except subprocess.TimeoutExpired:
             last = f"timed out after {timeout}s"
         if attempt < retries:
-            time.sleep(2 ** attempt)
+            # throttle: 8s, 16s, 24s … (spaced across the limit window); plain transient: 1s, 2s, 4s.
+            time.sleep(min(8 * (attempt + 1), 60) if throttled else 2 ** attempt)
     raise RuntimeError(f"{who} failed after {retries + 1} attempts: {last}")
 
 

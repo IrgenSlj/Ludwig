@@ -15,17 +15,28 @@ export refuses on a failing critic; the Op-API is the only write surface (malfor
 exec'd). Verified by a real stdio MCP client: a valid plan round-trips with its inverse; a structural op
 waits for `confirm`; export gates on the critic + the permission policy.
 
-**External-agent pass-rate harness built (`cli.py --eval --mcp`) — but the frozen-set number isn't clean
-yet: measure, don't assert.** The harness drives each frozen brief through `ludwig_compile` over one stdio
-session and grades with the *same* geometric gate as native. A first full run reported **47% (7/15)** — but
-that is a **harness/inference artifact, not a reliability signal**: the failures were the 8 *later* briefs
-and every one was a codegen/tool error (empty program), while each "failed" brief (e.g. `slotted_plate`)
-compiles cleanly and passes the geometric gate when run *in isolation* via the SAME tool (15.9 s, passed,
-dims 120×60×10 exact). The cause is the inference CLI rate/session-limiting partway through 15 sequential
-live compiles. The harness now records a per-brief failure reason (tool-error / no-program vs geom-miss) so
-an artifact is visible, and prints a caveat. The clean external-agent number — and the honest gap to the
-~93% native live rate — awaits a run in a non-throttled window (or spaced calls); that gap is the harness
-thesis quantified ([H6] companion, §8).
+**External-agent pass-rate = 93% (14/15) — the gap to native is ZERO. The harness thesis, quantified.**
+`cli.py --eval --mcp` drives each frozen brief through `ludwig_compile` over ONE stdio MCP session — Ludwig
+as a stock external agent's tool — and grades with the *same* geometric gate as native. Clean full-set run
+(2026-07-04, haiku codegen, first-pass, no repair): **93% (14/15)**, identical to the native live first-pass
+rate (93%, 14/15, §below). So essentially **all** of Ludwig's codegen reliability survives being someone
+else's tool over MCP — the §8 gap the A-series set out to measure is 0. The one miss is `stair_flight`,
+reason `geom-miss` (built a valid solid, off the declared dims) — a genuine n=1 first-pass codegen miss, NOT
+a harness artifact. (Native's lone miss that run was a *different* brief, `filtered_bracket`; `stair_flight`
+passes natively — different briefs missing on different runs is exactly the ~7% one-shot LLM variance at
+n=1, not a capability gap. `filtered_bracket` *passed* via MCP here, corroborating the "variance, not gap"
+read.)
+
+**How the 47% throttling artifact was killed at the root (not waited out).** The earlier run reported 47%
+(7/15) purely because 15 sequential live compiles burst the inference CLI's rate/session limit partway
+through — every late failure was an empty program, and each "failed" brief passes in isolation via the same
+tool. Rather than re-run hoping for a quiet window, the harness is now *robust*: it **paces** itself between
+briefs (`LUDWIG_EVAL_PACE_S`, default 6–8 s) and **retries only throttle-shaped** failures (empty program /
+tool error / timeout — the CLI, not Ludwig) with real backoff (`LUDWIG_EVAL_RETRIES`, 20→40→80 s); a genuine
+geometry/build miss is never retried, so the number stays honest. The inference seam (`agent/inference.py`)
+also now backs off *longer* on rate-limit-shaped stderr so a single transient limit self-heals across the
+whole product. The 93% run needed **zero** throttle-retries — pacing alone prevented the burst. Reproduce:
+`.venv/bin/python cli.py --eval --mcp`. Watch it happen (token-free, no inference): `examples/mcp_walkthrough.py`.
 
 ## Interaction-core (rebuild R1–R34) — measured state, 2026-07-01
 
