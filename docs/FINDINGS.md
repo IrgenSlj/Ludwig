@@ -7,6 +7,26 @@ over the frozen held-out brief set (`eval/briefs.py`) — reproduce any CAD find
 `cli.py --eval [--live] [--repair]`. CAD numbers are single-run (n=1/brief) on the
 `claude` default tier unless noted, so treat small deltas as directional.
 
+## A-series (agentic harness) — measured state, 2026-07-04
+
+**MCP is the second face of the contract, and the transport preserves codegen reliability.** `cli.py mcp`
+exposes compile/verify/plan/build/export (A2–A3); every result carries the critic verdict + `schema_version`;
+export refuses on a failing critic; the Op-API is the only write surface (malformed ops rejected, nothing
+exec'd). Verified by a real stdio MCP client: a valid plan round-trips with its inverse; a structural op
+waits for `confirm`; export gates on the critic + the permission policy.
+
+**External-agent pass-rate harness built (`cli.py --eval --mcp`) — but the frozen-set number isn't clean
+yet: measure, don't assert.** The harness drives each frozen brief through `ludwig_compile` over one stdio
+session and grades with the *same* geometric gate as native. A first full run reported **47% (7/15)** — but
+that is a **harness/inference artifact, not a reliability signal**: the failures were the 8 *later* briefs
+and every one was a codegen/tool error (empty program), while each "failed" brief (e.g. `slotted_plate`)
+compiles cleanly and passes the geometric gate when run *in isolation* via the SAME tool (15.9 s, passed,
+dims 120×60×10 exact). The cause is the inference CLI rate/session-limiting partway through 15 sequential
+live compiles. The harness now records a per-brief failure reason (tool-error / no-program vs geom-miss) so
+an artifact is visible, and prints a caveat. The clean external-agent number — and the honest gap to the
+~93% native live rate — awaits a run in a non-throttled window (or spaced calls); that gap is the harness
+thesis quantified ([H6] companion, §8).
+
 ## Interaction-core (rebuild R1–R34) — measured state, 2026-07-01
 
 The no-LLM interaction core (recorded FeatureGraph → deterministic evaluator + targeted literal

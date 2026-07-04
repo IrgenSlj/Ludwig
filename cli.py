@@ -662,12 +662,66 @@ def selftest() -> int:
     return 0 if ok else 1
 
 
-def run_eval(*, live: bool = False, repair: bool = False) -> int:
+def _run_eval_mcp(briefs=None):
+    """External-agent pass-rate (A4, the second tracked number): drive each frozen brief through the MCP
+    `ludwig_compile` tool over ONE stdio session — Ludwig as someone else's tool — execute the returned
+    program, and grade it with the SAME geometric gate as native. The gap to the native live rate is how
+    much of Ludwig's reliability survives the harness boundary (§8)."""
+    import asyncio
+    import json as _json
+    import sys as _sys
+
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    from agent.loop import execute
+    from eval import harness
+    from eval.briefs import BRIEFS
+    from geometry.service import GeometryService
+    from toolkit.standards import bbox_gate
+
+    briefs = briefs if briefs is not None else BRIEFS
+    geom, tol = GeometryService(), bbox_gate()
+
+    async def _drive():
+        params = StdioServerParameters(command=_sys.executable, args=["cli.py", "mcp"], cwd=".")
+        out = []
+        async with stdio_client(params) as (r, w):
+            async with ClientSession(r, w) as s:
+                await asyncio.wait_for(s.initialize(), 30)
+                for b in briefs:
+                    ok, reason = False, ""
+                    try:
+                        res = await asyncio.wait_for(s.call_tool("ludwig_compile", {"brief": b["prompt"]}), 180)
+                        d = res.structuredContent or _json.loads(res.content[0].text)
+                        prog = d.get("program") or ""
+                        if not prog:                       # codegen produced nothing (often an inference throttle/limit)
+                            reason = "no-program (codegen empty — check for inference rate/session limits)"
+                        else:
+                            el, err = execute(prog)
+                            if el is None:
+                                reason = f"build-error: {err}"
+                            elif not harness.geometric_pass(el, b, geom, tol):
+                                reason = "geom-miss (built, but off the declared dims/holes)"
+                            else:
+                                ok = True
+                    except Exception as e:                 # a tool error / timeout is a HARNESS/inference artifact, not a geom miss
+                        reason = f"tool-error: {type(e).__name__}: {e}"
+                    out.append((b["id"], ok, reason))
+        return out
+
+    results = asyncio.run(_drive())
+    rate = sum(o for _, o, _ in results) / len(results) if results else 0.0
+    return rate, results
+
+
+def run_eval(*, live: bool = False, repair: bool = False, via_mcp: bool = False) -> int:
     """First-pass geometric pass-rate over the frozen held-out brief set ([H6]).
 
     Default uses the deterministic reference oracle (no tokens). `--live` swaps in real LLM codegen;
     `--live --repair` measures the post-repair rate (the full loop + critic panel) — the number that
-    reflects what the loop actually ships.
+    reflects what the loop actually ships. `--mcp` drives the frozen briefs through the MCP server (the
+    external-agent pass-rate, A4) — real inference, needs the MCP SDK.
     """
     try:
         import cadquery  # noqa: F401
@@ -675,6 +729,22 @@ def run_eval(*, live: bool = False, repair: bool = False) -> int:
         print("cadquery not installed — the eval harness needs the OCCT kernel "
               "(`pip install cadquery`). See BRIEF.md §4.")
         return 1
+    if via_mcp:
+        try:
+            import mcp as _mcp_sdk  # noqa: F401
+        except ImportError:
+            print("the --mcp eval needs the MCP SDK (`pip install mcp`).")
+            return 1
+        rate, results = _run_eval_mcp()
+        for bid, ok, reason in results:
+            print(f"  [{'ok  ' if ok else 'FAIL'}] {bid}" + (f" — {reason}" if not ok else ""))
+        passed = sum(o for _, o, _ in results)
+        artifacts = sum(1 for _, o, r in results if not o and r.startswith(("tool-error", "no-program")))
+        print(f"external-agent pass-rate (via MCP ludwig_compile): {rate * 100:.0f}%  ({passed}/{len(results)})")
+        if artifacts:
+            print(f"  note: {artifacts} fail(s) were codegen/tool errors (likely inference rate/session throttling "
+                  "over a long sequential run), NOT geometry — re-run in a non-throttled window for the clean number.")
+        return 0 if rate == 1.0 else 1
     from eval import harness
     if live:
         from eval import llm as builder_mod
@@ -829,7 +899,7 @@ def main(argv: list[str]) -> int:
     if "--eval" in argv:
         if "--repair" in argv and "--live" not in argv:
             print("note: --repair applies only to --live codegen; the reference-oracle eval ignores it.")
-        return run_eval(live="--live" in argv, repair="--repair" in argv)
+        return run_eval(live="--live" in argv, repair="--repair" in argv, via_mcp="--mcp" in argv)
     if "--serve" in argv:
         from webapp.server import serve
         port = 8765
@@ -880,7 +950,7 @@ def main(argv: list[str]) -> int:
     raise SystemExit(
         'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  '
         '--plan/--apply <recipe.py> "<change>"  |  --serve [port] [--port N] [--token T | --no-token]  |  '
-        'mcp  |  --selftest  |  --eval [--live] [--repair].'
+        'mcp  |  --selftest  |  --eval [--live] [--repair] [--mcp].'
     )
 
 

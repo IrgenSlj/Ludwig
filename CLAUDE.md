@@ -27,7 +27,8 @@ canonical session-by-session schedule is now two workstreams that run in paralle
 **[docs/REBUILD_ROADMAP.md](docs/REBUILD_ROADMAP.md)** (R1–R34, the interaction-core rebuild) is **complete
 and historical** — superseded here the same way the R-series superseded the earlier P-series roadmap.
 **[docs/DESIGN_BRIEF_STUDIO_V2.md](docs/DESIGN_BRIEF_STUDIO_V2.md)** is the P3/Studio-v2 UI seam (extends
-**[docs/UX_BRIEF.md](docs/UX_BRIEF.md)**).
+**[docs/UX_BRIEF.md](docs/UX_BRIEF.md)**). **[docs/STATUS.md](docs/STATUS.md)** is the living tracker —
+what's shipped, the tracked numbers, and the remaining plan; read it first to see where things stand.
 
 ## Phase discipline (non-negotiable)
 - **One session deliverable per branch/PR.** Implement only the current session's slice; do not skip ahead.
