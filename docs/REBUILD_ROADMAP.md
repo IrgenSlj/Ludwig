@@ -4,6 +4,12 @@ for the interaction-core rebuild. Each R# is one PR; cli.py --selftest stays gre
 
 # Ludwig Rebuild Roadmap — Interaction Core
 
+> **STATUS: COMPLETE / HISTORICAL (R1–R34 shipped).** This plan is done; the canonical schedule is now
+> the A-series ([HARNESS_BRIEF.md](../HARNESS_BRIEF.md)) + D-series ([MACOS_APP_PLAN.md](MACOS_APP_PLAN.md)),
+> tracked in [docs/STATUS.md](STATUS.md). Kept for provenance — read it for *why* the interaction core is
+> shaped as it is, not for what to build next. (Minor drift from the shipped code is expected in a done
+> plan, e.g. the Op set is the 5 in `agent/ops.py`, not every op sketched below.)
+
 Rebuild the interaction model; keep the verified spine (IR, OCCT kernel, deterministic critic, STEP/IFC/drawing backends, the loop). Replace LLM-exec'd CadQuery as the only geometry path with a deterministic params->geometry compiler, direct manipulation, reviewable structured Ops, and live 2D/sections.
 
 ## Rules (every session, no exceptions)
