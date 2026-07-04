@@ -431,6 +431,16 @@ def selftest() -> int:
               _br_crit.passed and any(c.check == "stair_compliance" and c.status.value == "n/a"
                                       for c in _br_crit.checks))
 
+        # Dimensional fallback: with NO brief-declared dims (a gallery seed / adopt / bare compile), the
+        # critic self-verifies the element's registered EXTENT dims against the measured solid — real
+        # coverage instead of a vacuous n/a (so the demo's headline check actually runs). The bracket has
+        # no declared dims here, yet dimensional must produce PASS extent checks, not a single n/a.
+        _dim = [c for c in _br_crit.checks if c.check.startswith("dim")]
+        check("dimensional self-verifies registered extents when no dims declared",
+              {c.check for c in _dim} == {"dim:length", "dim:width", "dim:height"}
+              and all(c.status.value == "pass" for c in _dim),
+              f"got {[(c.check, c.status.value) for c in _dim]}")
+
         # R22 — Wall + Opening: a generic rect boolean cuts a door/window void; the wall stays a valid
         # solid with less material, and the Opening is hosted via a 'hosts' relation.
         from toolkit import opening as _opening, wall as _wall

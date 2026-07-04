@@ -28,8 +28,18 @@ def evaluate(el, brief) -> Critique:
     tol = bbox_gate() if loose else tol_linear()
 
     declared = dict(getattr(brief, "named_dims", {}) or {})
+    self_verify = False
     if not declared:
-        return Critique(checks=[CheckResult("dimensional", Status.NA, "no declared dims", el.id)])
+        # No brief-declared dims (a gallery seed, an adopt/verify path, a bare compile). Fall back to
+        # self-verifying the element's OWN registered EXTENT dims against the measured solid — so every
+        # part gets real dimensional coverage instead of a vacuous n/a (the headline check the demo is
+        # meant to prove), and any future op that desyncs a registered extent from geometry is caught.
+        # Non-extent registered dims (bore ⌀, hole spacing) aren't bbox-measurable, so they stay out.
+        declared = {k: el.dim(k) for k in ("length", "width", "height") if el.dim(k) is not None}
+        if not declared:
+            return Critique(checks=[CheckResult("dimensional", Status.NA,
+                                                "no declared or registered extent dims", el.id)])
+        self_verify = True
 
     g = GeometryService()
     length, width, height = g.bbox(el.geometry)
