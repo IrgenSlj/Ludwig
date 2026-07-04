@@ -46,6 +46,17 @@ Put Caddy/Traefik in front for TLS + a domain.
 Render/Railway free tiers cap at 0.5 GB RAM — too tight for the OCP import + tessellation (OOM risk).
 Fly.io `shared-cpu-1x@1GB` (~$5.78/mo always-on, or scale-to-zero) is a fine middle option.
 
+## Verified (2026-07-04)
+The demo *runtime* is checked end-to-end via the venv, exactly as the container runs it
+(`LUDWIG_DEMO=1 python cli.py --serve <port>`): `/api/health` reports `demo:true`; `/api/gallery` lists
+the 12 seeds; a token-free `POST /api/adopt {"seed":"bracket"}` returns a passing critic + the full
+artifact set (STEP/IFC/SVG/DXF/section-DXF/shop-drawing), and `precast_panel` yields STEP+IFC; a
+token-free `agent_stream` edit ("make it taller") resolves with **zero** LLM calls (`count:0`) and a live
+mass+cost estimate. All three safety gates hold: `/api/compile`, `/api/build`, and the `compile_stream`
+SSE twin refuse generation in demo mode, and an arbitrary (non-gallery-derivative) program is rejected
+before it runs. The only unverified layer here is the base image's GL/X11 `.so` set — guarded by the
+Dockerfile's own build-time `import cadquery` smoke test (needs Docker, absent on this box).
+
 ## Notes / follow-ups
 - **Artifacts (`out/`)** are written per edit and served from `/out/`, **namespaced per browser session**
   (`out/<session>/…`): concurrent visitors editing the same seed no longer clobber each other's
