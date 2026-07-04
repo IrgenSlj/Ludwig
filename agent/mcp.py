@@ -101,13 +101,14 @@ def build_server(name: str = "ludwig"):
         """
         from agent import permissions
 
-        v = service.verify_to_result(program)               # the verdict the confirmation shows inline
+        el, crit, err = service.execute_and_verify(program)   # execute + critic ONCE (reused to write)
+        v = service.stamp(service.verify_payload(program, el, crit, err))   # verdict shown inline
         if not v.get("passed"):                             # gate 1: the fab gate
             return {**v, "exported": False, "artifacts_abs": {}}
         verdict, reason = permissions.decide("export", None, confirm)   # gate 2: the permission gate
         if verdict != "allow":
             return {**v, "exported": False, "artifacts_abs": {}, verdict: True, "reason": reason}
-        r = service.adopt_to_result(program)                # both gates clear → write the files
+        r = service.adopt_to_result(program, prebuilt=(el, crit, err))   # both gates clear → write (no rebuild)
         r["artifacts_abs"] = _abs_artifacts(r, out) if r.get("passed") else {}
         r["exported"] = bool(r.get("passed"))
         return r

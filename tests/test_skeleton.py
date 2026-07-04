@@ -12,10 +12,10 @@ PURE_MODULES = [
     "geometry", "geometry.service",
     "toolkit", "toolkit.elements", "toolkit.standards",
     "eval", "eval.briefs", "eval.harness", "eval.reference", "eval.llm",
-    "backends", "backends.base", "backends.step", "backends.drawing", "backends.render", "backends.ifc",
+    "backends", "backends.base", "backends.step", "backends.drawing", "backends.ifc",
     "critic", "critic.base", "critic.panel", "critic.dimensional", "critic.geometric", "critic.semantic", "critic.manufacturing",
     "agent", "agent.inference", "agent.loop",
-    "store", "store.db",
+    "store", "store.repairs",
     "cli",
 ]
 
@@ -23,14 +23,6 @@ PURE_MODULES = [
 @pytest.mark.parametrize("mod", PURE_MODULES)
 def test_imports_clean(mod):
     importlib.import_module(mod)
-
-
-def test_render_toolkit_not_imported_at_load():
-    # backends/render_toolkit.py imports bpy at module load (mesh-era code); it must only be
-    # pulled in lazily by backends.render at P1, never by importing the backends package.
-    import sys
-    importlib.import_module("backends")
-    assert "backends.render_toolkit" not in sys.modules
 
 
 def test_selftest_passes():

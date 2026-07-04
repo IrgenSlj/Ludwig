@@ -204,7 +204,7 @@ def _repair_prompt(program: str, brief: Brief, critique: Optional[Critique], err
     if err:
         issues = err
     elif critique:
-        issues = "; ".join(f"{c.check}: {c.message}" for c in critique.failures) or "unspecified"
+        issues = "; ".join(critique.repair_hints()) or "unspecified"   # single owner: Critique.repair_hints
     else:
         issues = "unspecified"
     mem = f"{remembered}\n" if remembered else ""   # A5: remembered fixes for a similar failure (flag-gated)

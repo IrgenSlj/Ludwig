@@ -28,7 +28,6 @@ def evaluate(el, brief) -> Critique:
     tol = bbox_gate() if loose else tol_linear()
 
     declared = dict(getattr(brief, "named_dims", {}) or {})
-    self_verify = False
     if not declared:
         # No brief-declared dims (a gallery seed, an adopt/verify path, a bare compile). Fall back to
         # self-verifying the element's OWN registered EXTENT dims against the measured solid — so every

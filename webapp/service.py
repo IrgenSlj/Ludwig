@@ -413,17 +413,38 @@ def explore_to_result(prompt: str, n: int = 3, *, out: Optional[Path] = None) ->
     return {"prompt": prompt, "variants": ranked}
 
 
+def execute_and_verify(program: str):
+    """Execute a program and run the deterministic critic ONCE — the shared front half of verify / adopt /
+    build / export, so a single request never rebuilds the same B-rep twice. Returns (el, crit, err)."""
+    from agent.loop import Brief, execute, verify
+
+    el, err = execute(program)
+    crit = verify(el, Brief(prompt="")) if el is not None else None
+    return el, crit, err
+
+
+def verify_payload(program: str, el, crit, err: Optional[str] = None) -> dict:
+    """The file-free verify verdict (program · passed · critic[] · bbox · dims · estimate) — the single
+    source of the verify shape. `verify_to_result` and the MCP export gate both build from it; callers
+    that hand it to a client wrap it in `stamp` (or @_versioned) for `schema_version`."""
+    payload = _variant_payload(program, el, crit)
+    payload["program"] = program
+    if err:
+        payload["error"] = err
+    return payload
+
+
 @_versioned
-def adopt_to_result(program: str, *, out: Optional[Path] = None) -> dict:
-    """Adopt an explored variant: re-execute its program and run the FULL `_assemble` (artifacts + the
-    fab gate). NO generation happens — adoption is token-free; the program text already exists from the
-    contact sheet. References are by program lineage, never a stale kernel handle ([H2])."""
-    from agent.loop import Brief, LoopResult, execute, verify
+def adopt_to_result(program: str, *, out: Optional[Path] = None, prebuilt=None) -> dict:
+    """Adopt an explored variant: run the FULL `_assemble` (artifacts + the fab gate). NO generation —
+    adoption is token-free; the program text already exists. References are by program lineage, never a
+    stale kernel handle ([H2]). `prebuilt=(el, crit, err)` reuses an already-executed+verified build so
+    the export path (verify → gate → write) doesn't rebuild the same solid twice."""
+    from agent.loop import LoopResult
 
     out = Path(out) if out is not None else OUT
     out.mkdir(parents=True, exist_ok=True)
-    el, err = execute(program)
-    crit = verify(el, Brief(prompt="")) if el is not None else None
+    el, crit, err = prebuilt if prebuilt is not None else execute_and_verify(program)
     passed = el is not None and crit is not None and crit.passed
     res = LoopResult(program, el, crit, passed, 0, err)
     result = _assemble(res, out)
@@ -436,15 +457,7 @@ def verify_to_result(program: str) -> dict:
     """Execute a program and run the deterministic critic — token-free, writing NO files. The 'is this
     correct and fabricable?' check the MCP `ludwig_verify` tool binds to. Same file-free payload shape as
     an exploration variant (program · passed · critic[] · bbox · dims · estimate)."""
-    from agent.loop import Brief, execute, verify
-
-    el, err = execute(program)
-    crit = verify(el, Brief(prompt="")) if el is not None else None
-    payload = _variant_payload(program, el, crit)
-    payload["program"] = program
-    if err:
-        payload["error"] = err
-    return payload
+    return verify_payload(program, *execute_and_verify(program))
 
 
 @_versioned
@@ -454,7 +467,7 @@ def build_to_result(program: str, plan, *, out: Optional[Path] = None) -> dict:
     untouched — no STEP leaves on a failing critic). Returns the standard result plus the unified diff and
     the inverse plan (for undo). The Op-API's deterministic build path — a plan is data we render, never
     model-authored code we exec()."""
-    from agent.loop import Brief, LoopResult, execute, verify
+    from agent.loop import LoopResult
 
     out = Path(out) if out is not None else OUT
     out.mkdir(parents=True, exist_ok=True)
@@ -463,8 +476,7 @@ def build_to_result(program: str, plan, *, out: Optional[Path] = None) -> dict:
     rendered = base + ("\n" if base and add_src else "") + add_src if add_src else base
     new_program, inverse = plan.apply_to(rendered)         # thread SetParam ops; get the inverse plan
 
-    el, err = execute(new_program)
-    crit = verify(el, Brief(prompt="")) if el is not None else None
+    el, crit, err = execute_and_verify(new_program)
     passed = el is not None and crit is not None and crit.passed
     res = LoopResult(new_program, el, crit, passed, 0, err)
     result = _assemble(res, out)

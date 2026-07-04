@@ -5,15 +5,13 @@
 # Seeded from the mesh-era standards/{units,tolerances}.md; grows from real use, not speculatively.
 
 units:
-  length: mm                 # mm EVERYWHERE — units explicit and asserted (the #1 silent CAD bug)
-  angle: deg
-  assert_units: true         # every Param must carry a unit; codegen asserts this
+  length: mm                 # mm EVERYWHERE — units explicit and asserted (the #1 silent CAD bug).
+  angle: deg                 # (Unit presence is enforced unconditionally in the Param dataclass.)
 
 tolerances:
   # dimensional verification tolerance — the critic checks named dims to this exactness
   linear: 1.0e-6             # mm; "exact" for the dimensional critic
   bbox_gate: 1.0e-3          # mm; P0 spine gate: bbox within ±this of declared
-  angular: 1.0e-4            # deg
 
 # Domain semantics codegen must consult rather than guess (BRIEF §10).
 # e.g. an "M8 clearance hole" is ⌀9.0, NOT ⌀8.0.
@@ -62,7 +60,6 @@ ifc_material_map:
 
 manufacturing:
   min_wall_mm: 1.5           # P0 heuristic only — NEVER a P0 gate (OCCT booleans fail here); real analysis P1
-  default_material: steel
   cover_mm: 40
 
 # Drawing conventions — the conventioned shop-drawing engine reads ALL of this (BRIEF §7, the moat).
@@ -77,7 +74,6 @@ drawing:
     centre: 0.13
     dimension: 0.13
     border: 0.50
-  hlr_algorithm: exact       # exact | polygonal — toggle; polygonal is faster/more robust, faceted curves
   projection: third_angle    # third_angle (US/CAD default) | first_angle (EU): plan above vs below front
   # Sheet (mm). A3 landscape is the shop default; the engine fits the views and picks the scale.
   sheet:

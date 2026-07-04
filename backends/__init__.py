@@ -9,7 +9,5 @@ import backends.drawing  # noqa: F401
 import backends.shopdrawing  # noqa: F401
 import backends.section  # noqa: F401
 import backends.present  # noqa: F401
-# backends.render is intentionally NOT imported: its compile() is an unimplemented P1 stub, so
-# auto-registering it would fail every multi-backend compile. P1 re-adds it when compile() is real.
 
 __all__ = ["Backend", "all", "by_name", "compile", "fabrication", "register"]
