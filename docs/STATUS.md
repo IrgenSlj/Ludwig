@@ -33,12 +33,16 @@ them. Update it as sessions land. Last updated 2026-07-04.*
   `eval/pool.py` (disjoint from the frozen set), injected into the repair prompt. Flag-gated
   `memory.repair_corpus`, **default OFF and UNMEASURED** — it flips default-on only if an on/off eval moves
   repair rounds/rate (the measurement is Tier-1 below). `cli.py --mine-repairs` builds it.
-- **Critic hardening** — the dimensional check self-verifies an element's registered extents when a brief
-  declares no dims (gallery seeds, adopt, bare compile), so the headline check runs green instead of a
-  vacuous n/a; the Studio bracket now shows dimensional verified.
+- **A7** — STL backend + printability critic (the print3d fabrication wedge). `backends/stl.py` emits a
+  watertight binary STL (critic-gated like STEP); `critic/printability.py` runs only for a print `process`
+  (fdm/sla, else N/A) and gates on min-wall + build envelope while advising on overhang + bed-contact
+  (`geometry.print_mesh_stats`). Thresholds in `standards.yaml: printing`. Addable per [H4], no loop change.
+- **Critic hardening** — the dimensional check self-verifies registered extents when a brief declares no dims
+  (green instead of a vacuous n/a), and now verifies a **cylinder's diameter** and a **panel's thickness**
+  against the measured solid (not just their registered value) — closing two real holes.
 - **Cleanup** — deleted the inert Blender render backend (`backends/render*`, ~535 lines) and the unwired
   `store/db.py` stub (both recoverable at `mesh-era-m4`); halved MCP export latency (single execute+verify);
-  removed 4 dead `standards.yaml` keys; de-duped the diff/repair-hint helpers. Selftest **88/88**.
+  removed 4 dead `standards.yaml` keys; de-duped the diff/repair-hint helpers. Selftest **96/96**.
 
 ## Remaining plan — prioritized by leverage (one session = one PR; `--selftest` green, token-free)
 *Ordered by value toward the north-star (deploy → distribution → revenue), not strict roadmap sequence.
@@ -60,10 +64,10 @@ Each item: why-now · gate. Pick the top unblocked item each session. Specs stay
   *Gate:* an op driven over MCP appears in the Studio rail tagged by client.
 
 ### Tier 2 — the biggest new-audience capability (token-cheap, high visible value)
-- **A7 — STL backend + `critic/printability.py`** (min-wall per process, overhang vs threshold, bed-contact,
-  envelope from standards; registered per [H4]). Opens the 3D-print self-serve wedge — the largest audience,
-  a regime the critic is strongest in. *Gate:* a 0.4 mm wall fails with the right message; repair fixes it;
-  the STL opens in a slicer.
+- **A7 — STL backend + `critic/printability.py`** — **SHIPPED** (see Shipped above): min-wall + envelope gate,
+  overhang + bed-contact advise, N/A off a print process; watertight STL, critic-gated. Opens the 3D-print
+  self-serve wedge. *Remaining nice-to-have:* a `process`-carrying print eval brief set + a live repair demo
+  (thin wall → repair thickens → passes) once inference budget allows.
 - **A8 — pack format + `packs/print3d/`.** Extract the Agent-Skills pack format from the *working* print
   domain (SKILL.md to agentskills.io spec; loader deep-merges standards, registers the critic, adds briefs —
   no loop change). *Gate:* `--pack print3d` changes critic behavior with zero loop changes; the same folder

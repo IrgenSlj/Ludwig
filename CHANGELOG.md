@@ -35,7 +35,18 @@ All notable changes to Ludwig are documented here.
   gates holding (generation refused; arbitrary programs rejected). Recorded in `DEPLOY.md` — the GTM "demo is
   done" claim is now backed by a check.
 
+- **STL backend + printability critic (A7).** The print3d fabrication wedge. `backends/stl.py`
+  tessellates the exact B-rep to a watertight binary STL (critic-gated like STEP). `critic/printability.py`
+  runs only when a brief declares a print `process` (fdm/sla), else N/A — it gates export on min-wall +
+  build envelope (unprintable) and advises on overhang + bed-contact (printable with support/brim), reading
+  per-process thresholds from `standards.yaml: printing`. `geometry.print_mesh_stats` computes max overhang
+  and bed-contact from the tessellated mesh. `Brief.process` activates it; registered per [H4], no loop change.
+
 ### Changed — critic hardening + plumbing cleanup
+- **Dimensional check verifies diameter + thickness against the solid.** Beyond self-verifying registered
+  extents when no dims are declared, the dimensional critic now maps a cylinder's `diameter` and a panel's
+  `thickness` to their measured bbox extents — closing two holes where a wrong diameter/thickness (the
+  flange's ⌀100, the panel's 200 mm) passed unchecked.
 - **Dimensional check self-verifies registered extents.** With no brief-declared dims (gallery seeds, adopt,
   bare compile), the dimensional critic now checks the element's own registered extent dims against the
   measured solid instead of reporting a vacuous `no declared dims` n/a — so the headline check runs green

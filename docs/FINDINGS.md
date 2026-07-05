@@ -49,6 +49,17 @@ default-off — the infra remains for the harder print3d/pack briefs where repai
 thin frozen-set headroom (already 100% post-repair in ≤2 rounds) means the honest signal is in *rounds*, not
 rate; measure accordingly.
 
+**Printability critic (A7) — deterministic, validated, and a tessellation gotcha found & contained.** The
+printability checks are exact geometry, not vibes: `print_mesh_stats` was validated to read a **90°** overhang
+on a cantilever, **0°** on prismatic parts, and a bed-contact footprint matching the analytic area on a box
+(3200 mm²) and cylinder (1252 ≈ π·20²). The min-wall/envelope gates fire on a thin-wall/oversize FDM part with
+the right message; overhang/bed-contact advise without blocking (support/brim are normal print practice, not
+defects). **Gotcha (measured):** exporting an STL adds an OCCT triangulation to the shape, and a triangulated
+shape's `BoundingBox()` bloats by the deflection (a 6.000 mm box read **6.025** mm after STL). Harmless in the
+pipeline — the critic runs *before* backends in `_assemble`, so the exact-dim verdict and payload bbox are
+computed first (confirmed: adopt reports 80×40×6 exactly with STL registered) — but never tessellate a shape
+you will re-measure exactly. The selftest anchors a fresh throwaway part for the STL check for this reason.
+
 ## Interaction-core (rebuild R1–R34) — measured state, 2026-07-01
 
 The no-LLM interaction core (recorded FeatureGraph → deterministic evaluator + targeted literal
