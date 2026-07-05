@@ -51,6 +51,12 @@ def drawing() -> dict:
     return dict(load().get("drawing", {}) or {})
 
 
+def printing() -> dict:
+    """3D-printing process limits (envelope, per-process min-wall / overhang / bed-contact) for the
+    printability critic. Returns {} if the section is absent so the critic can stay N/A."""
+    return dict(load().get("printing", {}) or {})
+
+
 def material_for(element_type: str) -> dict:
     """The material record for an Element.type (via ifc_material_map → materials), including
     `density_kg_m3` and `price_per_kg` for a mass/cost estimate. Returns {} if unmapped."""

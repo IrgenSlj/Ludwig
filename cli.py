@@ -390,6 +390,38 @@ def selftest() -> int:
                   and abs(rl - 80) <= tol and abs(rw - 40) <= tol and abs(rh - 6) <= tol,
                   f"reimport bbox {rl:.3f}×{rw:.3f}×{rh:.3f}")
 
+        # A7 — STL backend + printability critic. STL emits a valid mesh (registered per [H4]);
+        # printability is N/A off, gates a print job on min-wall/envelope, and ADVISES on overhang —
+        # verified fabricability for 3D printing (the print3d self-serve wedge).
+        from agent.loop import Brief as _Brief
+        from backends import by_name as _by_name, stl as _stl_backend
+        from critic import panel as _pnl
+        from toolkit import assembly as _asm, box as _bx, panel as _pnlpanel, place as _place
+        with tempfile.TemporaryDirectory() as td:
+            # a FRESH part — STL tessellation adds a triangulation that perturbs a shape's cached bbox,
+            # so never tessellate the shared `bracket` the exact-dim checks below reuse.
+            _stlp = _stl_backend.compile(_bx("a7stl", 30, 20, 8), td)
+            check("STL backend emits a valid non-empty mesh (registered per [H4])",
+                  _stlp.exists() and _stlp.stat().st_size > 100 and _by_name("stl") is not None)
+        check("printability critic registered in the panel (no loop change)",
+              any(getattr(c, "name", "") == "printability" for c in _pnl.critics()))
+        check("printability is N/A when no print process is declared (inert for non-print parts)",
+              any(c.check == "printability" and c.status.value == "n/a"
+                  for c in _pnl.evaluate(_bx("pk", 60, 40, 20), _Brief(prompt="a bracket")).checks))
+        _thin_c = _pnl.evaluate(_bx("thin", 40, 40, 0.5), _Brief(prompt="printed", process="fdm"))
+        check("printability FAILS a thin-wall FDM part on print_min_wall (gates export)",
+              not _thin_c.passed and any(c.check == "print_min_wall" and c.status.value == "fail"
+                                         for c in _thin_c.checks))
+        check("printability FAILS an oversize FDM part on the build envelope",
+              any(c.check == "envelope" and c.status.value == "fail" for c in
+                  _pnl.evaluate(_pnlpanel("big", 3000, 2000, 200), _Brief(prompt="p", process="fdm")).checks))
+        _cap = _bx("cap", 60, 60, 10)
+        _place(_cap, (0, 0, 40))
+        _cant_c = _pnl.evaluate(_asm("T", _bx("post", 20, 20, 40), _cap), _Brief(prompt="p", process="fdm"))
+        check("printability overhang is ADVISORY — flags support, does NOT block export",
+              _cant_c.passed and any(c.check == "overhang" and "support" in c.message
+                                     for c in _cant_c.checks))
+
         from backends import drawing as drawing_backend
         with tempfile.TemporaryDirectory() as td:
             dp = drawing_backend.compile(bracket, td)

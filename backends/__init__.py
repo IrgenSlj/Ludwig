@@ -4,6 +4,7 @@ from backends.registry import all, by_name, compile, fabrication, register
 
 # Import backends to trigger registration
 import backends.step  # noqa: F401
+import backends.stl  # noqa: F401
 import backends.ifc  # noqa: F401
 import backends.drawing  # noqa: F401
 import backends.shopdrawing  # noqa: F401

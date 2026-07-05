@@ -270,6 +270,44 @@ class GeometryService:
         bb = handle.solid().val().BoundingBox()
         return ((bb.xmin + bb.xmax) / 2, (bb.ymin + bb.ymax) / 2, (bb.zmin + bb.zmax) / 2)
 
+    def print_mesh_stats(self, handle: BRepHandle, *, tolerance: float = 0.1) -> dict:
+        """Print-orientation mesh analysis for the printability critic (A7); build direction +Z. From the
+        tessellated solid returns:
+          - `max_overhang_deg`: the steepest DOWNWARD-facing surface angle from vertical, EXCLUDING faces
+            resting on the build plate (a bed face is support-free). 0 = only vertical/upward faces;
+            90 = a flat ceiling needing full support.
+          - `bed_contact_mm2`: total area of triangles lying on the bed (z ≈ z_min) — the first-layer footprint.
+        Triangle normals come from the winding (OCCT tessellation is outward-wound for a valid solid); a
+        downward normal is one whose unit z < 0.
+        """
+        import math
+
+        m = self.tessellate(handle, tolerance)
+        pos, idx = m["positions"], m["indices"]
+        if not idx:
+            return {"max_overhang_deg": 0.0, "bed_contact_mm2": 0.0}
+        zs = pos[2::3]
+        z_min, z_max = min(zs), max(zs)
+        bed_tol = max(1e-4, (z_max - z_min) * 1e-4)     # relative "on the bed" tolerance
+        max_overhang, bed_area = 0.0, 0.0
+        for i in range(0, len(idx), 3):
+            a, b, c = idx[i] * 3, idx[i + 1] * 3, idx[i + 2] * 3
+            p0, p1, p2 = pos[a:a + 3], pos[b:b + 3], pos[c:c + 3]
+            ux, uy, uz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
+            vx, vy, vz = p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]
+            nx, ny, nz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx   # outward normal × 2·area
+            mag = math.sqrt(nx * nx + ny * ny + nz * nz)
+            if mag < 1e-12:
+                continue
+            nzu = nz / mag                               # unit normal z
+            on_bed = all(p[2] - z_min <= bed_tol for p in (p0, p1, p2))
+            if on_bed and nzu < -0.5:                    # a downward face on the plate = bed contact
+                bed_area += 0.5 * mag
+            elif nzu < 0.0:                              # a downward face off the plate = an overhang
+                overhang = math.degrees(math.asin(min(1.0, -nzu)))
+                max_overhang = max(max_overhang, overhang)
+        return {"max_overhang_deg": max_overhang, "bed_contact_mm2": bed_area}
+
     def is_valid(self, handle: BRepHandle) -> bool:
         """OCCT topological validity (a coarse manifold/watertight proxy; the real panel is S4)."""
         return bool(handle.solid().val().isValid())

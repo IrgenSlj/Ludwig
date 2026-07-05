@@ -114,6 +114,7 @@ class Brief:
     holes: Optional[int] = None                                  # None = unknown (bare prompt); skip the check
     units: str = "mm"
     use_class: Optional[str] = None     # AD-K stair use class (private/general/institutional); compliance critic
+    process: Optional[str] = None       # fabrication process, e.g. "fdm"/"sla" → activates the printability critic (A7)
 
     def __post_init__(self) -> None:
         # Auto-extract dims and holes from the prompt if not explicitly provided.
@@ -131,7 +132,7 @@ class Brief:
     def from_dict(cls, d: dict) -> "Brief":
         return cls(prompt=d["prompt"], named_dims=dict(d.get("dims", {})),
                    holes=(int(d["holes"]) if "holes" in d else None),
-                   use_class=d.get("use_class"))
+                   use_class=d.get("use_class"), process=d.get("process"))
 
 
 @dataclass
