@@ -459,6 +459,46 @@ def run(brief: Brief, *, candidates: int = 1, rounds: int = 2, model: Optional[s
     return LoopResult(program, el, crit, passed, rnd, err)
 
 
+def run_search(brief: Brief, cfg, *, model: Optional[str] = None, on_event=None):
+    """WS2 — deliberative branch-and-prune over the deterministic critic (docs/V2_ROADMAP.md §2).
+
+    Binds the real loop primitives to the substrate-agnostic driver in `agent.search`: fresh proposals
+    use the CHEAP codegen tier; refinements use the BEST critic tier (BRIEF §5), exactly like `run`.
+    Pruning is the deterministic critic via `_weighted_failures` — free and exact, so the search can sit
+    at the high-verification end for ~zero model cost (RESEARCH_NOTES §1). Returns a `LoopResult` whose
+    `rounds` field carries the total model calls the search spent; the full `SearchResult` (reason, per-level
+    plan, node count) is available from `agent.search.search` for telemetry (WS7).
+
+    `cfg` is an `agent.config.HarnessConfig` — `cfg.search` supplies d/b/keep_k/veri_ratio, `cfg.budget`
+    the `max_calls` ceiling. The A5 repair corpus is consulted for refinements when enabled (read-only,
+    default off); mining is intentionally left to `run` for now (tree provenance is a WS7 concern).
+    """
+    from agent import search as _search
+
+    codegen_model = model or _tier_model("codegen")
+    critic_model = model or _tier_model("critic")
+    conn = _corpus_conn(None)                # retrieval only (flag-gated, default off); no mining here
+
+    def _propose(b: Brief) -> str:
+        return generate(b, model=codegen_model)
+
+    def _refine(parent: "_search.Candidate", b: Brief) -> str:
+        remembered = _remembered(conn, parent.critique, parent.err) if conn is not None else ""
+        return _strip_fences(inference.infer(
+            _repair_prompt(parent.program, b, parent.critique, parent.err, remembered),
+            model=critic_model))
+
+    res = _search.search(
+        brief, depth=cfg.search.depth, branch=cfg.search.branch, keep_k=cfg.search.keep_k,
+        veri_ratio=cfg.search.veri_ratio, max_calls=cfg.budget.max_calls,
+        propose=_propose, refine=_refine, execute=execute, verify=verify,
+        score=_weighted_failures, on_event=on_event)
+    best = res.best
+    if best is None:
+        return LoopResult("", None, None, False, res.calls_used, "no candidate produced")
+    return LoopResult(best.program, best.ir, best.critique, best.passed, res.calls_used, best.err)
+
+
 def edit(program: str, instruction: str, *, brief: Optional[Brief] = None,
          rounds: int = 1, model: Optional[str] = None) -> LoopResult:
     """Re-prompt an existing program with a change, aiming for a MINIMAL diff (the editability thesis).

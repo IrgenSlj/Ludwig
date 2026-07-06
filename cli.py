@@ -772,6 +772,31 @@ def selftest() -> int:
               and [e["type"] for e in _rs.read_events()] == ["brief", "selection"]
               and _sha_a == _sha_b and _rs.media_path(_sha_a).exists())
 
+    # WS2 (v2 harness) — deliberative branch-and-prune. The scheduler math is pure; the driver is
+    # exercised token-free with a scripted mock (real model/kernel primitives are injected in the loop).
+    # A "program" is p:<quality>, lower better, 0 passes; score mirrors _weighted_failures.
+    from agent import search as _search
+    check("WS2 search: plan_levels is the d×b ideal unbudgeted, and splits by veri_ratio under a ceiling",
+          _search.plan_levels(3, 3, 0.5) == [3, 3, 3]
+          and sum(_search.plan_levels(3, 3, 0.5, max_calls=5)) <= 5
+          and _search.plan_levels(4, 4, 0.25, 10)[0] > _search.plan_levels(4, 4, 0.75, 10)[0])
+    _sit = iter([5, 4, 3, 2, 6, 1, 0, 9, 4])   # level0 best 3 → 1 → 0 (converges at level 2)
+
+    class _SelftestCrit:
+        def __init__(self, q):
+            self.quality = q
+            self.passed = (q == 0)
+            self.failures = []
+
+    _sr = _search.search(
+        None, depth=3, branch=3, keep_k=1, veri_ratio=0.5,
+        propose=lambda b: f"p:{next(_sit)}", refine=lambda parent, b: f"p:{next(_sit)}",
+        execute=lambda p: ((None, "err") if int(p.split(":")[1]) < 0 else (int(p.split(":")[1]), None)),
+        verify=lambda ir, b: _SelftestCrit(ir),
+        score=lambda c: (1, 0) if c is None else (0, c.quality))
+    check("WS2 search: branch-and-prune refines to the passing branch (converged, 9 calls)",
+          _sr.passed and _sr.reason == "converged" and _sr.calls_used == 9 and _sr.best.program == "p:0")
+
     ok = all(passed for _, passed, _ in checks)
     for label, passed, detail in checks:
         mark = "ok  " if passed else "FAIL"
@@ -938,18 +963,33 @@ def run_eval(*, live: bool = False, repair: bool = False, via_mcp: bool = False)
     return 0 if rate == 1.0 else 1
 
 
-def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2) -> int:
-    """The compile path: prompt → generated program → executed IR (BRIEF §5, S3 gate)."""
+def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2,
+                   search: bool = False, cfg=None) -> int:
+    """The compile path: prompt → generated program → executed IR (BRIEF §5, S3 gate).
+
+    With `search=True` the prompt is compiled through the WS2 deliberative branch-and-prune search
+    (`agent.loop.run_search`) using the resolved `cfg` (an `agent.config.HarnessConfig`); otherwise the
+    default linear loop (`candidates` proposals + `rounds` repair) runs, byte-unchanged.
+    """
     try:
         import cadquery  # noqa: F401
     except ImportError:
         print("cadquery not installed — compiling needs the OCCT kernel (`pip install cadquery`).")
         return 1
-    from agent.loop import Brief, run
+    from agent.loop import Brief, run, run_search
     from geometry import GeometryService
 
-    print(f"› compiling: {prompt}\n")
-    res = run(Brief(prompt=prompt), candidates=candidates, rounds=rounds)
+    brief = Brief(prompt=prompt)
+    if search:
+        from agent.config import load_config
+        cfg = cfg or load_config()
+        print(f"› deliberative search: {prompt}\n  d={cfg.search.depth} b={cfg.search.branch} "
+              f"keep_k={cfg.search.keep_k} veri_ratio={cfg.search.veri_ratio} "
+              f"max_calls={cfg.budget.max_calls}\n")
+        res = run_search(brief, cfg)
+    else:
+        print(f"› compiling: {prompt}\n")
+        res = run(brief, candidates=candidates, rounds=rounds)
     print("--- program ---")
     print(res.program)
     print("\n--- result ---")
@@ -958,7 +998,8 @@ def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2) -> int:
         return 1
     length, width, height = GeometryService().bbox(res.ir.geometry) if res.ir.geometry else (0.0, 0.0, 0.0)
     print(f"built {res.ir.id!r}: bbox {length:.3f}×{width:.3f}×{height:.3f} mm · "
-          f"{len(res.ir.manifest)} named dims · {res.rounds} repair round(s)")
+          f"{len(res.ir.manifest)} named dims · {res.rounds} "
+          f"{'model call(s)' if search else 'repair round(s)'}")
     for c in (res.critique.checks if res.critique else []):
         print(f"  [{c.status.value:4}] {c.check}" + (f" — {c.message}" if c.message else ""))
 
@@ -1112,6 +1153,22 @@ def main(argv: list[str]) -> int:
             except ValueError:
                 pass
 
+    # v2 search knobs (WS2): --search opts into deliberative branch-and-prune; these flags override
+    # ludwig.toml. Each accepts `--flag value` or `--flag=value`; the space form's value is consumed
+    # so it doesn't leak into the positional prompt (same rule as --candidates).
+    _SEARCH_FLAGS = {"--depth": "search.depth", "--branch": "search.branch",
+                     "--keep-k": "search.keep_k", "--veri-ratio": "search.veri_ratio",
+                     "--seed": "search.seed", "--budget-calls": "budget.max_calls"}
+    overrides: dict[str, str] = {}
+    for i, arg in enumerate(argv):
+        key = arg.split("=", 1)[0]
+        if key in _SEARCH_FLAGS:
+            if "=" in arg:
+                overrides[_SEARCH_FLAGS[key]] = arg.split("=", 1)[1]
+            elif i + 1 < len(argv):
+                overrides[_SEARCH_FLAGS[key]] = argv[i + 1]
+                consumed.add(i + 1)
+
     pos = [a for i, a in enumerate(argv) if not a.startswith("--") and i not in consumed]
     if "--plan" in argv or "--apply" in argv:   # reviewable op-plan (R17), routed before positional/--edit
         if len(pos) < 2:
@@ -1121,10 +1178,21 @@ def main(argv: list[str]) -> int:
         if len(pos) < 2:
             raise SystemExit('Usage: cli.py --edit <recipe.py> "<change>"')
         return edit_recipe(pos[0], pos[1])
+    if "--search" in argv:                      # WS2 deliberative branch-and-prune (opt-in)
+        if not pos:
+            raise SystemExit('Usage: cli.py "<prompt>" --search '
+                             '[--depth D --branch B --keep-k K --veri-ratio R --budget-calls N --seed S]')
+        from agent.config import load_config
+        try:
+            cfg = load_config(overrides=overrides)
+        except (ValueError, KeyError) as e:
+            raise SystemExit(f"config error: {e}")
+        return compile_prompt(pos[0], search=True, cfg=cfg)
     if pos:
         return compile_prompt(pos[0], candidates=candidates)
     raise SystemExit(
-        'Usage: cli.py "<prompt>" [--candidates N]  |  --edit <recipe.py> "<change>"  |  '
+        'Usage: cli.py "<prompt>" [--candidates N]  |  "<prompt>" --search [--depth D --branch B '
+        '--veri-ratio R --budget-calls N]  |  --edit <recipe.py> "<change>"  |  '
         '--plan/--apply <recipe.py> "<change>"  |  --serve [port] [--port N] [--token T | --no-token]  |  '
         'mcp  |  --selftest  |  --eval [--live] [--repair] [--mcp]  |  --mine-repairs.'
     )
