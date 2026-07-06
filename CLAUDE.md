@@ -14,7 +14,17 @@ file. The loop is `generate → verify → repair`. Engine, backends, and critic
 > Read BRIEF.md first, then HARNESS_BRIEF.md, every session.
 
 ## The plan of record
-**[BRIEF.md](BRIEF.md)** is the founding spec (architecture, first principles, P0–P4); **[HARNESS_BRIEF.md](HARNESS_BRIEF.md)**
+**LEAD (v2, from 2026-07-06): [LUDWIG_V2_BRIEF.md](LUDWIG_V2_BRIEF.md)** — "the deliberative harness" — is now
+the driving roadmap, executed through **[docs/V2_ROADMAP.md](docs/V2_ROADMAP.md)** under the **M0 decision:
+Option A — retrofit the harness mechanisms (search, trajectory, judge, symbolic, benchmark, telemetry) onto
+the existing CadQuery/OCCT CAD core.** The v2 brief was written against a Blender substrate Ludwig doesn't
+have; **[docs/AUDIT_NOTES.md](docs/AUDIT_NOTES.md)** records the reality-vs-belief reconciliation. The v2 brief
+leads on harness mechanisms but does **not** reintroduce Blender, a VLM-centered judge, or Blender benchmarks —
+those reverse the locked BRIEF.md decisions below and were rejected at M0.
+
+**Founding specs (still authoritative for locked decisions):**
+**[BRIEF.md](BRIEF.md)** is the founding spec (architecture, first principles, P0–P4; the locked substrate +
+deterministic-critic decisions stand); **[HARNESS_BRIEF.md](HARNESS_BRIEF.md)**
 AMENDS it with the post-R34 direction (Ludwig as the trusted geometry hand of the agentic ecosystem). The
 canonical session-by-session schedule is now two workstreams that run in parallel:
 - **A-series — [HARNESS_BRIEF.md](HARNESS_BRIEF.md)** (A1–A10): the three surfaces, locked ordering
