@@ -1,0 +1,22 @@
+# ludwig.toml — the harness runtime config surface (docs/V2_ROADMAP.md §4).
+#
+# Owns only the NEW v2 harness knobs: search / budget / telemetry. Domain standards and
+# inference tiers stay in standards.yaml (already working — not relitigated here). Every key is
+# mirrored by a CLI flag; the resolved config's hash goes into each run manifest (WS7).
+# Read-only, stdlib tomllib — no third-party dep, so --selftest stays green on bare Python.
+
+[search]
+depth = 3          # d — refinement iterations (BlenderGym default d=3)
+branch = 3         # b — candidate proposals per iteration
+keep_k = 1         # beam width kept after each prune (top-1 greedy by default)
+veri_ratio = 0.5   # explore <-> refine budget split. NB our verifier (the deterministic critic)
+                   # is FREE + exact, so this tunes generate-vs-repair spend, not generate-vs-judge.
+seed = 0           # fixes proposal/perturbation sampling → replayable search (modulo model nondeterminism)
+
+[budget]
+max_calls = 60         # hard cap on model calls per run → terminate + return best-so-far
+cost_confirm_usd = 5.0 # bench/large runs print a projected cost and require confirmation above this
+
+[telemetry]
+enabled = true
+runs_dir = "runs"      # per-run manifest + trajectory JSONL + content-addressed media (WS7)

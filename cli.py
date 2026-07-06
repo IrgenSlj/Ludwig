@@ -737,6 +737,41 @@ def selftest() -> int:
         except ImportError:
             print("  [skip] IFC check — ifcopenshell not installed")
 
+    # M1 (v2 harness) — ludwig.toml config resolver + telemetry RunStore. Pure stdlib (no kernel,
+    # no third-party dep), so these run on bare Python. The config_hash pins a run's settings (WS7);
+    # the RunStore is the trajectory-dataset plumbing WS7 builds on.
+    from agent import config as _cfg
+    _c0 = _cfg.HarnessConfig()
+    check("M1 config: defaults resolve (d=3 b=3 veri=0.5, max_calls=60)",
+          _c0.search.depth == 3 and _c0.search.branch == 3 and _c0.search.veri_ratio == 0.5
+          and _c0.budget.max_calls == 60 and _c0.telemetry.runs_dir == "runs")
+    _c1 = _cfg.load_config(overrides={"search.depth": "5", "budget.max_calls": "30",
+                                      "telemetry.enabled": "false"})
+    check("M1 config: CLI overrides coerce by field type (int/bool)",
+          _c1.search.depth == 5 and _c1.budget.max_calls == 30 and _c1.telemetry.enabled is False)
+    check("M1 config: config_hash is stable, and moves when a value changes",
+          _cfg.HarnessConfig().config_hash() == _cfg.HarnessConfig().config_hash()
+          and _c0.config_hash() != _c1.config_hash())
+    try:                                    # unknown override key → KeyError (not ValueError)
+        _cfg.load_config(overrides={"search.bogus": 1})
+        _bad_key_rejected = False
+    except KeyError:
+        _bad_key_rejected = True
+    check("M1 config: out-of-range value (ValueError) + unknown key (KeyError) are both rejected",
+          _raises(lambda: _cfg.load_config(overrides={"search.veri_ratio": "2.0"})) and _bad_key_rejected)
+    import tempfile as _tempfile   # local: the kernel-gated block's import may not have run on bare Python
+    from telemetry.store import RunStore as _RunStore
+    with _tempfile.TemporaryDirectory() as _rd:
+        _rs = _RunStore("selftest_run", runs_dir=_rd)
+        _rs.write_manifest({"config_hash": _c0.config_hash(), "seed": 0})
+        _rs.extend_events([{"type": "brief", "text": "bracket"}, {"type": "selection", "kept": "b1"}])
+        _sha_a = _rs.put_media(b"fake-render-bytes", ext="png")
+        _sha_b = _rs.put_media(b"fake-render-bytes", ext="png")   # identical → content-addressed dedup
+        check("M1 telemetry: RunStore round-trips manifest + trajectory + content-addressed media",
+              _rs.read_manifest()["run_id"] == "selftest_run"
+              and [e["type"] for e in _rs.read_events()] == ["brief", "selection"]
+              and _sha_a == _sha_b and _rs.media_path(_sha_a).exists())
+
     ok = all(passed for _, passed, _ in checks)
     for label, passed, detail in checks:
         mark = "ok  " if passed else "FAIL"
