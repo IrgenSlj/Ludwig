@@ -105,6 +105,11 @@ The resolved config's **hash** goes into every run manifest (WS7). CLI mirrors e
 
 ## 6. Open decisions (brief §11 — non-blocking, for Irgen)
 - O1: second model provider for the cross-model aesthetic judge (WS4) — only matters if we keep the aesthetic pass.
-- O2: launch CAD benchmark choice (WS6) — decided from RESEARCH_NOTES; candidates: BenchCAD, Query2CAD, CAD-Coder.
+- O2: **RESOLVED (from [RESEARCH_NOTES.md](RESEARCH_NOTES.md)) — launch on BenchCAD** (execution-verified,
+  CadQuery/OCCT-native, CC-BY-4.0/MIT, has an instruction-edit task matching `--edit`), with **Text2CAD-Bench**
+  as the curated hard-geometry companion. Headline metric pair: **valid-solid/execution rate + IoU**, reported
+  **first-pass vs after-repair**. Reject Query2CAD/Fusion360 for the public scorecard; keep CADSmith as an
+  internal regression harness. *Caveat: verify the exact arXiv IDs + baseline numbers before WS6 builds (M4) —
+  the research flagged some source figures as future-dated/unverified.*
 - O3: whether WS3 CAD multi-view pre-checks are worth building at all (no VLM ⇒ marginal); default = defer.
 - O4: license — assume Apache-2.0 core unless stated (brief O4).
