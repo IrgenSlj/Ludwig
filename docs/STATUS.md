@@ -3,7 +3,15 @@
 *The one-page "where are we, what's next." The specs are [BRIEF.md](../BRIEF.md) (founding) +
 [HARNESS_BRIEF.md](../HARNESS_BRIEF.md) (A-series) + [docs/MACOS_APP_PLAN.md](MACOS_APP_PLAN.md) (D-series) +
 [docs/DESIGN_BRIEF_STUDIO_V2.md](DESIGN_BRIEF_STUDIO_V2.md) (Studio v2). This file tracks execution against
-them. Update it as sessions land. Last updated 2026-07-04.*
+them. Update it as sessions land. Last updated 2026-07-06.*
+
+## v2 direction (M0 audit landed 2026-07-06)
+[LUDWIG_V2_BRIEF.md](../LUDWIG_V2_BRIEF.md) ("the deliberative harness") was audited against reality in
+**[docs/AUDIT_NOTES.md](AUDIT_NOTES.md)** — it assumes a Blender substrate + VLM critic Ludwig doesn't have.
+**Decision: Option A — retrofit only the substrate-agnostic wins onto the CadQuery/OCCT core** (keep the
+deterministic critic; no Blender, no VLM judge, no BlenderGym). First slice: **WS2 deliberative
+branch-and-prune search** (deterministic critic = free pruner). Strong follow-on: **WS7 telemetry/trajectory
+dataset**. Rejected workstreams and the full transfer table are in AUDIT_NOTES §3–5.
 
 ## Tracked numbers ([H6])
 - **First-pass geometric pass-rate** (frozen set, `cli.py --eval --live`): ~93% first-pass · 100% post-repair.

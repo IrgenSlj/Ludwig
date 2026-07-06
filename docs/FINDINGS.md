@@ -7,6 +7,26 @@ over the frozen held-out brief set (`eval/briefs.py`) — reproduce any CAD find
 `cli.py --eval [--live] [--repair]`. CAD numbers are single-run (n=1/brief) on the
 `claude` default tier unless noted, so treat small deltas as directional.
 
+## M0 — LUDWIG_V2_BRIEF audit, 2026-07-06
+
+**The v2 brief models a different substrate than Ludwig has.** LUDWIG_V2_BRIEF.md ("the deliberative
+harness") is written against a *belief* about the code — single-file `ludwig.py`, Blender/bpy generation,
+single fixed-camera VLM critic, `results.jsonl` eval — and all seven of its §0.1 assumptions are false
+against the repo (multi-package ~10.4k LOC; CadQuery/OCCT substrate; deterministic critic panel; geometric
+pass-rate harness; `cli.py` verbs). The tell: **WS10 files CadQuery as a future "stub," but CadQuery/OCCT is
+the whole shipped core** (STEP/IFC/DXF/STL + deterministic + printability critic), and **WS9 (MCP), filed as
+Phase-2, already shipped** (A2–A4, external-agent pass-rate 93%). Full belief-vs-reality table, per-workstream
+transfer analysis, and PyPI check (`ludwig` taken, `ludwig-harness` free) in **[AUDIT_NOTES.md](AUDIT_NOTES.md)**.
+
+**Decision (Irgen, 2026-07-06): Option A — Retrofit onto CAD.** Keep the CadQuery/OCCT precision core +
+deterministic critic; adopt only the substrate-agnostic machinery that measurably helps. **WS2 deliberative
+branch-and-prune search is the first slice** — the deterministic critic is a *free, exact* pruner (cheaper
+and sharper than the VLM pruning the source papers use), so the mechanism fits Ludwig better than the Blender
+frontier it's borrowed from. Rejected: rebuilding on Blender (reverses the locked BRIEF.md:13 substrate call),
+re-centering a VLM judge / multi-view perception (reverses locked principle #5), and BlenderGym/BlenderBench
+(wrong benchmark family — BenchCAD/Query2CAD is the CAD-appropriate corpus). De-risking measurement for WS2:
+critic-pruned search vs linear codegen on the frozen set, `--eval-repeats 3`, recorded here when run.
+
 ## A-series (agentic harness) — measured state, 2026-07-04
 
 **MCP is the second face of the contract, and the transport preserves codegen reliability.** `cli.py mcp`
