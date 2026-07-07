@@ -4,9 +4,7 @@
 # for THIS practice. Codegen and the critic both consult it. Non-coders edit it.
 # Seeded from the mesh-era standards/{units,tolerances}.md; grows from real use, not speculatively.
 
-units:
-  length: mm                 # mm EVERYWHERE — units explicit and asserted (the #1 silent CAD bug).
-  angle: deg                 # (Unit presence is enforced unconditionally in the Param dataclass.)
+# Units are enforced unconditionally in the Param dataclass — mm everywhere.
 
 tolerances:
   # dimensional verification tolerance — the critic checks named dims to this exactness
@@ -33,12 +31,7 @@ materials:
   precast_concrete:
     ifc_material: "PrecastConcrete"
     ifc_property_set: "Pset_PrecastConcrete"
-    load_bearing: true
     concrete_strength_class: "C30/37"
-    exposure_class: "XC4"
-    fire_rating: "R60"
-    cover_to_reinforcement_mm: 40
-    reinforcement_class: "B500B"
     density_kg_m3: 2400        # reinforced precast, nominal
     price_per_kg: 0.06         # indicative material rate (~€150/m³) — a rough estimate, not a quote
   steel:
@@ -66,7 +59,6 @@ manufacturing:
 # declares a `process` (fdm/sla) or the print3d pack is active; otherwise N/A (a precast panel isn't
 # printed). Build direction is +Z. Grows into the print3d pack's standards fragment (A8).
 printing:
-  default_process: fdm
   envelope_mm: [256, 256, 256]   # build volume (e.g. a Bambu-class bed); a part must fit inside
   processes:
     fdm:

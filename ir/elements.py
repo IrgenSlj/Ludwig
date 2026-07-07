@@ -24,7 +24,7 @@ class Param:
             raise ValueError(f"Param {self.name!r} has no unit — units are mandatory")
 
 
-_KNOWN_UNITS: frozenset[str] = frozenset({"mm", "count"})
+_KNOWN_UNITS: frozenset[str] = frozenset({"mm", "count", "deg"})
 
 
 @dataclass

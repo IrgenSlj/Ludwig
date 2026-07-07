@@ -3,7 +3,7 @@
 The fabrication deliverable for 3D printing: the exact OCCT B-rep tessellated to a watertight `.stl`
 any slicer (Cura, PrusaSlicer, Bambu) opens. A FABRICATION export — gated behind the critic exactly
 like STEP, so a part that fails the printability critic never leaves as an STL. Tessellation deflection
-comes from `standards.yaml: printing.stl` (falls back to a sane default). CadQuery/OCCT imported lazily.
+reads optional printing.stl keys from the loaded standards (falls back to sane defaults). CadQuery/OCCT imported lazily.
 """
 from __future__ import annotations
 
