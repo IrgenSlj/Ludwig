@@ -88,7 +88,7 @@ extent sliders + **face-drag** (R10: grab a 3D face → its extent dim updates l
 diff), **live 2D sketch edit** (R34: drag a sketch distance dim → re-solve + re-extrude, 2D & 3D in
 lockstep), **live cut plane** (R33), the **section drawing backend** (R30 poché sheet), and the
 **sketch DoF critic** (R32). Gate: `--selftest` kernel **57/57** / pure-Python **17/17** · `--eval`
-**15/15 (100%)** · pytest **145**. All browser-verified where interactive.
+**15/15 (100%)** · pytest **145** *(as of R34 completion; current count is higher)*. All browser-verified where interactive.
 
 **Real generative pipeline validated end-to-end (2026-07-02).** With the whole rebuild shipped, a real
 inference run (claude CLI, `cheap`=haiku codegen) on a fresh brief — "90×50×8 steel mounting plate,

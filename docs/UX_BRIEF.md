@@ -1,8 +1,9 @@
-# Ludwig — UI/UX & Art Direction Brief (P3 input)
+# Ludwig — UI/UX & Art Direction Brief
 
-*This is the Claude Design handoff, preserved here so the Code side builds to its seams from P0.*
-*It is the input to Phase 3 (the Tauri desktop shell). It does not change the Code-side architecture —
-but it hardens which IR/critic/loop seams must exist and be real by the time P3 starts.*
+*Phase references (P0–P3) below come from the founding BRIEF.md roadmap (superseded by
+R1–R34 → A/D-series; see HARNESS_BRIEF.md + MACOS_APP_PLAN.md). The design direction here
+is still current and is extended by DESIGN_BRIEF_STUDIO_V2.md. This document does not change
+the Code-side architecture — it hardens which IR/critic/loop seams must exist and be real.*
 
 > North star: **Mies — "less is more."** Precision, restraint, the work as hero. A **viewfinder, not a cockpit.**
 

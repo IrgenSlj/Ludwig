@@ -1,4 +1,4 @@
-"""toolkit — the thin element-API codegen registers against (the new L_*). See BRIEF §5 / [H1].
+"""toolkit — the thin element-API codegen registers against. See BRIEF §5 / [H1].
 
 CRITICAL POLICY [H1]: generated programs target **raw CadQuery** for geometry and use this thin
 layer only to *register* semantics — which solids are which Elements, which values are named dims.

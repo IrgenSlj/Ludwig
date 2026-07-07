@@ -111,7 +111,7 @@ by re-platforming the UI. Design obligations:
 
 | Design surface | Engine seam | Status |
 |---|---|---|
-| Foreign-hand origin marks | SSE events carry a `client` field | A2–A3 (new field, trivial) |
+| Foreign-hand origin marks | SSE events carry a `client` field | deferred (STATUS.md Tier 1 — last honest deferral) |
 | Plan chips for foreign ops | Op-API `/api/plan` `/api/build` + agent_stream | shipped (R18, R23–R26) |
 | Export confirmation w/ verdict | pre-export critic hook + result payload | shipped |
 | Permission mode-dial | `standards.yaml: permissions` enforced server-side | A3 |

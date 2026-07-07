@@ -294,7 +294,7 @@ def _strip_fences(src: str) -> str:
 def execute(program: str, *, record: bool = False) -> tuple[Optional[Element], Optional[str]]:
     """Run a generated program in a toolkit namespace; return (element, error).
 
-    The program is design-as-code — running it IS the compile step (as the mesh era exec'd bpy).
+    The program is design-as-code — running it IS the compile step (the generated CadQuery code).
     Forces the lazy geometry to build so OCCT `StdFail_NotDone` surfaces here and feeds repair (§8).
     `record=True` runs it under toolkit.recording() so the returned Element carries a FeatureGraph
     (el.graph) for the deterministic evaluator — additive, the closure geometry path is unchanged ([H1]).

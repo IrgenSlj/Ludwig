@@ -14,7 +14,7 @@ ruff check                    # dead-code gate (unused imports/vars, undefined n
 python3 cli.py --eval         # first-pass geometric pass-rate on the frozen brief set (reference oracle)
 ```
 
-Heavy kernels (`cadquery`, `ifcopenshell`, `bpy`) are installed per phase and **imported lazily** — never
+Heavy kernels (`cadquery`, `ifcopenshell`) are installed per phase and **imported lazily** — never
 at package import — so the skeleton and CI stay green before they are present. Keep it that way.
 
 ## Highest-leverage contributions

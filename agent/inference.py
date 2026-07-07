@@ -1,4 +1,4 @@
-"""Provider-blind inference seam (salvaged from the mesh-era orchestrator).
+"""Provider-blind inference seam (the thin CLI-on-PATH adapter).
 
 This thin CLI-on-PATH adapter IS the inference boundary (BRIEF §4 / [H5]). It is *less*
 locked-in than adopting an SDK as the loop: the Anthropic Agent SDK, if wanted, goes behind

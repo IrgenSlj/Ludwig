@@ -102,6 +102,6 @@ Each item: why-now · gate. Pick the top unblocked item each session. Specs stay
 
 ## Working conventions (don't relitigate)
 - Ship to `main` directly (one deliverable per commit), push often, `--selftest` green every step.
-- Real kernel gate needs the venv: `.venv/bin/python cli.py --selftest` (~88 checks) and `pytest`.
+- Real kernel gate needs the venv: `.venv/bin/python cli.py --selftest` (~96 checks) and `pytest`.
 - MCP needs the SDK (`pip install mcp`); imported lazily so the spine stays green without it.
 - Measure, don't assert — every store/claim gets a FINDINGS entry + a kill criterion.

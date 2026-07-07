@@ -1,6 +1,6 @@
 """Dimensional critic — every named dim in the brief is present and EXACT (BRIEF §6).
 
-The low-noise heart of the moat: the signal the mesh-era vision critic never had (docs/FINDINGS.md).
+The low-noise heart of the moat: exact dimensional verification the deterministic critic provides.
 Each declared dim is checked to `tolerances.linear` (1e-6) against, in order:
   1. an axis-aligned bbox EXTENT measured from the built geometry — ground truth. length/width/height map
      to x/y/z; `thickness` maps to the middle (y) extent and `diameter` to the radial (x) extent, so a
