@@ -1096,6 +1096,7 @@ def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
 
     _print_bench_summary("oracle/ground-truth", gt_sum)
     _print_bench_summary("oracle/unedited", no_sum)
+    _write_bench_report(report, "oracle", gt_sum, gt_res)
     gt_bad = [r for r in gt_res if not r.get("ungradeable") and r["score"] < 0.999]
     no_bad = [r for r in no_res if not r.get("ungradeable") and r["score"] > 0.001]
     print(f"\ngrader validation: ground-truth {'PASS' if not gt_bad else 'FAIL'} · "

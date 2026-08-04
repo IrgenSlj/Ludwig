@@ -98,21 +98,84 @@ STEP in → wrap as an Element → run the panel → deterministic fabricability
   makes Ludwig **complementary** to Fusion MCP / Onshape / Zoo instead of competing for the generation
   slot. Much larger market than text-to-CAD.
 
-### B3 — the live run + FINDINGS
-`--eval --bench edit --live` on a stratified sample. Record normalized accuracy, execution rate, and the
-**minimal-diff metric** (our diff size vs the ground-truth diff size — the claim nobody else measures)
-against the published 0.865. FINDINGS entry either way, with the metric caveat stated.
+### B3 — the live run + FINDINGS  ← **NEXT SESSION STARTS HERE**
+**Status: not yet measured.** B1 and B2 shipped 2026-08-04; the live run was started, reached ~19 min of
+a ~25 min run, and was stopped deliberately rather than reported, because it predated two fixes landed
+during the same session (`--bench-report`, and the code-only `diff_size`). A stale number is worse than
+no number. Nothing about the harness is blocked — this is a clean "run it" task.
+
+```bash
+.venv/bin/python cli.py --eval --bench edit --bench-limit 40 --live \
+    --no-download --bench-report runs/benchcad_live_40.json
+```
+
+Budget ~25 min and ~40 best-tier calls for n=40 (pacing defaults to 6 s; `LUDWIG_EVAL_PACE_S` tunes it).
+Smoke-tested green at n=3: **3/3 exact, exec 100%**. Then:
+- Record **normalized accuracy** (the headline, comparable to GPT-5.3-thinking's published 0.865),
+  **exec rate**, and the **code-only diff ratio** in FINDINGS. State the exact-vs-voxel IoU caveat.
+- **Check the sample's category mix before calling the number representative** — sampling is stratified
+  by family, not category, and the set is 48% T4/T5 (see the table above).
+- Re-run with `--rounds 0` vs `--rounds 1` to isolate what deterministic repair actually buys here.
+  *Expect little:* edit-bench's dominant failure mode is **semantic** (the right shape, the wrong number),
+  and the deterministic critic can only see **structural** failure (won't execute / invalid solid) without
+  a declared intent to check against. Say so plainly in FINDINGS rather than implying the repair loop was
+  tested and vindicated. **This is the honest limit of the benchmark for our thesis, and naming it is the
+  point of running it.**
 
 ### B4 — capability to-do list from the failures
-Whatever the B3 failures name, in the order they name it. Expect missing ops (loft/sweep/shell/helix).
-Per [H1] the fix is *adding the capability*, not tuning the prompt.
+Read `by_category` in the B3 report (worst-first, already computed) and work the list in that order. Per
+[H1] the fix is *adding the capability*, never tuning the prompt against the set.
 
-### B5 — `ludwig_query`: the IR as a queryable surface *(stretch, from the Autodesk AEC Data Model idea)*
+**Ruled out in advance, measured not assumed:** parsing the target value out of the instruction and
+verifying the edit against it looks like the obvious Ludwig move, but only **26%** of the 748
+instructions state an explicit target ("…from 4.5 to 5.85"). It is a real win on T1 `literal_replace`
+(24% of the set) and close to useless above it. Build it only if T1 is where the score actually leaks.
+
+### B4.5 — the honest hard question this session raised
+Edit-bench grades whether the *shape* is right. Ludwig's deterministic critic is strongest when there is
+a **declared intent** to verify against — which is exactly what a bare edit instruction lacks. The
+interesting research question the B3 run should sharpen: *can an edit instruction be compiled into a
+checkable assertion?* If yes, that is a genuine differentiator over one-shot editing and it generalizes
+past the 26%. If no, say so and stop paying for repair rounds that cannot fire.
+
+### B5 — `ludwig_query`: the IR as a queryable surface *(from the Autodesk AEC Data Model idea)*
 Their bet is exposing geometry + properties + relationships as structured queryable data rather than
 files. Ludwig's `backends/` is the Model Derivative equivalent, but there is no **read** surface — an
 agent can only compile/verify/build/export. The IR already carries `params`/`manifest`/`features`/
 `relations`; exposing them as a query turns Ludwig from a writer into a reader, which is where review
-value lives. Also unlocks the `QA` config above as a second third-party number.
+value lives — and it is the natural completion of B2, since an agent reviewing a supplier's STEP wants
+to *ask questions about it*, not just receive a pass/fail.
+
+**Scoped by what the `QA` config actually asks** (inspected 2026-08-04, so this is not a speculative
+ontology). Real questions: *"Is every hole radius ≤ 1.0?"*, *"What is the size of the largest chamfer?"*,
+*"What is the barrel OD to thread diameter ratio?"*, *"What is the sum of all extrude/cutBlind depths?"*
+
+Those split cleanly, and the split is the design:
+- **Answerable exactly from the B-rep today** — hole radii and positions (`cylindrical_face_centers` /
+  `cylindrical_face_count` already exist), bbox, volume, mass, min wall, face/edge/solid counts, print
+  stats. This is the slice to build: **Ludwig returns exact measurements; the calling agent does the
+  reasoning.** That keeps "data in, never code out" and the provider-blind posture intact.
+- **Needs feature recognition on foreign geometry** (largest chamfer) or is a question about the
+  *program* rather than the shape (sum of extrude depths). **Out of scope — do not fake it.** Scoring
+  well on the full `QA` config is a research project, not a session; the published bar is Gemini 3.1 Pro
+  (thinking) at 0.838 on Code QA.
+
+*Gate:* an agent can ask "every hole in this supplier's STEP, with radius and position" over MCP and get
+an exact answer Ludwig did not author the geometry for.
+
+## Beyond the B-series — the two ideas from the review still unbuilt
+Recorded so they are not lost; neither is scheduled, and neither should start before B3 lands.
+
+1. **Program versioning with branch/merge (the Onshape idea).** Onshape built microversions and git-style
+   branch/merge into a CAD *database* and pitches it as what makes a model AI-ready. Ludwig's model is
+   already text, so the semantics are nearly free where Onshape had to engineer them — but there is
+   currently **no version store at all** (`store/` holds only `repairs.sqlite`). This is what would make
+   `--edit` a product rather than a demo, and it is the same substrate WS7 trajectory telemetry wants.
+2. **DFM rule packs per process (the DFMPro idea).** Rules-based manufacturability checking sold into
+   SOLIDWORKS/NX/CATIA/Creo is a proven paid category, and `critic/` plus `standards.yaml` is already the
+   right shape for it. This is A8's pack format pointed at **DFM rules per process** (machining, sheet
+   metal, casting, injection moulding, additive) rather than a generic domain pack. It compounds with B2:
+   the rule library is what makes "verify someone else's geometry" worth paying for.
 
 ## Explicitly not doing
 - **Bernini-style neural mesh generation.** Autodesk moved off it themselves — meshes are not editable.

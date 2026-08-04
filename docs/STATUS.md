@@ -26,7 +26,9 @@ to **"we are the verifier"**. (2) **Our tracked number is measured on a set we w
 - **First-pass geometric pass-rate** (frozen set, `cli.py --eval --live`): ~93% first-pass · 100% post-repair.
 - **BenchCAD edit-bench** (third-party, `cli.py --eval --bench edit [--live]`): grader **oracle-validated**
   at n=100 (ground-truth 1.000 · unedited 0.000 · exec 100% over 96 gradeable rows, 4 ungradeable named).
-  Live number: see FINDINGS §B3. Published comparison: GPT-5.3 (thinking) 0.865 normalized accuracy.
+  **Live number: NOT YET MEASURED** — the B3 run is the next session's first task
+  ([BENCH_PLAN.md](BENCH_PLAN.md) §B3 has the exact command). Smoke-tested green at n=3 (3/3 exact).
+  Published comparison: GPT-5.3 (thinking) 0.865 normalized accuracy.
 - **External-agent pass-rate** (`cli.py --eval --mcp`, A4 companion): **93% (14/15)** — an external agent
   driving Ludwig over MCP matches the native first-pass rate; **the gap to native is 0** (§8 thesis
   quantified). Harness now robust to inference throttling (paces + retries throttle-shaped fails only); the
@@ -78,6 +80,16 @@ to **"we are the verifier"**. (2) **Our tracked number is measured on a set we w
 ## Remaining plan — prioritized by leverage (one session = one PR; `--selftest` green, token-free)
 *Ordered by value toward the north-star (deploy → distribution → revenue), not strict roadmap sequence.
 Each item: why-now · gate. Pick the top unblocked item each session. Specs stay BRIEF/HARNESS_BRIEF/MACOS.*
+
+### Tier 0.5 — the B-series (token-bounded, unblocked, start here)
+- **B3 — run the live BenchCAD number.** One command, ~25 min, ~40 best-tier calls; the harness is built
+  and oracle-validated. This is the third-party number the whole B-series exists to produce.
+  *Gate:* a FINDINGS entry with normalized accuracy + exec rate + code-only diff ratio, the category mix
+  of the sample stated, and an honest note on what deterministic repair can and cannot see here.
+- **B4 — work the `by_category` to-do list** the B3 report produces, worst first. (Ruled out in advance:
+  parsing a target value from the instruction covers only 26% of rows — see BENCH_PLAN §B4.)
+- **B5 — `ludwig_query`**, scoped to what the B-rep can answer exactly. Completes B2: an agent reviewing
+  a supplier's STEP should be able to ask questions about it, not just get a pass/fail.
 
 ### Tier 0 — needs the human (unblocks everything downstream)
 - **Deploy the public demo.** Runtime is verified (DEPLOY.md); only cloud creds are missing.

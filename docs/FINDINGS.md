@@ -60,6 +60,32 @@ tessellates the shape, and a bbox measured afterwards read **46.525 mm** for a 4
 is safe because the critic precedes the backends; on this path the tessellating critic is *inside* the
 panel, so extents must be taken first. Fixed, and covered by the selftest.
 
+**The minimal-diff instrument was measuring the wrong thing.** Over all 748 rows, **65% of the
+ground-truth diff lines are comment-only** — the gt programs fill in a `# length = 92.8` parameter block
+the originals leave blank. Counting those would have made any real edit look smaller than the reference
+for free, flattering our own headline claim on bookkeeping Ludwig never did. `diff_size` now counts code
+lines only. Caught *before* reporting a number, which is the only time it's worth anything.
+
+**What edit-bench asks, so B3's number can be read honestly.** 748 rows: T1 `literal_replace` 180 (24%),
+T2 `chain_transform` 104 (14%), T3 `relative_compute` 111 (15%), T4 `feature_edit` 199 (27%), T5
+`geometry_rebuild` 154 (21%) — so **48% is feature edits and geometry rebuilds**, not parameter tweaks.
+72% of instructions contain a number but only **26% state an explicit target value**. That last figure
+rules out, in advance, the obvious "parse the target and verify the edit against it" critic as a general
+answer. Sampling is stratified by *family*, not category; check a partial run's category mix before
+calling its number representative.
+
+**B3 (the live number) is NOT YET MEASURED — deliberately.** A 40-row live run was started and stopped at
+~19 of ~25 minutes, because it predated two fixes landed in the same session (the `--bench-report` JSON
+dump and the code-only `diff_size`). Reporting it would have meant publishing a number measured with an
+instrument we had already found to be wrong. The harness is built, oracle-validated and smoke-tested
+green at n=3 (3/3 exact, exec 100%); the exact command is in [BENCH_PLAN.md](BENCH_PLAN.md) §B3.
+
+*Known limit to state when it does land:* edit-bench's dominant failure mode is **semantic** (right
+shape, wrong number), and the deterministic critic can only see **structural** failure — won't execute,
+or an invalid solid — when there is no declared intent to check against. So this benchmark is a strong
+test of Ludwig's *editing*, and a weak test of its *repair thesis*. Naming that limit is part of the
+result, not a caveat to bury.
+
 ## M0 — LUDWIG_V2_BRIEF audit, 2026-07-06
 
 **The v2 brief models a different substrate than Ludwig has.** LUDWIG_V2_BRIEF.md ("the deliberative
