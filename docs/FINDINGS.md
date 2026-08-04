@@ -7,6 +7,59 @@ over the frozen held-out brief set (`eval/briefs.py`) — reproduce any CAD find
 `cli.py --eval [--live] [--repair]`. CAD numbers are single-run (n=1/brief) on the
 `claude` default tier unless noted, so treat small deltas as directional.
 
+## B1/B2 — the third-party benchmark, and verifying foreign geometry, 2026-08-04
+
+**Why we went looking for someone else's set.** A competitive-technology review (Autodesk, PTC/Onshape,
+Zoo, the DFM tool category — full write-up in [BENCH_PLAN.md](BENCH_PLAN.md)) turned up two facts. First,
+the MCP surface is now commodity: Autodesk shipped Fusion MCP *with Anthropic* in April 2026 plus a Revit
+public MCP, and PTC shipped an Onshape MCP toolkit in July. "An MCP that does CAD" no longer
+differentiates. What none of them ship is a **deterministic verifier**, and the sharpest published critique
+of Fusion MCP is that faster generation just floods a review process that was already the bottleneck.
+Second, our own tracked number (93% / 100%) is measured on **15 briefs we wrote ourselves, all L1
+prismatic**. So the number to go get is a third-party one.
+
+**BenchCAD's `edit-bench` is the right entry point, and it was verified before committing to it.** Checked
+against the HF datasets-server: the headline `code_gen` config (17,900 rows) carries **no text prompt** —
+it is a Vision2Code set, so using it for text→CAD means synthesizing our own prompts and forfeiting the
+third-party claim. But `edit-bench` (748 rows) carries `instruction` + `orig_code` + `gt_code` + real
+STEP binaries: instruction-guided minimal-diff editing, which is Ludwig's locked thesis (BRIEF §10) and
+needs no vision. Published comparison point: **GPT-5.3 (thinking) 0.865 normalized accuracy**.
+
+**The grader was validated before a single token was spent — and it was wrong three times.** The gate is
+`--eval --bench edit` in oracle mode: grading the ground truth must score 1.000 and grading the *unedited*
+program must score 0.000. Every one of these was found that way, at n=100, and none would have been
+visible from a passing run on our own briefs:
+
+| # | what broke | the measurement |
+|---|---|---|
+| 1 | Compound handling | `ball_knob` is a sphere unioned with a **tangent** stem cylinder, so it is legitimately a 2-solid compound. `Compound.intersect(Compound)` returned one pair's common — the shape scored **IoU 0.247 against itself**. Fixed by fusing to pairwise-non-overlapping parts and intersecting part-wise. |
+| 2 | No OCCT boolean is trustworthy alone | On `cotter_pin` the common returns **0** for a shape against itself while the fuse is correct; on `sheet_metal_tray` the common under-reports by **35%** and the fuse throws. Fuzzy tolerance (1e-7…1e-3) changes **nothing**. Intersections are now computed twice by different routes (`common`, and `va+vb−fuse`) and only trusted when they agree. |
+| 3 | Congruence fooled by symmetry | `rib_plate`'s edit moves a symmetric rib array (`rarray(84.72)→rarray(46.4)`), preserving volume, bbox **and** centroid — so the short-circuit handed a free 1.0 for changing nothing. Congruence now also compares the **inertia tensor**. |
+
+**Cross-validation of the metric.** After fix 3, `rib_plate` reads exact-boolean IoU **0.7935** against the
+dataset's stored 256³ voxel IoU **0.7643**. The gap is voxel resolution error, and the agreement is close
+enough to validate both — ours is the sharper of the two. State the metric difference wherever a number is
+reported; BenchCAD's published figures are voxel-based.
+
+**Ungradeable rows leave the denominator.** 4 of 100 rows cannot be graded by anyone: 1 where the
+*dataset's own* program fails to build (`spline_hub`, OCCT `BRep_API: command not done`), 3 where the
+kernel's booleans disagree with each other. Scoring those zero would blame the model for rows nothing
+could pass. They are excluded and counted out loud. **Oracle gate, n=100 stratified over 100 families:
+ground-truth 1.000 · unedited 0.000 · exec 100%, over 96 gradeable rows.**
+
+**B2 — the critic runs on geometry Ludwig did not author.** `critic/geometric.py`, the `min_wall` half of
+`critic/manufacturing.py`, and `critic/printability.py` all read the *solid*, not the manifest — so a STEP
+from anywhere can be verified: `cli.py --verify-file <model.step>`, plus a `ludwig_verify_file` MCP tool.
+Validated on real third-party STEP from BenchCAD: `battery_holder` legitimately **fails** min-wall at
+0.500 mm; the bellows passes. The dimensional critic reports **n/a** rather than vacuum-passing, so
+`passed` honestly means "no deterministic check failed", not "matches an intent" — there is no intent to
+match — and the payload separates `checked` from `not_applicable`.
+
+*Gotcha found here, same family as the STL one below:* with `--process`, the printability critic
+tessellates the shape, and a bbox measured afterwards read **46.525 mm** for a 45.800 mm part. `_assemble`
+is safe because the critic precedes the backends; on this path the tessellating critic is *inside* the
+panel, so extents must be taken first. Fixed, and covered by the selftest.
+
 ## M0 — LUDWIG_V2_BRIEF audit, 2026-07-06
 
 **The v2 brief models a different substrate than Ludwig has.** LUDWIG_V2_BRIEF.md ("the deliberative

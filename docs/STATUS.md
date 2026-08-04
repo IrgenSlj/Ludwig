@@ -13,8 +13,20 @@ deterministic critic; no Blender, no VLM judge, no BlenderGym). First slice: **W
 branch-and-prune search** (deterministic critic = free pruner). Strong follow-on: **WS7 telemetry/trajectory
 dataset**. Rejected workstreams and the full transfer table are in AUDIT_NOTES §3–5.
 
+## B-series direction (competitive review landed 2026-08-04)
+**[docs/BENCH_PLAN.md](BENCH_PLAN.md)** — a technology review of Autodesk / PTC-Onshape / Zoo / the DFM
+category produced two findings that set the current workstream. (1) **The MCP surface is commodity**:
+Autodesk shipped Fusion MCP with Anthropic (Apr 2026) and a Revit public MCP; PTC shipped an Onshape MCP
+toolkit (Jul 2026). Nobody ships a deterministic verifier — the differentiator moves from *"we have MCP"*
+to **"we are the verifier"**. (2) **Our tracked number is measured on a set we wrote ourselves.** So:
+**B1** BenchCAD `edit-bench` harness + oracle-validated grader · **B2** verify foreign geometry ·
+**B3** the live number · **B4** capability to-do from the failures · **B5** `ludwig_query` (stretch).
+
 ## Tracked numbers ([H6])
 - **First-pass geometric pass-rate** (frozen set, `cli.py --eval --live`): ~93% first-pass · 100% post-repair.
+- **BenchCAD edit-bench** (third-party, `cli.py --eval --bench edit [--live]`): grader **oracle-validated**
+  at n=100 (ground-truth 1.000 · unedited 0.000 · exec 100% over 96 gradeable rows, 4 ungradeable named).
+  Live number: see FINDINGS §B3. Published comparison: GPT-5.3 (thinking) 0.865 normalized accuracy.
 - **External-agent pass-rate** (`cli.py --eval --mcp`, A4 companion): **93% (14/15)** — an external agent
   driving Ludwig over MCP matches the native first-pass rate; **the gap to native is 0** (§8 thesis
   quantified). Harness now robust to inference throttling (paces + retries throttle-shaped fails only); the
@@ -48,6 +60,17 @@ dataset**. Rejected workstreams and the full transfer table are in AUDIT_NOTES �
 - **Critic hardening** — the dimensional check self-verifies registered extents when a brief declares no dims
   (green instead of a vacuous n/a), and now verifies a **cylinder's diameter** and a **panel's thickness**
   against the measured solid (not just their registered value) — closing two real holes.
+- **B1** — BenchCAD `edit-bench` harness (`eval/benchcad.py` + `eval/editbench.py`,
+  `cli.py --eval --bench edit`): the third-party number. Family-stratified sampling, a foreign-program
+  adapter (BenchCAD assigns `result`/`show_object`; `agent.loop.execute` requires `element` — the two
+  trust paths stay separate), exact-boolean IoU, and the minimal-diff ratio nobody else reports.
+  **Gate: the grader validates against its own oracle before any token is spent** — it caught three real
+  defects at n=100 (FINDINGS §B1). Dev-only path; the AST tripwire on third-party programs is documented
+  as a tripwire, not a sandbox.
+- **B2** — verify geometry Ludwig did NOT author: `cli.py --verify-file <model.step> [--process fdm|sla]`
+  + the `ludwig_verify_file` MCP tool + `service.verify_file_to_result`. The solid-only critics run for
+  real; the dimensional critic reports n/a instead of vacuum-passing. This is the "we are the verifier"
+  wedge, and it makes Ludwig complementary to Fusion MCP / Onshape / Zoo rather than competing with them.
 - **Cleanup** — deleted the inert Blender render backend (`backends/render*`, ~535 lines) and the unwired
   `store/db.py` stub (both recoverable at `mesh-era-m4`); halved MCP export latency (single execute+verify);
   removed 4 dead `standards.yaml` keys; de-duped the diff/repair-hint helpers. Selftest **96/96**.

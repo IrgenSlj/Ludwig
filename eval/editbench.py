@@ -258,9 +258,10 @@ def predict_live(record: dict, *, model: Optional[str] = None, rounds: int = 1) 
     thesis: a deterministic verifier closes the gap one-shot generation leaves open.
     """
     from agent import inference
-    from agent.loop import _strip_fences
+    from agent.loop import _strip_fences, _tier_model
     from geometry import GeometryService
 
+    model = model or _tier_model("critic")       # editing is best-tier reasoning (BRIEF §5), as agent.loop.edit
     prompt = _EDIT_PROMPT.format(code=record["orig_code"], instruction=record["instruction"])
     code = _strip_fences(inference.infer(prompt, model=model))
     g = GeometryService()

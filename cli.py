@@ -1067,9 +1067,22 @@ def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
         print(f"  [{mark}] {r['record_id'][:44]:44} score {r['score']:.3f}  {detail}")
 
     if live:
-        print(f"mode: LIVE (Ludwig edit + {rounds} deterministic repair round(s))\n")
-        summary, results = editbench.run(
-            rows, lambda r: editbench.predict_live(r, rounds=rounds), on_row=show)
+        # Pace between rows for the same reason --eval --mcp does (FINDINGS: 15 sequential live
+        # compiles burst the inference CLI's session limit and every late failure came back empty,
+        # which reads as a capability miss it isn't). Tune with LUDWIG_EVAL_PACE_S.
+        import time
+        pace = float(os.environ.get("LUDWIG_EVAL_PACE_S", "6"))
+        print(f"mode: LIVE (Ludwig edit + {rounds} deterministic repair round(s), "
+              f"pacing {pace:g}s)\n")
+        first = [True]
+
+        def predict(r):
+            if not first[0]:
+                time.sleep(pace)
+            first[0] = False
+            return editbench.predict_live(r, rounds=rounds)
+
+        summary, results = editbench.run(rows, predict, on_row=show)
         _print_bench_summary("live", summary)
         return 0
 
