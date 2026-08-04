@@ -25,3 +25,6 @@ adapters/
 
 # v2 telemetry run store (WS7) — per-run manifests/trajectories/media, never committed
 runs/
+
+# BenchCAD parquet cache (B-series) — public dataset, pulled on demand, never committed
+data/
