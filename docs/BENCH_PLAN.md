@@ -46,6 +46,23 @@ Ludwig's locked thesis (BRIEF §10: "`--edit` must produce a minimal diff; a rew
 and it is the task nobody else benchmarks well. The published comparison point is **GPT-5.3 (thinking) at
 0.865 normalized accuracy**.
 
+**What the 748 rows actually ask** (measured 2026-08-04, so B3's headline number can be read honestly):
+
+| category | label | rows | share |
+|---|---|---|---|
+| T1 | `literal_replace` | 180 | 24% |
+| T2 | `chain_transform` | 104 | 14% |
+| T3 | `relative_compute` | 111 | 15% |
+| T4 | `feature_edit` | 199 | 27% |
+| T5 | `geometry_rebuild` | 154 | 21% |
+
+Nearly half (48%) is T4/T5 — feature edits and geometry rebuilds, not parameter tweaks. **72% of
+instructions contain a number; only 26% state an explicit target value** ("…from 4.5 to 5.85"). That
+last figure is a caution for B4: a critic that verified an edit against a target parsed from the
+instruction would cover barely a quarter of the set, so it is not the general answer it first looks like.
+Sampling is stratified by *family*, not category — check the category mix of any partial run before
+reading its number as representative.
+
 Bonus: `orig_step` / `gt_step` are real ISO-10303-21 STEP files — 1,496 industrial parts from 106
 families, free fixtures for B2.
 
