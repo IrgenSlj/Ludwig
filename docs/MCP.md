@@ -34,6 +34,7 @@ python3 cli.py mcp          # starts the stdio server (Ctrl-C to stop)
 |---|---|---|
 | `ludwig_compile(brief)` | Ludwig-side | NL brief → generate + verify + (on pass) write STEP/IFC/DXF. Returns the program, critic verdict, bbox, `artifacts_abs`. |
 | `ludwig_verify(program)` | none | Execute + run the deterministic critic. Token-free, writes no files. Returns `{passed, critic[], bbox, dims, program}`. |
+| `ludwig_verify_file(path, process="")` | none | Run the critic on a **STEP Ludwig did not author** — from Fusion, SolidWorks, Onshape, a supplier, another agent. Token-free, writes nothing. Returns `{passed, critic[], bbox, estimate, checked[], not_applicable[]}`. |
 | `ludwig_plan(instruction, program)` | Ludwig-side | Propose validated ops (data) + summaries. Writes nothing. |
 | `ludwig_build(program, ops, confirm=false)` | none | Apply agent-supplied ops (the security boundary). Malformed → rejected, nothing executed. Returns the new program, `diff`, and the `inverse` plan (undo). |
 | `ludwig_export(program, confirm=false)` | none | Write fab files — behind the critic gate AND the permission gate. Returns `artifacts_abs`. |
@@ -41,6 +42,15 @@ python3 cli.py mcp          # starts the stdio server (Ctrl-C to stop)
 Every result carries the critic verdict and `schema_version`. **MCP calls are token-free on Ludwig's
 side** for verify/plan-application/export — the *caller's* model does the reasoning; when a harness drives
 Ludwig by emitting ops, Ludwig runs zero inference.
+
+**`ludwig_verify_file` is the one that does not need Ludwig to have built the model.** Autodesk, PTC and
+Zoo all ship generation over MCP; none ship a deterministic verifier, and the standing critique of
+generation-over-MCP is that it floods a review process that was already the bottleneck. So this tool is
+deliberately complementary: let another agent (or another CAD system) produce the geometry, then gate it
+here before it reaches a machine. `passed` means *no deterministic check failed* — an imported solid
+carries no declared dims, so the dimensional critic reports n/a rather than inventing a pass, and
+`checked` vs `not_applicable` shows exactly which verdicts you are getting. See
+[BENCH_PLAN.md](BENCH_PLAN.md) §B2.
 
 ## A reproducible walkthrough — one command
 

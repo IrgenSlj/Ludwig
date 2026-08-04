@@ -58,15 +58,23 @@ ir/ geometry/ backends/ critic/ agent/ toolkit/ prompts/ store/ standards.yaml c
 
 ```
 python3 cli.py "a steel bracket, 80 x 40 x 6 mm, two M8 clearance holes"   # compile → out/<id>.{py,step,ifc,svg}
+python3 cli.py --verify-file part.step [--process fdm]                      # verify geometry Ludwig did NOT author
 python3 cli.py --serve                                                      # the Studio on http://localhost:8765
 python3 cli.py mcp                                                          # MCP server (stdio) — drive Ludwig from any harness
 python3 cli.py --selftest                                                   # the regression gate (no LLM tokens)
-python3 cli.py --eval [--live] [--repair]                                   # geometric pass-rate
+python3 cli.py --eval [--live] [--repair]                                   # geometric pass-rate (our frozen set)
+python3 cli.py --eval --bench edit [--live]                                 # BenchCAD edit-bench (third-party set)
 ```
 
+**Verify someone else's CAD.** `--verify-file` runs the deterministic critic on any STEP — from Fusion,
+SolidWorks, Onshape, a supplier, or another agent — locally, token-free, writing nothing. Manifold /
+watertight / self-intersection, minimum wall, and (with `--process`) print envelope, overhang and bed
+contact. The dimensional critic reports n/a rather than inventing a pass, because an imported solid
+carries no declared intent.
+
 Point a harness at it: `claude mcp add ludwig -- python3 cli.py mcp` — then `ludwig_compile` /
-`ludwig_verify` / `ludwig_build` / `ludwig_export` (every result carries the critic verdict; export
-refuses on a failing critic). Full guide: **[docs/MCP.md](docs/MCP.md)**.
+`ludwig_verify` / `ludwig_verify_file` / `ludwig_build` / `ludwig_export` (every result carries the critic
+verdict; export refuses on a failing critic). Full guide: **[docs/MCP.md](docs/MCP.md)**.
 
 Compiling needs the OCCT kernel (`cadquery`, `ifcopenshell`) and a `claude`-like CLI on PATH; run through
 the project venv (`./run.sh` knows it). `webapp/` is the Studio — the art-directed viewfinder
