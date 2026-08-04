@@ -78,6 +78,19 @@ def test_diff_size_counts_changed_lines():
     assert editbench.diff_size("a", "a\nb") == 1
 
 
+def test_diff_size_ignores_comment_bookkeeping_by_default():
+    """65% of edit-bench's ground-truth diff lines are comment-only; counting them would flatter
+    the minimal-diff claim on bookkeeping Ludwig never did."""
+    before, after = "# w\nx = 1", "# w = 5\nx = 1"
+    assert editbench.diff_size(before, after) == 0               # comment churn only
+    assert editbench.diff_size(before, after, code_only=False) == 2
+    assert editbench.diff_size(before, "# w = 5\nx = 2") == 2     # the code change still counts
+
+
+def test_diff_size_ignores_blank_line_churn():
+    assert editbench.diff_size("a\n\nb", "a\nb") == 0
+
+
 # --------------------------------------------------------------------------- #
 # the trust tripwire — a tripwire, NOT a sandbox (see the module docstring)
 # --------------------------------------------------------------------------- #

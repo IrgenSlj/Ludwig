@@ -112,10 +112,22 @@ def execute_foreign(code: str) -> tuple[Optional[BRepHandle], Optional[str]]:
 # metrics
 # --------------------------------------------------------------------------- #
 
-def diff_size(before: str, after: str) -> int:
-    """Changed lines between two programs (added + removed) — the minimal-diff instrument."""
-    a, b = before.splitlines(), after.splitlines()
-    return sum(1 for ln in difflib.unified_diff(a, b, n=0, lineterm="")
+def diff_size(before: str, after: str, *, code_only: bool = True) -> int:
+    """Changed lines between two programs (added + removed) — the minimal-diff instrument.
+
+    Comments and blank lines are excluded by default, and that is load-bearing, not tidiness:
+    **65% of edit-bench's ground-truth diff lines are comment-only** (measured over all 748 rows —
+    the gt programs fill in a `# length = 92.8` parameter block the originals leave blank). Counting
+    those would make any real edit look smaller than the reference for free, and would flatter
+    Ludwig's minimal-diff claim on bookkeeping it never did. A comment is not a rewrite.
+    """
+    def lines(src: str) -> list[str]:
+        out = src.splitlines()
+        if not code_only:
+            return out
+        return [ln for ln in out if ln.strip() and not ln.strip().startswith("#")]
+
+    return sum(1 for ln in difflib.unified_diff(lines(before), lines(after), n=0, lineterm="")
                if ln.startswith(("+", "-")) and not ln.startswith(("+++", "---")))
 
 
