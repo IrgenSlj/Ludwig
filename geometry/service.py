@@ -237,6 +237,93 @@ class GeometryService:
         removed material."""
         return float(handle.solid().val().Volume())
 
+    @staticmethod
+    def _parts(handle: BRepHandle) -> list:
+        """The handle's shape as a list of PAIRWISE NON-OVERLAPPING solids.
+
+        Fusing first is what buys the guarantee: OCCT's fuse merges any genuinely overlapping
+        solids into one, so whatever solids survive are disjoint or merely touching. That makes
+        `Σ Vol(part)` the true volume and makes the part-wise intersection below exact.
+
+        Measured, not assumed (B1): BenchCAD's `ball_knob` is `sphere(12.5)` unioned with a stem
+        cylinder that is TANGENT to it (they meet at the south pole, a single point), so the union
+        is legitimately a 2-solid compound. `Compound.intersect(Compound)` then returned only one
+        pair's common — scoring the shape IoU **0.247 against itself**. Voxel IoU (what BenchCAD
+        publishes) never hits this, because rasterizing a compound is implicitly a union.
+        """
+        shape = handle.solid().val()
+        solids = shape.Solids()
+        if len(solids) <= 1:
+            return [shape]
+        try:
+            fused = solids[0].fuse(*solids[1:]).clean()
+        except Exception:
+            return solids                      # a fuse OCCT won't complete: treat as already disjoint
+        return fused.Solids() or [fused]
+
+    @staticmethod
+    def _bb_disjoint(x, y) -> bool:
+        """True when two shapes' bounding boxes cannot overlap — lets the pair-wise intersection
+        skip the boolean entirely (faster, and it avoids asking OCCT for an empty common)."""
+        p, q = x.BoundingBox(), y.BoundingBox()
+        return (p.xmax < q.xmin or q.xmax < p.xmin or p.ymax < q.ymin
+                or q.ymax < p.ymin or p.zmax < q.zmin or q.zmax < p.zmin)
+
+    def iou(self, a: BRepHandle, b: BRepHandle) -> float:
+        """Exact volumetric IoU of two solids: Vol(A∩B) / Vol(A∪B), via OCCT booleans (B1).
+
+        This is the geometric grade for the BenchCAD edit benchmark. It is computed on the **exact**
+        B-rep — not a voxel grid — so it is deterministic and has no resolution error. NB BenchCAD's
+        published numbers use a 256³ voxel IoU, so absolute values are close but not identical; the
+        difference is stated wherever a number is reported (docs/BENCH_PLAN.md).
+
+        With A = ⋃aᵢ and B = ⋃bⱼ over non-overlapping parts (see `_parts`), the pieces aᵢ∩bⱼ are
+        themselves pairwise non-overlapping, so `Vol(A∩B) = Σᵢⱼ Vol(aᵢ∩bⱼ)` exactly — no
+        inclusion–exclusion, and no reliance on OCCT doing the right thing with compound arguments.
+
+        Both solids must share a coordinate frame (BenchCAD's orig/gt variants do). Raises whatever
+        OCCT raises on a boolean it cannot complete — the caller decides whether that is a grading
+        failure or a hard error.
+        """
+        pa, pb = self._parts(a), self._parts(b)
+        va = sum(float(s.Volume()) for s in pa)
+        vb = sum(float(s.Volume()) for s in pb)
+        if va <= 0.0 or vb <= 0.0:
+            return 0.0
+        inter = 0.0
+        for x in pa:
+            for y in pb:
+                if self._bb_disjoint(x, y):
+                    continue
+                inter += float(x.intersect(y).Volume())
+        union = va + vb - inter
+        return 0.0 if union <= 0.0 else max(0.0, min(1.0, inter / union))
+
+    def import_step(self, source) -> BRepHandle:
+        """Read a STEP file Ludwig did NOT author into a lazy handle (B2).
+
+        `source` is a path (str/Path) or raw STEP bytes. Bytes are written to a temp file because
+        OCCT's reader is path-based. The result carries no manifest and no feature graph — it is
+        geometry only, which is exactly why the dimensional critic must report N/A on it rather
+        than vacuum-pass (see critic/dimensional.py).
+        """
+        def build() -> Any:
+            cq = _cq()
+            import os
+            import tempfile
+            path = source
+            tmp = None
+            if isinstance(source, (bytes, bytearray)):
+                fd, tmp = tempfile.mkstemp(suffix=".step")
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(source)
+                path = tmp
+            try:
+                return cq.importers.importStep(str(path))
+            finally:
+                if tmp:
+                    os.unlink(tmp)
+        return BRepHandle(build)
 
     def bbox(self, handle: BRepHandle) -> tuple[float, float, float]:
         """Bounding-box extents (x, y, z). The dimensional critic checks these vs declared dims."""

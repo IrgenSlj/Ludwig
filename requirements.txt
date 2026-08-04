@@ -10,6 +10,9 @@ ifcopenshell>=0.8    # P1/S9 — IFC (BIM) authoring (imported lazily)
 # ifcopenshell       # P1     — IFC backend (IfcOpenShell authoring)
 # mcp>=1.2           # A2 — the MCP SDK for `cli.py mcp` (S-MCP). Imported lazily inside agent/mcp.py
 #                    #      only, so the spine + --selftest stay green without it. Install to serve MCP.
+# pyarrow>=15        # B1 — reads the BenchCAD parquet for `--eval --bench edit`. Imported lazily
+#                    #      inside eval/benchcad.py only; the dataset itself is pulled on demand
+#                    #      over stdlib urllib into the gitignored data/. Dev-only path.
 # (Blender / bpy is BYO, headless, out-of-process — NOT a pip dependency)
 
 # --- dev/test (CI installs these) ---

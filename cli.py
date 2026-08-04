@@ -797,6 +797,34 @@ def selftest() -> int:
     check("WS2 search: branch-and-prune refines to the passing branch (converged, 9 calls)",
           _sr.passed and _sr.reason == "converged" and _sr.calls_used == 9 and _sr.best.program == "p:0")
 
+    # B1 (BenchCAD edit-bench) — the grader's pure-Python half. No dataset, no kernel, no tokens:
+    # the sampler, the metric math and the trust tripwire are all exercised directly.
+    from eval import benchcad as _bc, editbench as _eb
+    _rows = [{"record_id": f"{f}_{i}", "family": f} for f in ("gear", "bolt", "cam") for i in range(4)]
+    _samp = _bc.stratify(_rows, 3)
+    check("B1 bench: stratified sampling spreads across part families, not the first N rows",
+          len({r["family"] for r in _samp}) == 3 and len(_samp) == 3
+          and _bc.stratify(_rows, 3) == _samp                      # deterministic
+          and _bc.stratify(_rows, 99) == _rows)                    # limit >= n is a no-op
+    check("B1 bench: normalized accuracy is headroom-relative (gt=1.0, unedited=0.0)",
+          _eb.normalized_accuracy(0.6, 1.0) == 1.0
+          and _eb.normalized_accuracy(0.6, 0.6) == 0.0
+          and abs(_eb.normalized_accuracy(0.5, 0.75) - 0.5) < 1e-9)
+    check("B1 bench: a zero-headroom row needs an EXACT match, never a free 1.0",
+          _eb.normalized_accuracy(1.0, 1.0) == 1.0 and _eb.normalized_accuracy(1.0, 0.9) == 0.0)
+    check("B1 bench: diff_size counts changed lines (the minimal-diff instrument)",
+          _eb.diff_size("a\nb\nc", "a\nb\nc") == 0 and _eb.diff_size("a\nb\nc", "a\nX\nc") == 2)
+    try:
+        _eb.screen("import os\nos.system('rm -rf /')")
+        check("B1 bench: the trust tripwire refuses a non-CAD import", False, "os import accepted")
+    except _eb.ScreenError:
+        check("B1 bench: the trust tripwire refuses a non-CAD import", True)
+    try:
+        _eb.screen("import cadquery as cq\nresult = cq.Workplane('XY').box(1,2,3)\nshow_object(result)")
+        check("B1 bench: a clean CadQuery program passes the tripwire", True)
+    except _eb.ScreenError as _e:
+        check("B1 bench: a clean CadQuery program passes the tripwire", False, str(_e))
+
     ok = all(passed for _, passed, _ in checks)
     for label, passed, detail in checks:
         mark = "ok  " if passed else "FAIL"
@@ -963,6 +991,82 @@ def run_eval(*, live: bool = False, repair: bool = False, via_mcp: bool = False)
     return 0 if rate == 1.0 else 1
 
 
+def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
+                   download=True) -> int:
+    """BenchCAD edit-bench — the third-party number (B1, docs/BENCH_PLAN.md).
+
+    Default is ORACLE mode and costs zero tokens: it grades the ground truth (must score 1.0) and
+    the unedited program (must score 0.0). That validates the grader BEFORE any model call — a
+    grader that can't pass its own oracle can't be trusted to grade a model. `--live` then runs
+    Ludwig's edit path (`--rounds N` for deterministic repair).
+    """
+    try:
+        import cadquery  # noqa: F401
+    except ImportError:
+        print("cadquery not installed — the bench harness needs the OCCT kernel "
+              "(`pip install cadquery`). See BRIEF.md §4.")
+        return 1
+    from eval import benchcad, editbench
+
+    try:
+        rows = benchcad.load(limit=limit, family=family, seed=seed, download=download)
+    except benchcad.DatasetMissing as e:
+        print(e)
+        return 1
+    except RuntimeError as e:
+        print(e)
+        return 1
+    if not rows:
+        print(f"no rows matched (family={family!r})")
+        return 1
+    fams = benchcad.families(rows)
+    print(f"BenchCAD edit-bench · {len(rows)} rows over {len(fams)} part families"
+          + (f" · family={family}" if family else ""))
+
+    def show(r):
+        mark = "ok  " if r["score"] >= 0.999 else ("part" if r["score"] > 0 else "FAIL")
+        detail = r["error"] or (f"IoU {r['base_iou']:.3f}→{r['pred_iou']:.3f} · "
+                                f"{r['diff_lines']}/{r['gt_diff_lines']} lines")
+        print(f"  [{mark}] {r['record_id'][:44]:44} score {r['score']:.3f}  {detail}")
+
+    if live:
+        print(f"mode: LIVE (Ludwig edit + {rounds} deterministic repair round(s))\n")
+        summary, results = editbench.run(
+            rows, lambda r: editbench.predict_live(r, rounds=rounds), on_row=show)
+        _print_bench_summary("live", summary)
+        return 0
+
+    print("mode: ORACLE (token-free grader validation)\n")
+    print("· grading the GROUND TRUTH — every row must score 1.000")
+    gt_sum, gt_res = editbench.run(rows, editbench.predict_oracle, on_row=show)
+    print("\n· grading the UNEDITED program — every row must score 0.000")
+    no_sum, no_res = editbench.run(rows, editbench.predict_noop, on_row=show)
+
+    _print_bench_summary("oracle/ground-truth", gt_sum)
+    _print_bench_summary("oracle/unedited", no_sum)
+    gt_ok = all(r["score"] >= 0.999 for r in gt_res)
+    no_ok = all(r["score"] <= 0.001 for r in no_res)
+    print(f"\ngrader validation: ground-truth {'PASS' if gt_ok else 'FAIL'} · "
+          f"unedited {'PASS' if no_ok else 'FAIL'}")
+    if not (gt_ok and no_ok):
+        print("  the grader does NOT pass its own oracle — do not spend tokens on --live until it does.")
+        for r in gt_res:
+            if r["score"] < 0.999:
+                print(f"    gt miss  {r['record_id']}: score {r['score']:.3f} · {r['error'] or ''}")
+        for r in no_res:
+            if r["score"] > 0.001:
+                print(f"    noop hit {r['record_id']}: score {r['score']:.3f}")
+        return 1
+    return 0
+
+
+def _print_bench_summary(label: str, s: dict) -> None:
+    print(f"\n{label}: normalized accuracy {s['normalized_accuracy']:.3f} · "
+          f"exact {s['exact_rate'] * 100:.0f}% · exec {s['exec_rate'] * 100:.0f}% · "
+          f"diff-ratio median {s['diff_ratio_median']:.2f} · "
+          f"n={s['n']} over {s['families']} families")
+
+
 def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2,
                    search: bool = False, cfg=None) -> int:
     """The compile path: prompt → generated program → executed IR (BRIEF §5, S3 gate).
@@ -1112,6 +1216,22 @@ def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         return selftest()
     if "--eval" in argv:
+        if "--bench" in argv:                         # B1: the third-party BenchCAD number
+            def _val(flag, cast=str, default=None):
+                for i, a in enumerate(argv):
+                    if a.startswith(flag + "="):
+                        return cast(a.split("=", 1)[1])
+                    if a == flag and i + 1 < len(argv):
+                        return cast(argv[i + 1])
+                return default
+            which = _val("--bench", str, "edit")
+            if which != "edit":
+                print(f"unknown bench {which!r} — only 'edit' (BenchCAD edit-bench) is wired. "
+                      "See docs/BENCH_PLAN.md.")
+                return 1
+            return run_bench_edit(limit=_val("--bench-limit", int), family=_val("--bench-family"),
+                                  seed=_val("--seed", int, 0) or 0, live="--live" in argv,
+                                  rounds=_val("--rounds", int, 1), download="--no-download" not in argv)
         if "--repair" in argv and "--live" not in argv:
             print("note: --repair applies only to --live codegen; the reference-oracle eval ignores it.")
         return run_eval(live="--live" in argv, repair="--repair" in argv, via_mcp="--mcp" in argv)
