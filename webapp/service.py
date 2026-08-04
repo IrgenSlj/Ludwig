@@ -460,6 +460,77 @@ def verify_to_result(program: str) -> dict:
     return verify_payload(program, *execute_and_verify(program))
 
 
+_IMPORTABLE = (".step", ".stp")
+
+
+@_versioned
+def verify_file_to_result(path, *, process: Optional[str] = None,
+                          element_type: str = "Part") -> dict:
+    """Verify geometry Ludwig did NOT author (B2, docs/BENCH_PLAN.md) — token-free, writes NO files.
+
+    Point it at a STEP file from any source (Fusion, SolidWorks, Onshape, a supplier, another agent)
+    and get the deterministic critic's verdict. This works because the checks that matter here read
+    the SOLID, not the manifest: `critic/geometric.py` (OCCT manifold/watertight/self-intersection),
+    the `min_wall` half of `critic/manufacturing.py`, and `critic/printability.py` when a `process`
+    is given. The dimensional critic correctly reports **N/A** — an imported solid has no declared or
+    registered dims, and inventing a pass there would be exactly the vacuous verdict the critic exists
+    to avoid.
+
+    So the payload's `passed` means "no deterministic check FAILED", not "matches an intent" — there
+    is no intent to match. `checked` lists what actually ran, so the caller can see the difference.
+
+    Note this is the one verify path with no `program`: the model is not a re-promptable Ludwig
+    program, it is someone else's B-rep. Editing it is a separate (later) problem; verifying it
+    is useful today.
+    """
+    from agent.loop import Brief
+    from critic import panel
+    from geometry import GeometryService
+    from ir.elements import Element
+
+    p = Path(path)
+    payload: dict = {"source": str(p), "program": "", "passed": False, "authored_by_ludwig": False,
+                     "bbox": None, "dims": [], "critic": [], "mesh": None, "error": None}
+    if not p.exists():
+        payload["error"] = f"no such file: {p}"
+        return payload
+    if p.suffix.lower() not in _IMPORTABLE:
+        payload["error"] = (f"unsupported format {p.suffix!r} — exact checks need a B-rep; "
+                            f"importable: {', '.join(_IMPORTABLE)}. (A mesh format like STL carries "
+                            f"no exact topology, so manifold/min-wall verdicts on it would be a guess.)")
+        return payload
+
+    g = GeometryService()
+    el = Element(id=p.stem or "imported", type=element_type, name=p.name,
+                 geometry=g.import_step(p))
+    try:
+        el.geometry.solid()                      # force the read now so a bad file is an error, not a crash
+    except Exception as e:
+        payload["error"] = f"could not read {p.name}: {type(e).__name__}: {e}"
+        return payload
+
+    # Measure the bbox BEFORE the panel runs. The printability critic calls `print_mesh_stats`, which
+    # adds an OCCT triangulation to the shape, and a triangulated shape's BoundingBox() bloats by the
+    # deflection (measured: a 45.800 mm bellows read 46.525 mm afterwards — the same gotcha FINDINGS
+    # records for the STL backend). `_assemble` is safe because the critic runs before the backends;
+    # here the tessellating critic is INSIDE the panel, so the exact extents must be taken first.
+    exact_bbox = None
+    try:
+        length, width, height = g.bbox(el.geometry)
+        exact_bbox = {"length": round(length, 4), "width": round(width, 4), "height": round(height, 4)}
+    except Exception:
+        exact_bbox = None
+
+    crit = panel.evaluate(el, Brief(prompt="", process=process))
+    result = _variant_payload("", el, crit)
+    if exact_bbox is not None:
+        result["bbox"] = exact_bbox              # never the post-tessellation reading
+    result.update({"source": str(p), "authored_by_ludwig": False,
+                   "checked": [c["check"] for c in result["critic"] if c.get("status") != "n/a"],
+                   "not_applicable": [c["check"] for c in result["critic"] if c.get("status") == "n/a"]})
+    return result
+
+
 @_versioned
 def build_to_result(program: str, plan, *, out: Optional[Path] = None) -> dict:
     """Build a reviewed Plan (R15): render its ADD ops onto `program` (empty → a fresh recipe), thread any

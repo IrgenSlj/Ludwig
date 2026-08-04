@@ -390,6 +390,40 @@ def selftest() -> int:
                   and abs(rl - 80) <= tol and abs(rw - 40) <= tol and abs(rh - 6) <= tol,
                   f"reimport bbox {rl:.3f}×{rw:.3f}×{rh:.3f}")
 
+            # B2 — verify geometry Ludwig did NOT author. The same STEP, re-read as a foreign file:
+            # the solid-only checks must run for real, and the dimensional critic must report n/a
+            # (an imported solid has no declared intent) rather than vacuum-passing.
+            from webapp.service import verify_file_to_result as _vf
+            _fr = _vf(sp)
+            _st = {c["check"]: c["status"] for c in _fr["critic"]}
+            check("B2: a foreign STEP verifies on the solid-only checks",
+                  _fr["passed"] and _st.get("watertight_manifold") == "pass"
+                  and _st.get("min_wall") == "pass" and _fr["authored_by_ludwig"] is False
+                  and abs(_fr["bbox"]["length"] - 80) <= tol,
+                  f"passed={_fr.get('passed')} bbox={_fr.get('bbox')}")
+            check("B2: the dimensional critic reports n/a on it, never a vacuous pass",
+                  _st.get("dimensional") == "n/a" and "dimensional" in _fr["not_applicable"]
+                  and "watertight_manifold" in _fr["checked"])
+            check("B2: an unreadable path and a non-B-rep format both error, not crash",
+                  _vf(Path(td) / "nope.step")["error"].startswith("no such file")
+                  and "unsupported format" in _vf(__file__)["error"])
+
+        # B1 — the exact-IoU grader's kernel half. Congruence must NOT be fooled by a symmetric
+        # reposition: BenchCAD's rib_plate edit moves a rib array, preserving volume, bbox AND
+        # centroid while changing the shape, so the inertia tensor is what has to catch it.
+        from geometry import GeometryService as _GS
+        _gs = _GS()
+        _plate = _gs.box(100, 40, 10)
+        _near = _gs.slot(_gs.slot(_plate, 4, 20, (-20.0, 0.0)), 4, 20, (20.0, 0.0))
+        _far = _gs.slot(_gs.slot(_gs.box(100, 40, 10), 4, 20, (-40.0, 0.0)), 4, 20, (40.0, 0.0))
+        check("B1 iou: a shape scores exactly 1.0 against itself (the coincident-face BOP case)",
+              _gs.iou(_near, _near) == 1.0)
+        check("B1 iou: a symmetric reposition is NOT congruent (volume+bbox+centroid all match)",
+              abs(_gs.volume(_near) - _gs.volume(_far)) < 1e-6
+              and _gs.bbox(_near) == _gs.bbox(_far)
+              and 0.0 < _gs.iou(_near, _far) < 1.0,
+              f"iou={_gs.iou(_near, _far):.4f}")
+
         # A7 — STL backend + printability critic. STL emits a valid mesh (registered per [H4]);
         # printability is N/A off, gates a print job on min-wall/envelope, and ADVISES on overhang —
         # verified fabricability for 3D printing (the print3d self-serve wedge).
@@ -1024,6 +1058,9 @@ def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
           + (f" · family={family}" if family else ""))
 
     def show(r):
+        if r.get("ungradeable"):                      # not the model's fault — out of the denominator
+            print(f"  [skip] {r['record_id'][:44]:44}   ungradeable: {r['ungradeable']}")
+            return
         mark = "ok  " if r["score"] >= 0.999 else ("part" if r["score"] > 0 else "FAIL")
         detail = r["error"] or (f"IoU {r['base_iou']:.3f}→{r['pred_iou']:.3f} · "
                                 f"{r['diff_lines']}/{r['gt_diff_lines']} lines")
@@ -1044,27 +1081,61 @@ def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
 
     _print_bench_summary("oracle/ground-truth", gt_sum)
     _print_bench_summary("oracle/unedited", no_sum)
-    gt_ok = all(r["score"] >= 0.999 for r in gt_res)
-    no_ok = all(r["score"] <= 0.001 for r in no_res)
-    print(f"\ngrader validation: ground-truth {'PASS' if gt_ok else 'FAIL'} · "
-          f"unedited {'PASS' if no_ok else 'FAIL'}")
-    if not (gt_ok and no_ok):
+    gt_bad = [r for r in gt_res if not r.get("ungradeable") and r["score"] < 0.999]
+    no_bad = [r for r in no_res if not r.get("ungradeable") and r["score"] > 0.001]
+    print(f"\ngrader validation: ground-truth {'PASS' if not gt_bad else 'FAIL'} · "
+          f"unedited {'PASS' if not no_bad else 'FAIL'}"
+          + (f" · {gt_sum['ungradeable']} row(s) ungradeable (excluded)"
+             if gt_sum["ungradeable"] else ""))
+    if gt_bad or no_bad:
         print("  the grader does NOT pass its own oracle — do not spend tokens on --live until it does.")
-        for r in gt_res:
-            if r["score"] < 0.999:
-                print(f"    gt miss  {r['record_id']}: score {r['score']:.3f} · {r['error'] or ''}")
-        for r in no_res:
-            if r["score"] > 0.001:
-                print(f"    noop hit {r['record_id']}: score {r['score']:.3f}")
+        for r in gt_bad:
+            print(f"    gt miss  {r['record_id']}: score {r['score']:.3f} · {r['error'] or ''}")
+        for r in no_bad:
+            print(f"    noop hit {r['record_id']}: score {r['score']:.3f}")
         return 1
     return 0
+
+
+def verify_file(path: str, *, process=None) -> int:
+    """--verify-file: run the deterministic critic on geometry Ludwig did NOT author (B2).
+
+    A STEP from Fusion, SolidWorks, Onshape, a supplier, or another agent — verified locally,
+    token-free, writing nothing. See docs/BENCH_PLAN.md §B2 for why this is the wedge.
+    """
+    try:
+        import cadquery  # noqa: F401
+    except ImportError:
+        print("cadquery not installed — verifying a file needs the OCCT kernel (`pip install cadquery`).")
+        return 1
+    from webapp.service import verify_file_to_result
+
+    r = verify_file_to_result(path, process=process)
+    if r.get("error"):
+        print(f"FAILED — {r['error']}")
+        return 1
+    bb = r.get("bbox") or {}
+    print(f"› {r['source']}")
+    if bb:
+        print(f"  bbox {bb['length']:.3f} × {bb['width']:.3f} × {bb['height']:.3f} mm")
+    est = r.get("estimate") or {}
+    if est:
+        print(f"  {est.get('material', '')} · {est.get('volume_cm3')} cm³ · {est.get('mass_kg')} kg"
+              + (f" · ~€{est['cost']}" if est.get("cost") else ""))
+    for c in r["critic"]:
+        print(f"  [{c['status']:4}] {c['check']}" + (f" — {c['message']}" if c["message"] else ""))
+    verdict = "PASS" if r["passed"] else "FAIL"
+    print(f"\n{verdict} — {len(r.get('checked', []))} check(s) ran, "
+          f"{len(r.get('not_applicable', []))} n/a (no authored intent to check against)")
+    return 0 if r["passed"] else 1
 
 
 def _print_bench_summary(label: str, s: dict) -> None:
     print(f"\n{label}: normalized accuracy {s['normalized_accuracy']:.3f} · "
           f"exact {s['exact_rate'] * 100:.0f}% · exec {s['exec_rate'] * 100:.0f}% · "
           f"diff-ratio median {s['diff_ratio_median']:.2f} · "
-          f"n={s['n']} over {s['families']} families")
+          f"n={s['n']} over {s['families']} families"
+          + (f" · {s['ungradeable']} ungradeable excluded" if s.get("ungradeable") else ""))
 
 
 def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2,
@@ -1235,6 +1306,20 @@ def main(argv: list[str]) -> int:
         if "--repair" in argv and "--live" not in argv:
             print("note: --repair applies only to --live codegen; the reference-oracle eval ignores it.")
         return run_eval(live="--live" in argv, repair="--repair" in argv, via_mcp="--mcp" in argv)
+    if "--verify-file" in argv:                       # B2: verify geometry Ludwig did NOT author
+        _p = _proc = None
+        for i, a in enumerate(argv):
+            if a == "--verify-file" and i + 1 < len(argv):
+                _p = argv[i + 1]
+            elif a.startswith("--verify-file="):
+                _p = a.split("=", 1)[1]
+            elif a == "--process" and i + 1 < len(argv):
+                _proc = argv[i + 1]
+            elif a.startswith("--process="):
+                _proc = a.split("=", 1)[1]
+        if not _p:
+            raise SystemExit('Usage: cli.py --verify-file <model.step> [--process fdm|sla]')
+        return verify_file(_p, process=_proc)
     if "--mine-repairs" in argv:                      # A5: mine (failure→fix) pairs from the pool
         return mine_repairs(rounds=2)
     if "--serve" in argv:

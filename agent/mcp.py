@@ -67,6 +67,23 @@ def build_server(name: str = "ludwig"):
         return service.verify_to_result(program)
 
     @server.tool()
+    def ludwig_verify_file(path: str, process: str = "") -> dict:
+        """Run the deterministic critic on a STEP file Ludwig did NOT author — token-free, writes NOTHING.
+
+        Point it at geometry from anywhere (Fusion, SolidWorks, Onshape, a supplier, another agent) and
+        get an exact fabricability verdict: OCCT manifold / watertight / self-intersection, minimum wall
+        thickness, and — when `process` is a print process (fdm/sla) — min-wall, build envelope, overhang
+        and bed contact. Returns `{passed, critic[], bbox, estimate, checked[], not_applicable[]}`.
+
+        `passed` means no deterministic check FAILED. It does NOT mean "matches an intent": an imported
+        solid carries no declared dims, so the dimensional critic reports n/a rather than inventing a
+        pass. `checked` vs `not_applicable` shows exactly which verdicts you are getting.
+        """
+        from webapp import service as _svc
+
+        return _svc.verify_file_to_result(path, process=process or None)
+
+    @server.tool()
     def ludwig_plan(instruction: str, program: str = "") -> dict:
         """Propose a reviewable plan of Ops for `instruction` against `program` — writes NOTHING and
         builds nothing. Returns validated ops (data, never code) + one-line summaries. Ludwig runs one

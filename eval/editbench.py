@@ -140,31 +140,44 @@ def grade(record: dict, pred_code: str, *, geom=None) -> dict:
     `iou_dataset` for cross-checking (docs/BENCH_PLAN.md).
     """
     from geometry import GeometryService
+    from geometry.service import BooleanUnreliable
 
     g = geom or GeometryService()
     out = {
         "record_id": record["record_id"], "family": record["family"],
         "category": record.get("category"), "category_label": record.get("category_label"),
         "iou_dataset": record.get("iou"),
-        "exec_ok": False, "base_iou": None, "pred_iou": None, "score": 0.0,
+        "exec_ok": False, "ungradeable": None, "base_iou": None, "pred_iou": None, "score": 0.0,
         "diff_lines": diff_size(record["orig_code"], pred_code),
         "gt_diff_lines": diff_size(record["orig_code"], record["gt_code"]),
         "error": None,
     }
+    # Reference solids first. If the DATASET's own programs don't build, or the kernel can't be
+    # trusted on this geometry, the row is UNGRADEABLE — nothing a model produced could be scored
+    # against it. Those rows leave the denominator entirely (and get counted out loud) instead of
+    # depressing the number with failures no prediction could have avoided.
+    orig, oerr = execute_foreign(record["orig_code"])
+    gt, gerr = execute_foreign(record["gt_code"])
+    if orig is None or gt is None:
+        out["ungradeable"] = f"reference program failed to build: {oerr or gerr}"
+        return out
+    try:
+        base = g.iou(orig, gt)
+    except BooleanUnreliable as e:
+        out["ungradeable"] = f"kernel unreliable on this geometry: {e}"
+        return out
+
     pred, err = execute_foreign(pred_code)
     if pred is None:
-        out["error"] = err
+        out["error"] = err                       # a real miss: the model's program doesn't build
         return out
     out["exec_ok"] = True
     try:
-        orig, oerr = execute_foreign(record["orig_code"])
-        gt, gerr = execute_foreign(record["gt_code"])
-        if orig is None or gt is None:
-            out["error"] = f"reference program failed to build: {oerr or gerr}"
-            return out
-        base = g.iou(orig, gt)
         pred_iou = g.iou(pred, gt)
-    except Exception as e:                       # an OCCT boolean that won't complete is a grade miss
+    except BooleanUnreliable as e:
+        out["ungradeable"] = f"kernel unreliable on this geometry: {e}"
+        return out
+    except Exception as e:
         out["error"] = f"iou failed: {type(e).__name__}: {e}"
         return out
     out["base_iou"], out["pred_iou"] = base, pred_iou
@@ -173,19 +186,28 @@ def grade(record: dict, pred_code: str, *, geom=None) -> dict:
 
 
 def summarize(results: list[dict]) -> dict:
-    """Aggregate a run. `diff_ratio` is the median over graded rows — the mean is wrecked by the
-    occasional rewrite, and the median is what says whether edits are typically surgical."""
-    n = len(results)
-    graded = [r for r in results if r["exec_ok"] and r["error"] is None]
+    """Aggregate a run.
+
+    Ungradeable rows (the dataset's own program won't build, or OCCT can't be trusted on the
+    geometry) are EXCLUDED from the denominator and reported as their own count — scoring them zero
+    would blame the model for rows no prediction could have passed. `diff_ratio` is a median over
+    graded rows: the mean is wrecked by the occasional rewrite, and the median is what actually says
+    whether edits are typically surgical.
+    """
+    ungradeable = [r for r in results if r.get("ungradeable")]
+    scored = [r for r in results if not r.get("ungradeable")]
+    n = len(scored)
+    graded = [r for r in scored if r["exec_ok"] and r["error"] is None]
     ratios = sorted(r["diff_lines"] / max(r["gt_diff_lines"], 1) for r in graded)
     exact = sum(1 for r in graded if r["score"] >= 0.999)
     return {
         "n": n,
-        "exec_rate": (sum(1 for r in results if r["exec_ok"]) / n) if n else 0.0,
-        "normalized_accuracy": (sum(r["score"] for r in results) / n) if n else 0.0,
+        "ungradeable": len(ungradeable),
+        "exec_rate": (sum(1 for r in scored if r["exec_ok"]) / n) if n else 0.0,
+        "normalized_accuracy": (sum(r["score"] for r in scored) / n) if n else 0.0,
         "exact_rate": (exact / n) if n else 0.0,
         "diff_ratio_median": (ratios[len(ratios) // 2] if ratios else 0.0),
-        "families": len({r["family"] for r in results}),
+        "families": len({r["family"] for r in scored}),
     }
 
 
@@ -269,8 +291,8 @@ def run(rows: list[dict], predict: Callable[[dict], str], *,
         except Exception as e:
             res = {"record_id": row["record_id"], "family": row["family"],
                    "category": row.get("category"), "category_label": row.get("category_label"),
-                   "iou_dataset": row.get("iou"), "exec_ok": False, "base_iou": None,
-                   "pred_iou": None, "score": 0.0, "diff_lines": 0,
+                   "iou_dataset": row.get("iou"), "exec_ok": False, "ungradeable": None,
+                   "base_iou": None, "pred_iou": None, "score": 0.0, "diff_lines": 0,
                    "gt_diff_lines": diff_size(row["orig_code"], row["gt_code"]),
                    "error": f"predictor raised: {type(e).__name__}: {e}"}
         results.append(res)

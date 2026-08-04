@@ -25,6 +25,12 @@ def _cq() -> Any:
     return cq
 
 
+class BooleanUnreliable(RuntimeError):
+    """OCCT's booleans disagree with each other on this shape pair, so no volume derived from them
+    can be trusted. Raised by `GeometryService.iou`; the B1 grader turns it into an *ungradeable*
+    row rather than a wrong score."""
+
+
 class GeometryService:
     """Builds exact solids and answers the geometric queries the critic needs."""
 
@@ -269,6 +275,72 @@ class GeometryService:
         return (p.xmax < q.xmin or q.xmax < p.xmin or p.ymax < q.ymin
                 or q.ymax < p.ymin or p.zmax < q.zmin or q.zmax < p.zmin)
 
+    @staticmethod
+    def _inertia(shape) -> tuple:
+        """The solid's inertia tensor as a 9-tuple — the invariant that distinguishes shapes which
+        share volume, bbox AND centroid. Needed because those three are NOT sufficient: BenchCAD's
+        `rib_plate` edit moves a symmetric rib array (`rarray(84.72,…)` → `rarray(46.4,…)`), which
+        preserves all three exactly while genuinely changing the shape. Mass distribution does not."""
+        from OCP.BRepGProp import BRepGProp
+        from OCP.GProp import GProp_GProps
+
+        props = GProp_GProps()
+        BRepGProp.VolumeProperties_s(shape.wrapped, props)
+        m = props.MatrixOfInertia()
+        return tuple(m.Value(i, j) for i in range(1, 4) for j in range(1, 4))
+
+    def _congruent(self, pa: list, pb: list, va: float, vb: float, *, rel: float = 1e-9) -> bool:
+        """True when two shapes are the SAME shape — matching part count, volume, bbox, centroid and
+        inertia tensor.
+
+        Worth a special case because it is both the most important comparison (a correct edit
+        reproduces the ground truth exactly) and the one OCCT's boolean handles WORST: every face is
+        coincident, the degenerate configuration for BOP. Answering it from invariants asks OCCT
+        nothing. Tolerances are tight on purpose — identical construction yields identical floats, so
+        anything looser would start swallowing genuinely different shapes.
+        """
+        if len(pa) != len(pb) or abs(va - vb) > rel * max(va, 1.0):
+            return False
+        scale = max(va ** (1.0 / 3.0), 1.0)
+        for x, y in zip(sorted(pa, key=lambda s: s.Volume()), sorted(pb, key=lambda s: s.Volume())):
+            if abs(x.Volume() - y.Volume()) > rel * max(x.Volume(), 1.0):
+                return False
+            p, q = x.BoundingBox(), y.BoundingBox()
+            if any(abs(u - v) > rel * scale for u, v in
+                   ((p.xmin, q.xmin), (p.xmax, q.xmax), (p.ymin, q.ymin),
+                    (p.ymax, q.ymax), (p.zmin, q.zmin), (p.zmax, q.zmax))):
+                return False
+            if x.Center().sub(y.Center()).Length > rel * scale:
+                return False
+            ix, iy = self._inertia(x), self._inertia(y)
+            if any(abs(u - v) > rel * max(abs(u), abs(v), 1.0) for u, v in zip(ix, iy)):
+                return False
+        return True
+
+    def _pair_intersection(self, x, y) -> float:
+        """Vol(x ∩ y), CROSS-VALIDATED — or raise `BooleanUnreliable`.
+
+        Measured (B1), not assumed: no single OCCT operator is trustworthy across BenchCAD's geometry.
+        On `cotter_pin` the common returns 0 for a shape against itself while the fuse is correct; on
+        `sheet_metal_tray` the common under-reports by 35% and the fuse throws outright; on most parts
+        all of them agree. So the volume is computed **twice by different routes** — directly as a
+        common, and indirectly as `Vol(x) + Vol(y) − Vol(x ∪ y)` — and only returned when they agree.
+
+        A grader that silently reports a wrong number is worse than one that admits it cannot grade a
+        row, so a disagreement is raised, not averaged. The caller marks the row ungradeable and drops
+        it from the denominator.
+        """
+        vx, vy = float(x.Volume()), float(y.Volume())
+        try:
+            direct = float(x.intersect(y).Volume())
+            indirect = vx + vy - float(x.fuse(y).Volume())
+        except Exception as e:
+            raise BooleanUnreliable(f"OCCT boolean failed: {type(e).__name__}: {e}") from e
+        if abs(direct - indirect) > 1e-3 * max(vx, vy, 1.0):
+            raise BooleanUnreliable(
+                f"common ({direct:.4f}) and fuse-derived ({indirect:.4f}) intersections disagree")
+        return max(0.0, direct)
+
     def iou(self, a: BRepHandle, b: BRepHandle) -> float:
         """Exact volumetric IoU of two solids: Vol(A∩B) / Vol(A∪B), via OCCT booleans (B1).
 
@@ -281,21 +353,23 @@ class GeometryService:
         themselves pairwise non-overlapping, so `Vol(A∩B) = Σᵢⱼ Vol(aᵢ∩bⱼ)` exactly — no
         inclusion–exclusion, and no reliance on OCCT doing the right thing with compound arguments.
 
-        Both solids must share a coordinate frame (BenchCAD's orig/gt variants do). Raises whatever
-        OCCT raises on a boolean it cannot complete — the caller decides whether that is a grading
-        failure or a hard error.
+        Both solids must share a coordinate frame (BenchCAD's orig/gt variants do). Raises
+        `BooleanUnreliable` when the kernel cannot be trusted for this pair; the caller decides
+        whether that is an ungradeable row or a hard error.
         """
         pa, pb = self._parts(a), self._parts(b)
         va = sum(float(s.Volume()) for s in pa)
         vb = sum(float(s.Volume()) for s in pb)
         if va <= 0.0 or vb <= 0.0:
             return 0.0
+        if self._congruent(pa, pb, va, vb):
+            return 1.0                        # the same shape — no boolean can tell us more
         inter = 0.0
         for x in pa:
             for y in pb:
                 if self._bb_disjoint(x, y):
                     continue
-                inter += float(x.intersect(y).Volume())
+                inter += self._pair_intersection(x, y)
         union = va + vb - inter
         return 0.0 if union <= 0.0 else max(0.0, min(1.0, inter / union))
 
