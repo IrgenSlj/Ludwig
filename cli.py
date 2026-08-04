@@ -1026,7 +1026,7 @@ def run_eval(*, live: bool = False, repair: bool = False, via_mcp: bool = False)
 
 
 def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
-                   download=True) -> int:
+                   download=True, report=None) -> int:
     """BenchCAD edit-bench — the third-party number (B1, docs/BENCH_PLAN.md).
 
     Default is ORACLE mode and costs zero tokens: it grades the ground truth (must score 1.0) and
@@ -1084,6 +1084,8 @@ def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
 
         summary, results = editbench.run(rows, predict, on_row=show)
         _print_bench_summary("live", summary)
+        _print_bench_categories(results)
+        _write_bench_report(report, "live", summary, results)
         return 0
 
     print("mode: ORACLE (token-free grader validation)\n")
@@ -1141,6 +1143,35 @@ def verify_file(path: str, *, process=None) -> int:
     print(f"\n{verdict} — {len(r.get('checked', []))} check(s) ran, "
           f"{len(r.get('not_applicable', []))} n/a (no authored intent to check against)")
     return 0 if r["passed"] else 1
+
+
+def _print_bench_categories(results) -> None:
+    """The B4 to-do list: score per BenchCAD edit category, worst first."""
+    from eval import editbench
+
+    rows = editbench.by_category(results)
+    if len(rows) < 2:
+        return
+    print("\nby edit category (worst first — this is the capability to-do list):")
+    for r in rows:
+        print(f"  {r['score']:.3f}  {r['label'][:28]:28} ({r['category']})  "
+              f"n={r['n']:3}  exact {r['exact']}/{r['n']}  exec {r['exec_rate'] * 100:.0f}%")
+
+
+def _write_bench_report(path, mode: str, summary: dict, results) -> None:
+    """Dump the full run to JSON. A live run costs real tokens, so it must be sliceable afterwards
+    without paying for it twice."""
+    if not path:
+        return
+    import json
+    from pathlib import Path as _P
+
+    from eval import editbench
+
+    payload = {"mode": mode, "summary": summary, "by_category": editbench.by_category(results),
+               "results": [{k: v for k, v in r.items() if k != "program"} for r in results]}
+    _P(path).write_text(json.dumps(payload, indent=2, default=str))
+    print(f"\nreport → {path}")
 
 
 def _print_bench_summary(label: str, s: dict) -> None:
@@ -1315,7 +1346,8 @@ def main(argv: list[str]) -> int:
                 return 1
             return run_bench_edit(limit=_val("--bench-limit", int), family=_val("--bench-family"),
                                   seed=_val("--seed", int, 0) or 0, live="--live" in argv,
-                                  rounds=_val("--rounds", int, 1), download="--no-download" not in argv)
+                                  rounds=_val("--rounds", int, 1), download="--no-download" not in argv,
+                                  report=_val("--bench-report"))
         if "--repair" in argv and "--live" not in argv:
             print("note: --repair applies only to --live codegen; the reference-oracle eval ignores it.")
         return run_eval(live="--live" in argv, repair="--repair" in argv, via_mcp="--mcp" in argv)

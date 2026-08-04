@@ -278,6 +278,29 @@ def predict_live(record: dict, *, model: Optional[str] = None, rounds: int = 1) 
     return code
 
 
+def by_category(results: list[dict]) -> list[dict]:
+    """Per-edit-category breakdown, worst first — the B4 capability to-do list.
+
+    BenchCAD labels every row with the KIND of edit it asks for (`literal_replace`, and harder
+    categories above it). Aggregating the score by that label is what turns a single headline number
+    into a ranked list of what Ludwig can't yet do — the same mechanism that moved the frozen-set
+    number 60→93 by naming the missing op rather than by tuning the prompt (FINDINGS).
+    """
+    buckets: dict[tuple, list[dict]] = {}
+    for r in results:
+        if r.get("ungradeable"):
+            continue
+        buckets.setdefault((r.get("category") or "?", r.get("category_label") or "?"), []).append(r)
+    rows = [
+        {"category": cat, "label": label, "n": len(rs),
+         "score": sum(x["score"] for x in rs) / len(rs),
+         "exec_rate": sum(1 for x in rs if x["exec_ok"]) / len(rs),
+         "exact": sum(1 for x in rs if x["score"] >= 0.999)}
+        for (cat, label), rs in buckets.items()
+    ]
+    return sorted(rows, key=lambda d: (d["score"], -d["n"]))
+
+
 def run(rows: list[dict], predict: Callable[[dict], str], *,
         on_row: Optional[Callable[[dict], None]] = None) -> tuple[dict, list[dict]]:
     """Grade every row with `predict`. Returns (summary, results). A predictor that raises is a fail."""
