@@ -14,16 +14,43 @@ import os
 import sys
 
 
-def selftest() -> int:
-    """Pure-Python invariants of the IR spine. Grows into a real OCCT build at S2/S5."""
-    from ir import Element, NamedDim, Param, ProgramNode
-    from toolkit import box
+# --------------------------------------------------------------------------- #
+# the selftest gate — check-groups + the driver that runs them
+# --------------------------------------------------------------------------- #
+#
+# Each `_ck_*` group takes `check(label, ok, detail="")` and registers its own checks; `selftest()`
+# below is just the driver over `_CHECK_GROUPS`.
+#
+# This was ONE 850-line function. At that size an exception anywhere aborted every REMAINING check as
+# a traceback instead of reporting a FAIL — so the gate could only ever tell you about the first
+# thing that broke, and the ~120 checks after it went unreported. Groups are now isolated: one that
+# raises is recorded as a failed check in place and the rest still run. Adding a group is appending
+# to `_CHECK_GROUPS` — the same "register a check, no loop change" property the critic panel has ([H4]).
 
-    checks: list[tuple[str, bool, str]] = []
+# The canonical bracket, in the two forms the gate asserts against: the recipe source that Ops must
+# render byte-identically, and the JSON op-plan a planner emits. Shared by the Op-API group (pure
+# Python) and the geometry group (which builds it for real), so the two can never drift apart.
+_BRACKET_RECIPE = ('element = box("bracket", 80, 40, 6)\n'
+                   'clearance_hole(element, "M8", (-25, 0))\n'
+                   'clearance_hole(element, "M8", (25, 0))\n')
+_BRACKET_JSON_PLAN = [{"op": "AddElement", "kind": "box", "id": "bracket", "args": [80, 40, 6]},
+                      {"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [-25, 0]]},
+                      {"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [25, 0]]}]
 
-    def check(label: str, ok: bool, detail: str = "") -> None:
-        checks.append((label, bool(ok), detail))
 
+def _raises(fn) -> bool:
+    """True if `fn()` rejects its input. The check-groups assert on REFUSAL as often as on success —
+    a validator that accepts everything passes every positive test."""
+    try:
+        fn()
+        return False
+    except (ValueError, TypeError):
+        return True
+
+
+def _ck_units(check) -> None:
+    """units + Param."""
+    from ir import Param
     # Units are mandatory (the #1 silent CAD bug).
     try:
         Param("width", 80, unit="")
@@ -31,6 +58,10 @@ def selftest() -> int:
     except ValueError:
         check("param requires unit", True)
 
+
+
+def _ck_throttle(check) -> None:
+    """inference throttle-detection (A4)."""
     # Inference throttle-detection (A4): a rate/usage-limit stderr triggers the longer backoff so a
     # transient limit self-heals instead of surfacing as an empty program (the eval throttling artifact).
     from agent.inference import _THROTTLE_RE
@@ -40,39 +71,52 @@ def selftest() -> int:
     check("throttle-detect: a normal error does NOT match",
           not _THROTTLE_RE.search("SyntaxError: invalid syntax on line 3"))
 
+
+
+def _ck_corpus(check) -> None:
+    """repair corpus (A5)."""
     # Repair corpus (A5) — off by default (measure-don't-assert), and a record→retrieve round-trip
     # keys on the normalized failure signature. Pure-Python; the loop is untouched when the corpus is off.
+    import tempfile
     from pathlib import Path
     from store import repairs as _rc
     check("repair corpus: OFF by default (unmeasured → default off)", _rc.enabled() is False)
     check("repair corpus: signature folds sub-checks to base names",
           _rc.signature_of([{"check": "min_wall"}, {"check": "cover:anchor_1"}]) == "cover min_wall")
-    _c = _rc.connect(Path(__file__).resolve().parent / "store" / "_selftest.sqlite")
-    _c.execute("DELETE FROM repair")
-    _rc.record(_c, broken="hole(e,(35,0))", fixed="hole(e,(28,0))", source="pool_x",
-               failures=[{"check": "min_wall", "message": "0.5 < 1.5"}])
-    _hit = _rc.retrieve(_c, [{"check": "min_wall"}])
-    check("repair corpus: retrieval keys on failure signature + renders a diff",
-          bool(_hit) and _hit[0]["signature"] == "min_wall" and _rc.as_prompt(_hit).strip() != "")
-    check("repair corpus: exclude_source guards against leakage",
-          _rc.retrieve(_c, [{"check": "min_wall"}], exclude_source="pool_x") == [])
-    # Retrieval runs on the repair loop's hot path (every round consults it). It ranks by signature
-    # overlap through an indexed JOIN — it used to SELECT * and rank in Python, reading every stored
-    # program into memory just to score the signatures.
-    _rc.record(_c, broken="hole(e,(35,0))", fixed="hole(e,(28,0))", source="pool_y",
-               failures=[{"check": "min_wall"}, {"check": "cover"}])
-    _ranked = _rc.retrieve(_c, [{"check": "min_wall"}, {"check": "cover"}], k=2)
-    _plan = " ".join(r[-1] for r in _c.execute(
-        "EXPLAIN QUERY PLAN SELECT r.*, COUNT(*) AS overlap FROM repair r "
-        "JOIN repair_token t ON t.repair_id = r.id WHERE t.token IN (?,?) "
-        "GROUP BY r.id ORDER BY overlap DESC, r.created DESC LIMIT ?",
-        ("min_wall", "cover", 2)).fetchall())
-    check("repair corpus: retrieval ranks by overlap through an INDEX, never a table scan",
-          _ranked[0]["overlap"] == 2 and _ranked[1]["overlap"] == 1
-          and "repair_token_tok" in _plan and "SCAN repair " not in _plan)
-    _c.close()
-    (Path(__file__).resolve().parent / "store" / "_selftest.sqlite").unlink(missing_ok=True)
+    # A tempdir, not `store/_selftest.sqlite`: the old scratch DB lived in the source tree and was
+    # unlinked on the last line, so any check that raised in between left it behind — where the NEXT
+    # run would open it as a real corpus. The gate should not be able to litter the repo it gates.
+    with tempfile.TemporaryDirectory() as _cd:
+        _c = _rc.connect(Path(_cd) / "corpus.sqlite")
+        _rc.record(_c, broken="hole(e,(35,0))", fixed="hole(e,(28,0))", source="pool_x",
+                   failures=[{"check": "min_wall", "message": "0.5 < 1.5"}])
+        _hit = _rc.retrieve(_c, [{"check": "min_wall"}])
+        check("repair corpus: retrieval keys on failure signature + renders a diff",
+              bool(_hit) and _hit[0]["signature"] == "min_wall" and _rc.as_prompt(_hit).strip() != "")
+        check("repair corpus: exclude_source guards against leakage",
+              _rc.retrieve(_c, [{"check": "min_wall"}], exclude_source="pool_x") == [])
+        # Retrieval runs on the repair loop's hot path (every round consults it). It ranks by signature
+        # overlap through an indexed JOIN — it used to SELECT * and rank in Python, reading every stored
+        # program into memory just to score the signatures.
+        _rc.record(_c, broken="hole(e,(35,0))", fixed="hole(e,(28,0))", source="pool_y",
+                   failures=[{"check": "min_wall"}, {"check": "cover"}])
+        _ranked = _rc.retrieve(_c, [{"check": "min_wall"}, {"check": "cover"}], k=2)
+        _plan = " ".join(r[-1] for r in _c.execute(
+            "EXPLAIN QUERY PLAN SELECT r.*, COUNT(*) AS overlap FROM repair r "
+            "JOIN repair_token t ON t.repair_id = r.id WHERE t.token IN (?,?) "
+            "GROUP BY r.id ORDER BY overlap DESC, r.created DESC LIMIT ?",
+            ("min_wall", "cover", 2)).fetchall())
+        check("repair corpus: retrieval ranks by overlap through an INDEX, never a table scan",
+              _ranked[0]["overlap"] == 2 and _ranked[1]["overlap"] == 1
+              and "repair_token_tok" in _plan and "SCAN repair " not in _plan)
+        _c.close()
 
+
+
+def _ck_ir(check) -> None:
+    """IR spine + feature graph (R2)."""
+    from ir import Element, NamedDim, ProgramNode
+    from toolkit import box
     # crystallization clamps to [0,1] and is a scalar only ([H3]).
     e = Element(id="x", crystallization=2.5)
     check("crystallization clamps", e.crystallization == 1.0, f"got {e.crystallization}")
@@ -123,6 +167,10 @@ def selftest() -> int:
     check("feature graph: recording OFF by default (unrecorded box has graph=None)",
           box("_no_record", 10, 10, 10).graph is None)
 
+
+
+def _ck_sketch(check) -> None:
+    """sketch solver + DoF critic (R27/R32)."""
     # R27 — sketch constraint solver (pure-Python, no kernel). A fully-constrained rectangle solves to
     # exact corners; dropping the two distance dims leaves exactly 2 DoF — reported deterministically.
     from geometry.sketch_solver import solve as _solve_sketch
@@ -177,15 +225,17 @@ def selftest() -> int:
     check("R32: the sketch critic is registered in the panel (no loop change)",
           any(getattr(c, "name", "") == "sketch" for c in _critics()))
 
+
+
+def _ck_ops(check) -> None:
+    """the Op-API boundary (R14/R16)."""
     # R14 — Op vocabulary: a plan of typed Ops (DATA, never exec'd) renders to source byte-identical to a
     # hand-written recipe, and a SetParam edit is invertible (undo) — the reviewable edit spine for the Op-API.
     from agent.ops import AddElement, AddFeature, Plan, SetParam
     _bp = Plan((AddElement("box", "bracket", (80, 40, 6)),
                 AddFeature("clearance_hole", ("M8", (-25, 0))),
                 AddFeature("clearance_hole", ("M8", (25, 0)))))
-    _expected = ('element = box("bracket", 80, 40, 6)\n'
-                 'clearance_hole(element, "M8", (-25, 0))\n'
-                 'clearance_hole(element, "M8", (25, 0))\n')
+    _expected = _BRACKET_RECIPE
     check("R14: a 3-op plan renders byte-identical to the bracket recipe",
           _bp.render() == _expected, repr(_bp.render()[:38]))
     _edited, _inv = Plan((SetParam("length", 80, 120),)).apply_to(_expected)
@@ -198,18 +248,9 @@ def selftest() -> int:
     # a Plan that renders byte-identical, and REJECTS an unknown op kind / unexpected field — the security
     # boundary that replaces exec'ing model-authored Python.
     from agent.ops import parse_plan as _parse
-    _json_plan = [{"op": "AddElement", "kind": "box", "id": "bracket", "args": [80, 40, 6]},
-                  {"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [-25, 0]]},
-                  {"op": "AddFeature", "func": "clearance_hole", "args": ["M8", [25, 0]]}]
+    _json_plan = _BRACKET_JSON_PLAN
     check("R16: a JSON op-plan parses + renders byte-identical to the bracket recipe",
           _parse(_json_plan).render() == _expected, repr(_parse(_json_plan).render()[:38]))
-
-    def _raises(fn):
-        try:
-            fn()
-            return False
-        except (ValueError, TypeError):
-            return True
 
     check("R16: parse_plan rejects an unknown op kind AND an unexpected field (nothing exec'd)",
           _raises(lambda: _parse([{"op": "RunShell", "cmd": "rm -rf /"}]))
@@ -256,6 +297,10 @@ def selftest() -> int:
           _summ(_ops[0]).startswith("add box 'bracket'") and "add clearance_hole" in _summ(_ops[1]),
           f"{_summ(_ops[0])} | {_summ(_ops[1])}")
 
+
+
+def _ck_runtime(check) -> None:
+    """streaming agent runtime (R23/R26)."""
     # R23 — streaming agent runtime: a token-free local grammar turns an instruction into a stream of op
     # events (op → applied → done), zero LLM; should_cancel halts cleanly. The injectable seam the LLM
     # planner (R26) plugs into with infer=inference.infer.
@@ -290,6 +335,10 @@ def selftest() -> int:
     check("R26: hybrid keeps a plain '<dim> <number>' edit on the free grammar (no inference call)",
           len(_hops) == 1 and type(_hops[0]).__name__ == "SetParam" and not _called)
 
+
+
+def _ck_daemon(check) -> None:
+    """wire contract, auth, CSRF, MCP, permissions (A1/D1/A2/A3)."""
     # A1 — the wire contract carries a version. stamp() adds SCHEMA_VERSION when absent and NEVER
     # overwrites one already set (a nested builder's version wins), so every client can read the shape.
     from webapp import service as _svc
@@ -360,6 +409,15 @@ def selftest() -> int:
           and _perm.decide("build", _param_plan, False, pol={**_auto, "mode": "locked"})[0] == "denied",
           "auto/plan/locked · param/structural/export")
 
+
+
+def _ck_geometry(check) -> None:
+    """the geometry spine (S2) — kernel-gated."""
+    from pathlib import Path
+
+    from agent import ops as _bops
+    from toolkit import box
+    from toolkit import clearance_hole as _clearance_hole
     # Geometry spine — the S2 gate. Runs only when the OCCT kernel is installed; without
     # cadquery the pure-Python spine above is the gate (so CI stays green before the kernel lands).
     try:
@@ -789,12 +847,13 @@ def selftest() -> int:
                   and _edit["inverse"] and _edit["inverse"][0]["new"] == 80,
                   f"len={_edit.get('bbox', {}).get('length')} inverse={_edit.get('inverse')}")
             # R16 (kernel half): a PARSED JSON plan builds a verified solid — parse → render → execute → verify
-            _pb = _build("", _parse(_json_plan), out=_td)
+            _pb = _build("", _bops.parse_plan(_BRACKET_JSON_PLAN), out=_td)
             check("R16: a parsed JSON plan builds a verified solid (parse → build → verify)",
                   _pb.get("passed") is True and "step" in _pb["artifacts"], f"passed={_pb.get('passed')}")
             # R18: /api/build's service path — build a client-reviewed plan from raw JSON ops, token-free
+            from webapp import service as _svc
             from webapp.service import build_from_ops as _bfo
-            _wb = _bfo("", _json_plan, out=_td, confirm=True)   # a reviewed structural build (A3 gate)
+            _wb = _bfo("", _BRACKET_JSON_PLAN, out=_td, confirm=True)   # a reviewed structural build (A3 gate)
             check("R18: build_from_ops builds a verified solid from client JSON ops (token-free)",
                   _wb.get("passed") is True and _wb.get("diff", {}).get("added") == 3
                   and "step" in _wb["artifacts"], f"passed={_wb.get('passed')}")
@@ -831,6 +890,10 @@ def selftest() -> int:
         except ImportError:
             print("  [skip] IFC check — ifcopenshell not installed")
 
+
+
+def _ck_harness(check) -> None:
+    """ludwig.toml config + telemetry (M1/WS7)."""
     # M1 (v2 harness) — ludwig.toml config resolver + telemetry RunStore. Pure stdlib (no kernel,
     # no third-party dep), so these run on bare Python. The config_hash pins a run's settings (WS7);
     # the RunStore is the trajectory-dataset plumbing WS7 builds on.
@@ -895,6 +958,10 @@ def selftest() -> int:
               and [e["type"] for e in _rs.read_events()] == ["brief", "selection"]
               and _sha_a == _sha_b and _rs.media_path(_sha_a).exists())
 
+
+
+def _ck_search(check) -> None:
+    """deliberative branch-and-prune (WS2)."""
     # WS2 (v2 harness) — deliberative branch-and-prune. The scheduler math is pure; the driver is
     # exercised token-free with a scripted mock (real model/kernel primitives are injected in the loop).
     # A "program" is p:<quality>, lower better, 0 passes; score mirrors _weighted_failures.
@@ -920,6 +987,10 @@ def selftest() -> int:
     check("WS2 search: branch-and-prune refines to the passing branch (converged, 9 calls)",
           _sr.passed and _sr.reason == "converged" and _sr.calls_used == 9 and _sr.best.program == "p:0")
 
+
+
+def _ck_bench(check) -> None:
+    """BenchCAD grader + the spend gate (B1)."""
     # B1 (BenchCAD edit-bench) — the grader's pure-Python half. No dataset, no kernel, no tokens:
     # the sampler, the metric math and the trust tripwire are all exercised directly.
     from eval import benchcad as _bc, editbench as _eb
@@ -980,6 +1051,45 @@ def selftest() -> int:
         sys.stdin.isatty = _tty
         if _spent is not None:
             os.environ["LUDWIG_ASSUME_YES"] = _spent
+
+
+
+_CHECK_GROUPS = [
+    _ck_units,
+    _ck_throttle,
+    _ck_corpus,
+    _ck_ir,
+    _ck_sketch,
+    _ck_ops,
+    _ck_runtime,
+    _ck_daemon,
+    _ck_geometry,
+    _ck_harness,
+    _ck_search,
+    _ck_bench,
+]
+
+
+def selftest() -> int:
+    """The gate: every invariant the project refuses to regress, token-free.
+
+    A driver over the check-groups in `_CHECK_GROUPS`. Each group is isolated: one that raises is
+    recorded as a failed check and the remaining groups still run, so a single breakage can never
+    hide the state of everything after it.
+    """
+    checks: list[tuple[str, bool, str]] = []
+
+    def check(label: str, ok: bool, detail: str = "") -> None:
+        checks.append((label, bool(ok), detail))
+
+    for group in _CHECK_GROUPS:
+        before = len(checks)
+        try:
+            group(check)
+        except Exception as e:                       # a broken group fails loudly, in place
+            name = group.__name__.removeprefix("_ck_")
+            check(f"check-group {name!r} ran to completion",
+                  False, f"raised after {len(checks) - before} check(s): {type(e).__name__}: {e}")
 
     ok = all(passed for _, passed, _ in checks)
     for label, passed, detail in checks:
