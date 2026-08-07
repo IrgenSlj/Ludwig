@@ -295,6 +295,21 @@ def selftest() -> int:
           and _tok("s3cret", "") is False,
           "loopback token gate")
 
+    # CSRF — the daemon is open by DEFAULT on a predictable localhost port, so a page the user is
+    # merely visiting could POST /api/build and drive a tool that writes fabrication files (the reply
+    # is unreadable cross-origin, but the write lands). Same-origin by comparison, so it holds on a
+    # random `--serve` port AND on the public demo's real hostname with no per-deployment config.
+    from webapp.server import origin_ok as _org
+    check("CSRF: a cross-site browser origin is refused on the daemon's write surface",
+          _org("https://evil.com", "127.0.0.1:8765") is False
+          and _org("http://localhost:1234", "127.0.0.1:8765") is False)   # another local port too
+    check("CSRF: the daemon's own page, the public demo, and non-browser clients all still pass",
+          _org("http://127.0.0.1:8765", "127.0.0.1:8765") is True
+          and _org("https://demo.example.com", "demo.example.com") is True
+          and _org(None, "127.0.0.1:8765") is True                        # curl / MCP / desktop shell
+          and _org("tauri://localhost", "127.0.0.1:8765",
+                   allowed=("tauri://localhost",)) is True)               # embedding escape hatch
+
     # A2 — the MCP server module imports WITHOUT the SDK (the SDK is lazy, inside build_server), so the
     # spine stays green on a machine that never runs `ludwig mcp`. If the SDK IS present, the v1 tool
     # surface (compile/verify/export) registers.

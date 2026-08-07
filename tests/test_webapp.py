@@ -494,3 +494,64 @@ def test_daemon_shutdown_endpoint_stops_the_server():
         assert not t.is_alive()                              # serve_forever returned → the child is reapable
     finally:
         httpd.shutdown()   # idempotent / harmless if already stopped
+
+
+# --------------------------------------------------------------------------- #
+# CSRF — a drive-by page must not be able to drive the local daemon
+# --------------------------------------------------------------------------- #
+#
+# The daemon is open by default and binds a predictable localhost port, so any site the user visits
+# while Ludwig is running could POST to /api/build. A "simple" request (text/plain) skips the CORS
+# preflight, so the browser sends it; the reply is unreadable but the WRITE still lands.
+
+def _origin_req(port, path, *, origin=None, method="POST", body=None):
+    import urllib.request
+    r = urllib.request.Request(f"http://127.0.0.1:{port}{path}",
+                               data=json.dumps(body).encode() if body is not None else None,
+                               method=method,
+                               headers={"Content-Type": "text/plain"})   # a CORS simple request
+    if origin:
+        r.add_header("Origin", origin)
+    return urllib.request.urlopen(r, timeout=10)
+
+
+def test_origin_rule_is_same_origin_by_comparison_not_hardcoded_localhost():
+    # Pure function — the daemon may be on a random port (cli.py --serve) or a real hostname (the
+    # public demo), so the rule compares Origin's authority to the Host actually addressed.
+    from webapp.server import origin_ok
+    assert origin_ok(None, "127.0.0.1:8765")                       # curl / MCP / desktop shell
+    assert origin_ok("http://127.0.0.1:8765", "127.0.0.1:8765")    # the Studio's own page
+    assert origin_ok("https://demo.example.com", "demo.example.com")  # public demo, real hostname
+    assert not origin_ok("https://evil.com", "127.0.0.1:8765")
+    assert not origin_ok("http://localhost:1234", "127.0.0.1:8765")   # another local port IS cross-origin
+    # the embedding escape hatch (a webview origin has no Host to match)
+    assert origin_ok("tauri://localhost", "127.0.0.1:8765", allowed=("tauri://localhost",))
+
+
+def test_daemon_refuses_a_cross_site_write_but_keeps_its_own_page_working():
+    import urllib.error
+    httpd, port, _ = _spawn()                       # NO token — the default, most exposed posture
+    ops = [{"op": "AddElement", "kind": "box", "id": "drive_by", "args": [40, 20, 5]}]
+    build = {"program": "", "ops": ops, "confirm": True}
+    try:
+        with pytest.raises(urllib.error.HTTPError) as ei:
+            _origin_req(port, "/api/build", origin="https://evil.com", body=build)
+        assert ei.value.code == 403
+        assert "cross-origin" in json.loads(ei.value.read())["error"]
+        # the daemon's own page still works, and so does every non-browser client (no Origin header)
+        assert _origin_req(port, "/api/adopt", origin=f"http://127.0.0.1:{port}",
+                           body={"seed": "bracket"}).status == 200
+        assert _origin_req(port, "/api/adopt", body={"seed": "bracket"}).status == 200
+    finally:
+        httpd.shutdown()
+
+
+def test_cross_site_cannot_read_fabrication_artifacts_either():
+    import urllib.error
+    httpd, port, _ = _spawn()
+    try:
+        with pytest.raises(urllib.error.HTTPError) as ei:
+            _origin_req(port, "/out/bracket.step", origin="https://evil.com", method="GET")
+        assert ei.value.code == 403
+    finally:
+        httpd.shutdown()

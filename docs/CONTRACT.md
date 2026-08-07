@@ -235,5 +235,20 @@ numeric edits only: generation/planning (which need inference and exec model-aut
 and every dimension that reaches the kernel is envelope-bounded. Local `cli.py --serve` keeps full
 behaviour. See `webapp/safety.py`.
 
+**Two gates guard `/api/*` and `/out/*`**, checked in this order:
+
+1. **Cross-origin (CSRF).** A request carrying a browser `Origin` header must be same-origin: the
+   `Origin`'s authority has to equal the `Host` it was addressed to, else **403**. Compared rather than
+   hardcoded, so it holds for a random `cli.py --serve` port and for the public demo's real hostname
+   with no per-deployment config. A request with **no** `Origin` passes — `curl`, the MCP server and the
+   desktop shell all omit it, so this adds no header requirement to any existing caller. It exists
+   because the daemon is open by default on a predictable localhost port: a cross-site POST can't be
+   *read* back, but the write still lands, and this daemon writes fabrication files. Embedding a webview
+   whose origin has no matching `Host` (e.g. `tauri://localhost`)? Name it in `LUDWIG_ALLOWED_ORIGINS`.
+2. **Token.** No token configured → open (the default, and the public demo). A token → an exact,
+   constant-time match on `X-Ludwig-Token` or `?token=`, else **401**.
+
+`/api/health` sits in front of both — it is the boot-readiness probe the embedding shell polls.
+
 The MCP server (A2) and the D-series daemon (`/api/health`, `/api/shutdown`, `--token`, ephemeral `--port
 0`) extend this same contract — they do not fork it.

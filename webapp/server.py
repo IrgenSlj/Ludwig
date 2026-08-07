@@ -33,6 +33,39 @@ def token_ok(configured: str | None, provided: str | None) -> bool:
         return True
     return bool(provided) and hmac.compare_digest(str(provided), str(configured))
 
+
+def origin_ok(origin: str | None, host: str | None, *, allowed: tuple[str, ...] = ()) -> bool:
+    """The CSRF rule: a *browser* may only reach `/api/*` from the daemon's own page.
+
+    The daemon is open by default (no token) and binds a predictable localhost port, so any web page
+    the user happens to be visiting could POST to `http://127.0.0.1:8765/api/build` and drive a tool
+    that writes fabrication files. A cross-origin POST can't be read back, but the write still lands —
+    so the reply being unreadable is not a defence.
+
+    The check is same-origin by *comparison*, never a hardcoded localhost: the browser's `Origin`
+    authority must equal the `Host` the request was addressed to. That holds for `cli.py --serve` on
+    a random port AND for the public demo behind a real hostname, with no per-deployment config.
+
+    A request with **no** `Origin` is allowed: `curl`, the MCP server, the desktop shell and every
+    other non-browser client omit it, and browsers omit it on same-origin GETs. That is the whole
+    back-compat story — this adds no header requirement to any existing caller. Browsers are the only
+    thing that attaches `Origin` to a cross-site request, which is exactly the case being refused.
+    """
+    if not origin:
+        return True
+    from urllib.parse import urlparse
+    if origin in allowed:                      # explicit escape hatch (embedding shells, e.g. tauri://)
+        return True
+    netloc = urlparse(origin).netloc or origin
+    return bool(host) and netloc == host
+
+
+def _allowed_origins() -> tuple[str, ...]:
+    """Extra origins an embedding shell may present, from `LUDWIG_ALLOWED_ORIGINS` (comma-separated).
+    A webview host like `tauri://localhost` has no `Host` to match against, so it needs naming."""
+    raw = os.environ.get("LUDWIG_ALLOWED_ORIGINS", "")
+    return tuple(o.strip() for o in raw.split(",") if o.strip())
+
 # DEMO mode (env LUDWIG_DEMO=1) is the safe public face. The browser may NOT submit a fresh program to
 # exec (that is RCE — see webapp/safety.py): it picks trusted seeds by id and only NUMERIC parameter
 # edits are accepted, and generation (compile/explore, which needs inference) is disabled. Off by
@@ -65,9 +98,22 @@ class Handler(BaseHTTPRequestHandler):
         got = self.headers.get("X-Ludwig-Token") or parse_qs(urlparse(self.path).query).get("token", [""])[0]
         return token_ok(tok, got)
 
+    def _same_origin(self) -> bool:
+        """True if this request is not a cross-site browser request (see `origin_ok`)."""
+        return origin_ok(self.headers.get("Origin"), self.headers.get("Host"),
+                         allowed=_allowed_origins())
+
     def _unauthorized(self) -> None:
         from webapp import service
         self._send(401, json.dumps(service.stamp({"error": "unauthorized"})).encode(), "application/json")
+
+    def _cross_origin(self) -> None:
+        from webapp import service
+        self._send(403, json.dumps(service.stamp({
+            "error": "cross-origin request refused",
+            "detail": "the Ludwig daemon only answers /api/* from its own page. If you are embedding "
+                      "it, name your origin in LUDWIG_ALLOWED_ORIGINS.",
+        })).encode(), "application/json")
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
@@ -78,9 +124,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         # Static UI is open (so the page can load); the API + fabrication artifacts are the guarded
         # surface — a local daemon that writes fab files must not answer every process on the machine.
-        if (path.startswith("/api/") or path.startswith("/out/")) and not self._authed():
-            self._unauthorized()
-            return
+        if path.startswith("/api/") or path.startswith("/out/"):
+            if not self._same_origin():   # a page on another site driving the local daemon
+                self._cross_origin()
+                return
+            if not self._authed():
+                self._unauthorized()
+                return
         if path in ("/", "/studio", "/studio.html"):   # the Studio (v2) is the single front door
             self._send(200, (ROOT / "studio.html").read_bytes(), "text/html")
             return
@@ -243,7 +293,12 @@ class Handler(BaseHTTPRequestHandler):
         return (OUT / safe) if safe else OUT
 
     def do_POST(self) -> None:
-        if not self._authed():   # every POST is a protected /api/* write — gate before reading a body
+        # Every POST is a protected /api/* write. Gate BOTH ways before reading a body: cross-site
+        # first (a drive-by page needs no token to reach an open daemon), then the token.
+        if not self._same_origin():
+            self._cross_origin()
+            return
+        if not self._authed():
             self._unauthorized()
             return
         if self.path == "/api/shutdown":   # the embedding shell reaps the daemon on window close
@@ -392,6 +447,11 @@ def serve(port: int = 8765, *, token: str | None = None) -> int:
     print(f"PORT={chosen}", flush=True)                # machine-readable line for the embedding shell
     if token:
         print("token auth: on (send X-Ludwig-Token header or ?token=)")
+    else:
+        # Say the posture out loud rather than leaving it implicit. Cross-site pages are refused
+        # (origin_ok), so the residual exposure is other LOCAL processes — which is what a token buys.
+        print("token auth: off — cross-site pages are refused, but any local process can reach "
+              "/api/*. Pass --token <secret> (or LUDWIG_TOKEN=) to close that too.")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
