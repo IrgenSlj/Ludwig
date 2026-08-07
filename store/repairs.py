@@ -36,7 +36,17 @@ CREATE TABLE IF NOT EXISTS repair (
     source     TEXT NOT NULL,      -- provenance (a pool brief id) — the leakage guard
     created    REAL NOT NULL
 );
-CREATE INDEX IF NOT EXISTS repair_sig ON repair(signature);
+CREATE INDEX IF NOT EXISTS repair_sig ON repair(signature);   -- serves the record() dedup probe
+
+-- A signature is a SET of base check-names, and retrieval ranks by set overlap. Storing the set
+-- exploded one-token-per-row is what lets that ranking be an indexed JOIN instead of "read the whole
+-- table, then rank in Python" — which is what `retrieve` used to do, on the A5 measurement's hot path.
+CREATE TABLE IF NOT EXISTS repair_token (
+    repair_id  INTEGER NOT NULL REFERENCES repair(id) ON DELETE CASCADE,
+    token      TEXT NOT NULL,
+    PRIMARY KEY (repair_id, token)
+);
+CREATE INDEX IF NOT EXISTS repair_token_tok ON repair_token(token);
 """
 
 
@@ -97,10 +107,31 @@ def _detail_of(failures=None, err: Optional[str] = None) -> str:
 # --------------------------------------------------------------------------- #
 
 def connect(path: Path = DEFAULT_PATH) -> sqlite3.Connection:
+    """Open (creating/upgrading) the corpus. Idempotent, and safe on a corpus mined before the token
+    table existed — `_backfill_tokens` reindexes any pre-existing rows in place, so an old
+    `store/repairs.sqlite` keeps working without a migration step or a re-mine."""
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    _backfill_tokens(conn)
     return conn
+
+
+def _index_tokens(conn: sqlite3.Connection, repair_id: int, signature: str) -> None:
+    conn.executemany("INSERT OR IGNORE INTO repair_token (repair_id, token) VALUES (?,?)",
+                     [(repair_id, t) for t in set(signature.split()) if t])
+
+
+def _backfill_tokens(conn: sqlite3.Connection) -> int:
+    """Index any repair row that has no tokens yet. Returns how many rows were backfilled."""
+    rows = conn.execute(
+        "SELECT id, signature FROM repair WHERE id NOT IN (SELECT repair_id FROM repair_token)"
+    ).fetchall()
+    for r in rows:
+        _index_tokens(conn, r["id"], r["signature"])
+    if rows:
+        conn.commit()
+    return len(rows)
 
 
 def record(conn: sqlite3.Connection, *, broken: str, fixed: str, source: str,
@@ -113,9 +144,10 @@ def record(conn: sqlite3.Connection, *, broken: str, fixed: str, source: str,
         "SELECT 1 FROM repair WHERE signature=? AND broken=? AND fixed=? LIMIT 1",
         (sig, broken, fixed)).fetchone()
     if not dup:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO repair (signature, detail, broken, fixed, source, created) VALUES (?,?,?,?,?,?)",
             (sig, detail, broken, fixed, source, time.time()))
+        _index_tokens(conn, cur.lastrowid, sig)   # keep the retrieval index in step with the row
         conn.commit()
     return sig
 
@@ -128,19 +160,27 @@ def _overlap(a: str, b: str) -> int:
 def retrieve(conn: sqlite3.Connection, failures=None, err: Optional[str] = None, *,
              k: int = 2, exclude_source: Optional[str] = None) -> list[dict]:
     """Top-k past fixes whose failure signature overlaps this one, best overlap first (ties: newest).
-    `exclude_source` drops rows from a given provenance — a belt-and-braces leakage guard on top of the
-    mine-from-pool-only rule."""
-    sig = signature_of(failures, err)
-    rows = conn.execute("SELECT * FROM repair ORDER BY created DESC").fetchall()
-    scored = []
-    for r in rows:
-        if exclude_source is not None and r["source"] == exclude_source:
-            continue
-        ov = _overlap(sig, r["signature"])
-        if ov > 0:
-            scored.append((ov, r["created"], r))
-    scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
-    return [dict(r) for _, _, r in scored[:k]]
+
+    The overlap ranking runs as an indexed JOIN over `repair_token` and returns only the k rows it
+    needs. It previously did `SELECT * FROM repair` and ranked in Python — which read every stored
+    `broken`/`fixed` PROGRAM into memory just to score the signatures, on the path the repair loop
+    hits on every round. The ordering is unchanged (overlap desc, then newest).
+
+    `exclude_source` drops rows from a given provenance — a belt-and-braces leakage guard on top of
+    the mine-from-pool-only rule — and is applied in SQL so an excluded row never leaves the DB.
+    """
+    tokens = [t for t in set(signature_of(failures, err).split()) if t]
+    if not tokens:
+        return []
+    sql = (
+        "SELECT r.*, COUNT(*) AS overlap FROM repair r "
+        "JOIN repair_token t ON t.repair_id = r.id "
+        f"WHERE t.token IN ({','.join('?' * len(tokens))})"
+        + (" AND r.source <> ?" if exclude_source is not None else "") +
+        " GROUP BY r.id ORDER BY overlap DESC, r.created DESC LIMIT ?"
+    )
+    params = [*tokens] + ([exclude_source] if exclude_source is not None else []) + [int(k)]
+    return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
 # --------------------------------------------------------------------------- #

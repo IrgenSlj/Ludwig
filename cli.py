@@ -56,6 +56,20 @@ def selftest() -> int:
           bool(_hit) and _hit[0]["signature"] == "min_wall" and _rc.as_prompt(_hit).strip() != "")
     check("repair corpus: exclude_source guards against leakage",
           _rc.retrieve(_c, [{"check": "min_wall"}], exclude_source="pool_x") == [])
+    # Retrieval runs on the repair loop's hot path (every round consults it). It ranks by signature
+    # overlap through an indexed JOIN — it used to SELECT * and rank in Python, reading every stored
+    # program into memory just to score the signatures.
+    _rc.record(_c, broken="hole(e,(35,0))", fixed="hole(e,(28,0))", source="pool_y",
+               failures=[{"check": "min_wall"}, {"check": "cover"}])
+    _ranked = _rc.retrieve(_c, [{"check": "min_wall"}, {"check": "cover"}], k=2)
+    _plan = " ".join(r[-1] for r in _c.execute(
+        "EXPLAIN QUERY PLAN SELECT r.*, COUNT(*) AS overlap FROM repair r "
+        "JOIN repair_token t ON t.repair_id = r.id WHERE t.token IN (?,?) "
+        "GROUP BY r.id ORDER BY overlap DESC, r.created DESC LIMIT ?",
+        ("min_wall", "cover", 2)).fetchall())
+    check("repair corpus: retrieval ranks by overlap through an INDEX, never a table scan",
+          _ranked[0]["overlap"] == 2 and _ranked[1]["overlap"] == 1
+          and "repair_token_tok" in _plan and "SCAN repair " not in _plan)
     _c.close()
     (Path(__file__).resolve().parent / "store" / "_selftest.sqlite").unlink(missing_ok=True)
 
