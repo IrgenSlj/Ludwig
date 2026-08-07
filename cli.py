@@ -847,6 +847,35 @@ def selftest() -> int:
         _rs.extend_events([{"type": "brief", "text": "bracket"}, {"type": "selection", "kept": "b1"}])
         _sha_a = _rs.put_media(b"fake-render-bytes", ext="png")
         _sha_b = _rs.put_media(b"fake-render-bytes", ext="png")   # identical → content-addressed dedup
+        # WS7 — the RunStore had no WRITER: `runs/` held only .gitkeep and every live run finished
+        # without leaving a trace. The Recorder attaches through the loop's existing on_event seam,
+        # so the loop is untouched ([H4]) — and it must never be able to break the run it records.
+        import json as _json
+        from pathlib import Path as _Path
+
+        from telemetry.recorder import Recorder as _Rec, fanout as _fan
+        _r = _Rec("selftest", runs_dir=_rd, on=True).begin(prompt="a bracket")
+        for _i in range(3):
+            _r.on_event({"stage": "codegen", "status": "done", "candidate": _i})
+        _rid = _r.finish(rate=1.0)
+        _man = _json.loads((_Path(_rd) / _rid / "manifest.json").read_text())
+        _traj = [_json.loads(_l) for _l in
+                 (_Path(_rd) / _rid / "trajectory.jsonl").read_text().splitlines()]
+        check("WS7 recorder: a run writes a manifest with provenance + an ordered trajectory",
+              _man["kind"] == "selftest" and _man["events"] == 4
+              and _man["outcome"]["rate"] == 1.0 and "git_commit" in _man
+              and [_e["seq"] for _e in _traj] == [1, 2, 3, 4]
+              and _traj[-1]["stage"] == "run")
+        _r2 = _Rec("selftest", runs_dir=_rd, on=True).begin()
+        _r2.store = None                              # simulate the disk going away mid-run
+        _r2.on_event({"stage": "codegen"})            # must not raise
+        check("WS7 recorder: telemetry degrades to nothing, it never breaks the run it records",
+              _r2.finish() is None and _Rec("x", runs_dir=_rd, on=False).finish() is None)
+        _seen: list = []
+        _fan(lambda _e: (_ for _ in ()).throw(RuntimeError("ui gone")), _seen.append)({"stage": "s"})
+        check("WS7 recorder: fanout lets the Activity Rail and the store watch one run, "
+              "and one broken subscriber can't starve the other", _seen == [{"stage": "s"}])
+
         check("M1 telemetry: RunStore round-trips manifest + trajectory + content-addressed media",
               _rs.read_manifest()["run_id"] == "selftest_run"
               and [e["type"] for e in _rs.read_events()] == ["brief", "selection"]
@@ -1096,11 +1125,20 @@ def run_eval(*, live: bool = False, repair: bool = False, via_mcp: bool = False)
         from eval import reference
         builder, label = reference.build, "reference oracle"
 
+    # WS7 — a live eval is the most expensive thing here; record it so the number is attributable to
+    # a commit and a config afterwards, instead of existing only in this terminal.
+    from telemetry.recorder import Recorder
+    rec = Recorder("eval", cfg=_try_config(_load_cfg)).begin(
+        mode=label, live=live, repair=repair, briefs=len(harness.BRIEFS))
     rate, results = harness.run(builder)
     for bid, ok in results:
         print(f"  [{'ok  ' if ok else 'FAIL'}] {bid}")
+        rec.on_event({"stage": "brief", "status": "done", "brief": bid, "passed": ok})
     passed = sum(o for _, o in results)
     print(f"geometric pass-rate ({label}): {rate * 100:.0f}%  ({passed}/{len(results)})")
+    run_id = rec.finish(rate=rate, passed=passed, total=len(results))
+    if run_id:
+        print(f"trajectory → runs/{run_id}/")
     return 0 if rate == 1.0 else 1
 
 
@@ -1190,10 +1228,20 @@ def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
             first[0] = False
             return editbench.predict_live(r, rounds=rounds)
 
-        summary, results = editbench.run(rows, predict, on_row=show)
+        # WS7 — the most expensive run in the repo; record what it cost and what it produced.
+        from telemetry.recorder import Recorder
+        rec = Recorder("bench", cfg=_try_config(_load_cfg)).begin(
+            mode="edit-bench live", rows=len(rows), rounds=rounds, seed=seed,
+            family=family, projection=proj)
+        summary, results = editbench.run(
+            rows, predict,
+            on_row=lambda r: (show(r), rec.on_event({"stage": "row", "status": "done", **r})))
         _print_bench_summary("live", summary)
         _print_bench_categories(results)
         _write_bench_report(report, "live", summary, results)
+        run_id = rec.finish(**summary)
+        if run_id:
+            print(f"trajectory → runs/{run_id}/")
         return 0
 
     print("mode: ORACLE (token-free grader validation)\n")
@@ -1291,6 +1339,20 @@ def _print_bench_summary(label: str, s: dict) -> None:
           + (f" · {s['ungradeable']} ungradeable excluded" if s.get("ungradeable") else ""))
 
 
+def _load_cfg():
+    from agent.config import load_config
+    return load_config()
+
+
+def _try_config(loader):
+    """Resolve ludwig.toml for telemetry provenance. A broken config must not stop a plain compile —
+    the config surface is only load-bearing for --search, which resolves it itself and reports errors."""
+    try:
+        return loader()
+    except Exception:
+        return None
+
+
 def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2,
                    search: bool = False, cfg=None) -> int:
     """The compile path: prompt → generated program → executed IR (BRIEF §5, S3 gate).
@@ -1306,18 +1368,26 @@ def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2,
         return 1
     from agent.loop import Brief, run, run_search
     from geometry import GeometryService
+    from telemetry.recorder import Recorder
 
     brief = Brief(prompt=prompt)
+    # WS7 — record the run. Attaches through the loop's existing `on_event` seam, so the loop is
+    # untouched ([H4]); a no-op when telemetry is off, and it can never fail the compile.
     if search:
         from agent.config import load_config
         cfg = cfg or load_config()
         print(f"› deliberative search: {prompt}\n  d={cfg.search.depth} b={cfg.search.branch} "
               f"keep_k={cfg.search.keep_k} veri_ratio={cfg.search.veri_ratio} "
               f"max_calls={cfg.budget.max_calls}\n")
-        res = run_search(brief, cfg)
+        rec = Recorder("search", cfg=cfg).begin(prompt=prompt, mode="search")
+        res = run_search(brief, cfg, on_event=rec.on_event)
     else:
+        from agent.config import load_config
         print(f"› compiling: {prompt}\n")
-        res = run(brief, candidates=candidates, rounds=rounds)
+        rec = Recorder("compile", cfg=_try_config(load_config)).begin(
+            prompt=prompt, mode="compile", candidates=candidates, rounds=rounds)
+        res = run(brief, candidates=candidates, rounds=rounds, on_event=rec.on_event)
+    _run_id = rec.finish(res)
     print("--- program ---")
     print(res.program)
     print("\n--- result ---")
@@ -1330,6 +1400,8 @@ def compile_prompt(prompt: str, *, candidates: int = 1, rounds: int = 2,
           f"{'model call(s)' if search else 'repair round(s)'}")
     for c in (res.critique.checks if res.critique else []):
         print(f"  [{c.status.value:4}] {c.check}" + (f" — {c.message}" if c.message else ""))
+    if _run_id:
+        print(f"  trajectory → runs/{_run_id}/")
 
     # Persist the recipe (the source of truth) and, if the critic passed, compile through all backends.
     from pathlib import Path
