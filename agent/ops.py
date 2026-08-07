@@ -14,6 +14,9 @@ constraint-value and hole-position substitutions the sketch/hole edits use. Pure
 """
 from __future__ import annotations
 
+import dataclasses
+import json as _json
+import keyword
 import re
 from dataclasses import dataclass
 from typing import Optional
@@ -112,16 +115,76 @@ def _substitute_hole_pos(program: str, old_xy, new_xy) -> Optional[str]:
 
 def _fmt(v) -> str:
     """Render a Python value as toolkit source: a string quoted, a tuple/list parenthesised, a number
-    in its shortest exact spelling (int stays int, float via %g)."""
+    in its shortest exact spelling (int stays int, float via %g).
+
+    Strings go through `json.dumps`, not an f-string — the rendered program is `exec`'d downstream, so
+    an unescaped `"` in a value would close the literal and turn DATA into CODE. json.dumps emits a
+    double-quoted, fully-escaped literal that Python parses identically (the recipe's house style).
+    Anything that is not a str/number/sequence is refused rather than `str()`-ed into source.
+    """
     if isinstance(v, str):
-        return f'"{v}"'
+        return _json.dumps(v)
     if isinstance(v, (tuple, list)):
         return "(" + ", ".join(_fmt(x) for x in v) + ")"
     if isinstance(v, bool):
         return str(v)
     if isinstance(v, float):
         return f"{v:g}"
-    return str(v)
+    if isinstance(v, int):
+        return str(v)
+    raise ValueError(f"cannot render {type(v).__name__} as toolkit source (ops carry data, not objects)")
+
+
+# --------------------------------------------------------------------------- #
+# name validation — the other half of the boundary
+# --------------------------------------------------------------------------- #
+#
+# `_fmt` protects values that are rendered as string LITERALS. These names are rendered as bare
+# source tokens — a callable (`box(...)`) or a variable reference (`place(top, ...)`) — so they are
+# never quoted and must be constrained to what they claim to be. Without this an `op` kind of
+# `__import__('os').system('…') or box` renders straight into the program the loop exec's.
+
+# The callable subset of `agent.loop.execute`'s namespace: the verbs a recipe may name. Modules and
+# types in that namespace (cq/cadquery/standards/Element) are deliberately absent — they are not ops.
+# `tests/test_ops.py::test_callable_allowlist_matches_the_execute_namespace` guards the two from drifting.
+_CALLABLES = frozenset({
+    "part", "box", "cylinder", "hole", "clearance_hole", "panel", "anchor", "assembly", "place",
+    "stack", "profile", "stair", "wall", "opening", "sketch", "extrude", "section", "fillet",
+    "chamfer", "slot", "counterbore",
+})
+
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+def _callable_name(value, field: str) -> str:
+    """A toolkit verb this op may render as a call. Allowlisted, so nothing else can be named."""
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a str, got {type(value).__name__}")
+    if value not in _CALLABLES:
+        raise ValueError(f"unknown {field} {value!r} (allowed: {', '.join(sorted(_CALLABLES))})")
+    return value
+
+
+def _ident(value, field: str) -> str:
+    """A bare variable reference rendered unquoted into source — must be a plain identifier."""
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a str, got {type(value).__name__}")
+    if not _IDENT.match(value) or keyword.iskeyword(value) or value.startswith("__"):
+        raise ValueError(f"{field} must be a plain identifier, got {value!r}")
+    return value
+
+
+def _data(value, field: str):
+    """A value carried as DATA into a rendered literal. Scalars and nested sequences only — a dict
+    would both break the frozen Op's hashability and render as something no recipe ever writes."""
+    if isinstance(value, (list, tuple)):
+        return tuple(_data(x, field) for x in value)
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        return value
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"{field} may only carry numbers, strings and nested lists, "
+                     f"got {type(value).__name__}")
 
 
 # --------------------------------------------------------------------------- #
@@ -135,6 +198,11 @@ class AddElement:
     id: str
     args: tuple = ()
 
+    def __post_init__(self):
+        _callable_name(self.kind, "AddElement.kind")
+        object.__setattr__(self, "id", _data(self.id, "AddElement.id"))
+        object.__setattr__(self, "args", _data(tuple(self.args), "AddElement.args"))
+
     def to_source(self) -> str:
         return f"element = {self.kind}(" + ", ".join([_fmt(self.id), *(_fmt(a) for a in self.args)]) + ")"
 
@@ -146,6 +214,11 @@ class AddFeature:
     args: tuple = ()
     target: str = "element"
 
+    def __post_init__(self):
+        _callable_name(self.func, "AddFeature.func")
+        _ident(self.target, "AddFeature.target")
+        object.__setattr__(self, "args", _data(tuple(self.args), "AddFeature.args"))
+
     def to_source(self) -> str:
         return f"{self.func}(" + ", ".join([self.target, *(_fmt(a) for a in self.args)]) + ")"
 
@@ -155,6 +228,10 @@ class Place:
     """`place(<target>, (dx, dy, dz))` — position a part for an assembly."""
     target: str
     offset: tuple
+
+    def __post_init__(self):
+        _ident(self.target, "Place.target")
+        object.__setattr__(self, "offset", _data(tuple(self.offset), "Place.offset"))
 
     def to_source(self) -> str:
         return f"place({self.target}, {_fmt(tuple(self.offset))})"
@@ -167,6 +244,12 @@ class Assemble:
     parts: tuple
     kind: str = "assembly"
 
+    def __post_init__(self):
+        _callable_name(self.kind, "Assemble.kind")
+        object.__setattr__(self, "id", _data(self.id, "Assemble.id"))
+        # parts are rendered UNQUOTED — they name variables in the program, not string values.
+        object.__setattr__(self, "parts", tuple(_ident(p, "Assemble.parts[]") for p in self.parts))
+
     def to_source(self) -> str:
         return f"element = {self.kind}(" + ", ".join([_fmt(self.id), *self.parts]) + ")"
 
@@ -178,6 +261,21 @@ class SetParam:
     name: str
     old: float
     new: float
+
+    def __post_init__(self):
+        # `parse_plan` accepts a numeric STRING for old/new (models emit "80" as often as 80), but
+        # every consumer does arithmetic on them — coerce once here so `apply` can't TypeError on an
+        # input the validator called valid.
+        for f in ("old", "new"):
+            v = getattr(self, f)
+            if isinstance(v, bool) or not isinstance(v, (int, float, str)):
+                raise ValueError(f"SetParam.{f} must be a number, got {type(v).__name__}")
+            try:
+                object.__setattr__(self, f, float(v))
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"SetParam.{f} must be a number, got {v!r}") from e
+        if not isinstance(self.name, str) or "\n" in self.name:
+            raise ValueError(f"SetParam.name must be a single-line str, got {self.name!r}")
 
     def to_source(self) -> str:
         return f"# set {self.name} = {_fmt(self.new)}"   # informational; apply() does the real work
@@ -236,17 +334,22 @@ class Plan:
 # parse + validate JSON ops (R16) — the security boundary: data in, never code exec'd
 # --------------------------------------------------------------------------- #
 
-import dataclasses  # noqa: E402
-import json as _json  # noqa: E402
-
-
 def parse_plan(data) -> Plan:
     """Strictly validate JSON op-data into a Plan. Accepts a list of op dicts or `{"ops": [...]}`.
 
-    This is the security boundary of the Op-API: the planner (R16) emits DATA, and we construct only
-    known Ops with exactly their declared fields — an unknown `op` kind, an unexpected field, a missing
-    required field, or a malformed shape RAISES, and nothing the model wrote is ever exec'd. JSON arrays
-    become tuples so the frozen Ops stay hashable."""
+    This is the security boundary of the Op-API, and it has TWO layers, because the rendered plan is
+    exec'd downstream:
+
+    1. **Shape** (here): only known Ops, with exactly their declared fields — an unknown `op` kind, an
+       unexpected field, a missing required field, or a bad value type RAISES. JSON arrays become
+       tuples so the frozen Ops stay hashable.
+    2. **Content** (each Op's `__post_init__`): fields that render as bare source tokens
+       (`kind`/`func`/`target`/`parts`) must be an allowlisted toolkit verb or a plain identifier, and
+       fields that render as literals must be data `_fmt` can escape. Shape alone is NOT enough — a
+       `kind` of `__import__('os').system('…') or box` is a well-shaped string that would otherwise
+       render straight into the program. Because the check lives on the dataclass, it holds for every
+       construction path (this parser, the MCP tools, the runtime planner, direct construction).
+    """
     if isinstance(data, dict) and "ops" in data:
         data = data["ops"]
     if not isinstance(data, list):

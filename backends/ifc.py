@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backends.base import artifact_stem
+
 name = "ifc"
 fmt = "ifc"
 fabrication = True
@@ -109,7 +111,7 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{ir.id}.ifc"
+    path = out_dir / f"{artifact_stem(ir.id)}.ifc"
     f.write(str(path))
     return path
 

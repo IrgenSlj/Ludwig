@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backends.base import artifact_stem
+
 name = "stl"
 fmt = "stl"
 fabrication = True
@@ -33,7 +35,7 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
         raise ValueError(f"element {ir.id!r} has no geometry to export")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{ir.id}.stl"
+    path = out_dir / f"{artifact_stem(ir.id)}.stl"
     lin, ang = _deflection()
     cq.exporters.export(ir.geometry.solid(), str(path), exportType="STL",
                         tolerance=lin, angularTolerance=ang)

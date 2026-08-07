@@ -204,6 +204,37 @@ def selftest() -> int:
           and _raises(lambda: _parse([{"op": "AddElement", "kind": "box"}])),   # missing required id/args
           "strict validation")
 
+    # The other half of that boundary: shape validation is not enough. `kind`/`func`/`target`/`parts`
+    # render as BARE source tokens and string values render as literals, so an op that passes the
+    # shape check can still smuggle CODE into the program `agent.loop.execute` exec's.
+    _inj = "__import__('os').system('id') or box"
+    check("Op-API: a bare-token field rejects anything but a known toolkit verb / identifier",
+          _raises(lambda: _parse([{"op": "AddElement", "kind": _inj, "id": "b", "args": [1, 1, 1]}]))
+          and _raises(lambda: _parse([{"op": "AddFeature", "func": _inj, "args": []}]))
+          and _raises(lambda: _parse([{"op": "AddFeature", "func": "hole", "target": _inj, "args": []}]))
+          and _raises(lambda: _parse([{"op": "Assemble", "id": "a", "parts": [_inj]}]))
+          and _raises(lambda: _parse([{"op": "AddFeature", "func": "print", "args": []}])))
+    _hostile = 'b"); import os; box("b'
+    import ast as _ast
+    check("Op-API: a string VALUE renders escaped — it cannot close the literal and become code",
+          len([n for n in _ast.walk(_ast.parse(
+              _parse([{"op": "AddElement", "kind": "box", "id": _hostile, "args": [1]}]).render()))
+              if isinstance(n, _ast.Call)]) == 1)
+    check("Op-API: ops stay hashable — args carry data, never a nested object",
+          _raises(lambda: _parse([{"op": "AddElement", "kind": "box", "id": "b",
+                                   "args": [{"evil": 1}, 2]}]))
+          and hash(_parse(_json_plan)) is not None)
+    _sp = _parse([{"op": "SetParam", "name": "length", "old": "80", "new": "120"}]).ops[0]
+    check("Op-API: a numeric-string SetParam is coerced, so it applies instead of TypeError-ing",
+          isinstance(_sp.old, float) and 'box("bracket", 120, 40, 6)' in _sp.apply(_expected)[0])
+
+    # Artifact naming: an element id is authored data, and every backend writes `<id>.<fmt>` — it
+    # must never steer the write path out of the caller's out_dir.
+    from backends.base import artifact_stem as _stem
+    check("backends: a hostile element id is sanitised to a filename, never a path",
+          _stem("../../etc/passwd") == "etc_passwd" and _stem("/abs/x") == "abs_x"
+          and _stem("..") == "element" and _stem("bracket_v2.1") == "bracket_v2.1")
+
     # R17 — reviewable edits: each op reads as a one-line summary for `cli --plan` before `--apply`.
     from agent.ops import summarize as _summ
     _ops = _parse(_json_plan).ops

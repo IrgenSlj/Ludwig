@@ -323,7 +323,9 @@ def _assemble(res, out: Path, on_event=None) -> dict:
     # geometry (a WARNING-severity fail is amber/below-spec; an ERROR/CRITICAL fail is red — UX_BRIEF).
     result["critic"] = _critic_json(res.critique)
 
-    recipe = out / f"{el.id}.py"
+    from backends.base import artifact_stem
+    stem = artifact_stem(el.id)          # never the raw id — an authored id must not steer the write path
+    recipe = out / f"{stem}.py"
     recipe.write_text(res.program + "\n")
     result["artifacts"]["recipe"] = recipe.name
     if res.passed:
@@ -338,7 +340,7 @@ def _assemble(res, out: Path, on_event=None) -> dict:
                 result["artifacts"][f"{label}_error"] = f"{type(e).__name__}: {e}"
                 emit(stage="derive", status="failed", backend=label, message=str(e))
         # the shop-drawing backend renders a PNG preview alongside the DXF — surface it if present
-        preview = out / f"{el.id}.png"
+        preview = out / f"{stem}.png"
         if preview.exists():
             result["artifacts"]["drawing_preview"] = preview.name
     return result

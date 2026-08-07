@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backends.base import artifact_stem
+
 name = "drawing"
 fmt = "svg"
 fabrication = False
@@ -34,7 +36,7 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
         raise ValueError(f"element {ir.id!r} has no geometry to draw")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{ir.id}.svg"
+    path = out_dir / f"{artifact_stem(ir.id)}.svg"
     solid = ir.geometry.solid()
     try:
         cq.exporters.export(solid, str(path), exportType="SVG", opt=_SVG_OPTS)

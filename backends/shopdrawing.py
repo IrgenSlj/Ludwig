@@ -24,6 +24,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from backends.base import artifact_stem
+
 name = "shop_drawing"
 fmt = "dxf"
 fabrication = False   # a drawing is a derived view, not a gated fabrication file
@@ -92,7 +94,7 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
         raise ValueError(f"element {ir.id!r} has no geometry to draw")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{ir.id}.dxf"
+    path = out_dir / f"{artifact_stem(ir.id)}.dxf"
 
     doc = _build_sheet(ir)
     doc.saveas(str(path))

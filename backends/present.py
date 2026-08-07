@@ -21,6 +21,8 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
+from backends.base import artifact_stem
+
 name = "present"
 fmt = "html"
 fabrication = False   # a presentation is a derived view, never a gated fabrication file
@@ -43,7 +45,7 @@ def compile(ir, out_dir) -> Path:  # noqa: A001 - matches the Backend protocol
     """Auto-assemble a client-ready one-page presentation sheet (HTML); return its path."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{ir.id}.present.html"
+    path = out_dir / f"{artifact_stem(ir.id)}.present.html"
     path.write_text(_sheet(ir, out_dir), encoding="utf-8")
     return path
 
@@ -91,7 +93,7 @@ def _preview(ir, out_dir: Path):
     """The shop-drawing PNG preview if present, else the SVG elevation. Returned as a relative
     src so the sheet stays portable beside its siblings; None if neither exists."""
     for suffix in (".png", ".svg"):
-        if (out_dir / f"{ir.id}{suffix}").exists():
+        if (out_dir / f"{artifact_stem(ir.id)}{suffix}").exists():
             return f"{ir.id}{suffix}"
     return None
 

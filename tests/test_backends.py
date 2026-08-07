@@ -154,3 +154,19 @@ def test_shop_drawing_blind_anchor_callout(tmp_path):
     notes = " ".join(t.dxf.text for t in doc.modelspace().query("TEXT"))
     assert "CAST-IN ANCHOR" in notes
     assert "2×" in notes and "17.5" in notes      # grouped callout, ⌀ from the feature
+
+
+def test_artifact_stem_keeps_a_hostile_element_id_inside_out_dir(tmp_path):
+    # An element id is authored data (Op-API `AddElement.id`, or a model-written recipe), and every
+    # backend names its file `<id>.<fmt>` — so an id must never be able to steer the write path.
+    from backends.base import artifact_stem
+
+    assert artifact_stem("../../etc/passwd") == "etc_passwd"
+    assert artifact_stem("/abs/path") == "abs_path"
+    assert artifact_stem("..") == "element" and artifact_stem("") == "element"
+    assert artifact_stem("bracket_v2.1") == "bracket_v2.1"        # ordinary ids are untouched
+
+    el = box("../../escaped", 40, 20, 5)
+    written = step.compile(el, tmp_path)
+    assert written.parent == tmp_path                             # stayed put
+    assert not (tmp_path.parent.parent / "escaped.step").exists()

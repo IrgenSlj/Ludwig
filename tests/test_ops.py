@@ -159,3 +159,79 @@ def test_loop_plan_parses_a_mocked_inference_reply(monkeypatch):
     monkeypatch.setattr(inference, "infer", lambda *a, **k: reply)
     plan = loop.plan("an 80x40x6 bracket with two M8 holes 50 apart")
     assert plan.render() == BRACKET
+
+
+# --------------------------------------------------------------------------- #
+# the boundary: an Op is DATA, and must not be able to become CODE
+# --------------------------------------------------------------------------- #
+#
+# `Plan.render()` writes source that `agent.loop.execute` exec's, and `build_from_ops` is the one
+# write path both `/api/build` and the MCP `ludwig_build` tool share. Shape validation alone is not
+# enough: `kind`/`func`/`target`/`parts` render as BARE tokens and string values render as literals,
+# so both need constraining or an attacker-controlled op becomes an attacker-controlled program.
+
+def test_bare_token_fields_reject_anything_but_a_known_name():
+    import pytest
+    from agent.ops import parse_plan
+
+    payload = "__import__('os').system('id') or box"
+    for ops, field in (
+        ([{"op": "AddElement", "kind": payload, "id": "b", "args": [1, 1, 1]}], "kind"),
+        ([{"op": "AddFeature", "func": payload, "args": []}], "func"),
+        ([{"op": "AddFeature", "func": "hole", "target": payload, "args": []}], "target"),
+        ([{"op": "Place", "target": payload, "offset": [0, 0, 0]}], "target"),
+        ([{"op": "Assemble", "id": "a", "parts": [payload]}], "parts"),
+        ([{"op": "Assemble", "id": "a", "parts": ["base"], "kind": payload}], "kind"),
+    ):
+        with pytest.raises(ValueError):
+            parse_plan(ops)
+    # and a *plausible* but unregistered callable is refused too — allowlist, not a syntax filter
+    with pytest.raises(ValueError, match="unknown"):
+        parse_plan([{"op": "AddFeature", "func": "print", "args": []}])
+
+
+def test_string_values_render_escaped_so_they_cannot_close_the_literal():
+    # `id` is a VALUE, so it stays permissive — but it must render as inert data, not break out.
+    hostile = 'b"); import os; box("b'
+    src = AddElement("box", hostile, (1, 2, 3)).to_source()
+    import ast
+    tree = ast.parse(src)
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
+    assert len(calls) == 1                             # no second call was smuggled in
+    ns = {"box": lambda *a: a}
+    exec(compile(src, "<t>", "exec"), ns)              # the payload comes back as one inert string
+    assert ns["element"] == (hostile, 1, 2, 3)
+
+
+def test_ops_stay_hashable_because_args_carry_only_data():
+    import pytest
+    from agent.ops import parse_plan
+    # a nested JSON object would survive shape validation but break the frozen Op's hashability
+    with pytest.raises(ValueError, match="numbers, strings"):
+        parse_plan([{"op": "AddElement", "kind": "box", "id": "b", "args": [{"evil": 1}, 2, 3]}])
+    hash(parse_plan([{"op": "AddElement", "kind": "box", "id": "b", "args": [1, [2, 3]]}]))
+
+
+def test_numeric_string_setparam_is_coerced_not_just_accepted():
+    from agent.ops import parse_plan
+    # parse_plan documents numeric strings as valid; they must therefore also APPLY (they used to
+    # pass validation and then TypeError inside _substitute_all_literals).
+    op = parse_plan([{"op": "SetParam", "name": "length", "old": "80", "new": "120"}]).ops[0]
+    assert isinstance(op.old, float) and isinstance(op.new, float)
+    out, inv = op.apply(BRACKET)
+    assert 'box("bracket", 120, 40, 6)' in out and inv == SetParam("length", 120.0, 80.0)
+
+
+def test_callable_allowlist_matches_the_execute_namespace():
+    # The allowlist duplicates the verb set `agent.loop.execute` injects; if the toolkit grows a verb
+    # and this list doesn't, plans naming it are rejected for no reason. Pin them together.
+    import inspect
+    import re as _re
+    from agent import loop
+    from agent.ops import _CALLABLES
+
+    src = inspect.getsource(loop.execute)
+    body = src[src.index("ns = {"):src.index("}", src.index("ns = {"))]
+    injected = set(_re.findall(r'"(\w+)":', body))
+    non_verbs = {"cq", "cadquery", "standards", "Element"}   # modules/types, not recipe verbs
+    assert _CALLABLES == injected - non_verbs
