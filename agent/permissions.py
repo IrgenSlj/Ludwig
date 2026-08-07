@@ -19,8 +19,13 @@ from __future__ import annotations
 _DEFAULT = {"mode": "auto", "param_edit": "auto", "structural": "confirm", "export": "confirm"}
 _MODES = ("auto", "plan", "locked")
 
-# A live mode override the Studio's mode-dial sets over HTTP (per-daemon; None → use the standards value).
-# It only overrides `mode` (auto/plan/locked); the per-class rules stay policy in standards.yaml.
+# A live mode override the Studio's mode-dial sets over HTTP. **Process-global**, not per-daemon:
+# `webapp.service.build_from_ops` is the one shared write path and it consults `policy()` with no
+# server in hand, so threading a per-server mode through would change the signature the MCP tools use
+# too. That is the right trade for the deployment model — one daemon per process, and the MCP server
+# is a separate process — but it is worth stating rather than implying, because the token beside it
+# IS per-server (webapp/server.py sets it on the instance so two daemons can coexist with distinct
+# tokens). Two daemons in ONE process therefore share a mode dial. `None` → use the standards value.
 _RUNTIME_MODE: str | None = None
 
 

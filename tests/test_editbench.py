@@ -225,3 +225,39 @@ def test_iou_handles_a_multi_solid_compound(geom):
     c = geom.compound([geom.box(10, 10, 10),
                        geom.translate(geom.box(10, 10, 10), (50.0, 0.0, 0.0))])
     assert geom.iou(c, c) == 1.0
+
+
+def test_diff_ratio_is_a_true_median_on_an_even_sample():
+    # `ratios[len//2]` was the upper-middle, which reads HIGH on exactly the even-n samples
+    # --bench-limit produces — and this is the minimal-diff number we publish.
+    from eval.editbench import summarize
+
+    def row(diff, gt):
+        return {"record_id": f"r{diff}", "family": "f", "exec_ok": True, "error": None,
+                "ungradeable": None, "score": 1.0, "diff_lines": diff, "gt_diff_lines": gt}
+
+    s = summarize([row(1, 1), row(1, 1), row(2, 1), row(6, 1)])     # ratios 1,1,2,6
+    assert s["diff_ratio_median"] == 1.5                            # not 2.0
+    assert summarize([row(1, 1), row(1, 1), row(1, 1)])["diff_ratio_median"] == 1.0   # odd unchanged
+    assert summarize([])["diff_ratio_median"] == 0.0                # empty stays defined
+
+
+def test_download_uses_a_timeout_and_leaves_no_partial_file(tmp_path, monkeypatch):
+    # A 114 MB pull with no timeout hangs forever on a half-open socket, indistinguishable from a
+    # slow link; and a failed pull must not leave a .part to confuse the next run.
+    import eval.benchcad as bc
+    monkeypatch.setattr(bc, "_DATA", tmp_path)
+    monkeypatch.setattr(bc, "cache_path", lambda: tmp_path / "benchcad_edit.parquet")
+
+    seen = {}
+
+    def fake_urlopen(url, timeout=None):
+        seen["timeout"] = timeout
+        raise TimeoutError("socket stalled")
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(TimeoutError):
+        bc.ensure(download=True, quiet=True)
+    assert seen["timeout"] and seen["timeout"] > 0                  # a timeout was actually passed
+    assert not list(tmp_path.glob("*.part"))                        # no stub left behind

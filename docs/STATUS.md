@@ -75,7 +75,19 @@ to **"we are the verifier"**. (2) **Our tracked number is measured on a set we w
   wedge, and it makes Ludwig complementary to Fusion MCP / Onshape / Zoo rather than competing with them.
 - **Cleanup** — deleted the inert Blender render backend (`backends/render*`, ~535 lines) and the unwired
   `store/db.py` stub (both recoverable at `mesh-era-m4`); halved MCP export latency (single execute+verify);
-  removed 4 dead `standards.yaml` keys; de-duped the diff/repair-hint helpers. Selftest **96/96**.
+  removed 4 dead `standards.yaml` keys; de-duped the diff/repair-hint helpers.
+- **Hardening pass (2026-08-07)** — a codebase review, landed as six commits. Two were real security
+  holes on the shared write path (`build_from_ops`, behind both `/api/build` and MCP `ludwig_build`):
+  the **Op-API executed model-authored code** (`kind`/`func`/`target`/`parts` rendered as bare source
+  tokens, and `_fmt` quoted strings unescaped) — the module whose docstring promises "Ludwig never
+  runs model-authored code"; and **every backend wrote `<element.id>.<fmt>`** with the raw authored
+  id, so `id="../../x"` put the STEP/IFC/DXF/SVG/STL/recipe outside `out_dir`. Also: the daemon
+  answered **cross-site** browser POSTs (open by default, no `Origin` check, and a `text/plain` POST
+  skips the CORS preflight); `budget.cost_confirm_usd` was **dead config** in front of a B3 run that
+  projects **$17 / 2.5 h** if you forget `--bench-limit`; the WS7 **RunStore had no writer** (`runs/`
+  held only `.gitkeep`); the A5 corpus **read the whole table** to rank retrieval; and deps were
+  declared in three disagreeing places (CI installed a list the project never declared). Gate went
+  **114 → 130** selftest checks and **246 → 289** tests.
 
 ## Remaining plan — prioritized by leverage (one session = one PR; `--selftest` green, token-free)
 *Ordered by value toward the north-star (deploy → distribution → revenue), not strict roadmap sequence.

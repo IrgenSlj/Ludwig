@@ -206,6 +206,8 @@ def summarize(results: list[dict]) -> dict:
     graded rows: the mean is wrecked by the occasional rewrite, and the median is what actually says
     whether edits are typically surgical.
     """
+    import statistics
+
     ungradeable = [r for r in results if r.get("ungradeable")]
     scored = [r for r in results if not r.get("ungradeable")]
     n = len(scored)
@@ -218,7 +220,10 @@ def summarize(results: list[dict]) -> dict:
         "exec_rate": (sum(1 for r in scored if r["exec_ok"]) / n) if n else 0.0,
         "normalized_accuracy": (sum(r["score"] for r in scored) / n) if n else 0.0,
         "exact_rate": (exact / n) if n else 0.0,
-        "diff_ratio_median": (ratios[len(ratios) // 2] if ratios else 0.0),
+        # A true median (mean of the two middle values on an even count) — `ratios[len//2]` was the
+        # upper-middle, which reads high on exactly the even-n samples --bench-limit produces, and
+        # this is the minimal-diff number we publish.
+        "diff_ratio_median": (statistics.median(ratios) if ratios else 0.0),
         "families": len({r["family"] for r in scored}),
     }
 

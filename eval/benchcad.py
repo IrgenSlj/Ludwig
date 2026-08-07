@@ -57,17 +57,28 @@ def ensure(*, download: bool = True, quiet: bool = False) -> Path:
     tmp = path.with_suffix(".part")
     if not quiet:
         print(f"› fetching BenchCAD edit-bench (~114 MB, once) → {path}")
-    with urllib.request.urlopen(_EDIT_URL) as resp, open(tmp, "wb") as fh:  # noqa: S310 (fixed https URL)
-        total = int(resp.headers.get("Content-Length") or 0)
-        done = 0
-        while chunk := resp.read(1 << 20):
-            fh.write(chunk)
-            done += len(chunk)
-            if not quiet and total:
-                print(f"\r  {done / 1e6:6.1f} / {total / 1e6:.1f} MB", end="", flush=True)
-    if not quiet:
-        print()
-    os.replace(tmp, path)
+    # A timeout is load-bearing on a 114 MB pull: without one, a stalled connection (a captive
+    # portal, a half-open socket) hangs the command forever with no output and no way to tell it
+    # from a slow link. urlopen's timeout applies per socket operation, so a slow-but-alive
+    # download is unaffected — only a genuinely dead one trips it.
+    timeout = float(os.environ.get("LUDWIG_FETCH_TIMEOUT_S", "60"))
+    try:
+        with urllib.request.urlopen(_EDIT_URL, timeout=timeout) as resp, open(tmp, "wb") as fh:  # noqa: S310
+            total = int(resp.headers.get("Content-Length") or 0)
+            done = 0
+            while chunk := resp.read(1 << 20):
+                fh.write(chunk)
+                done += len(chunk)
+                if not quiet and total:
+                    print(f"\r  {done / 1e6:6.1f} / {total / 1e6:.1f} MB", end="", flush=True)
+        if not quiet:
+            print()
+        if total and done < total:      # truncated mid-stream: better to fail than to cache a stub
+            raise RuntimeError(f"download truncated at {done / 1e6:.1f} of {total / 1e6:.1f} MB")
+    except Exception:
+        tmp.unlink(missing_ok=True)     # never leave a .part behind to confuse the next run
+        raise
+    os.replace(tmp, path)               # atomic: an interrupted pull never becomes a corrupt dataset
     return path
 
 
