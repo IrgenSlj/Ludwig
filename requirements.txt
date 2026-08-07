@@ -1,20 +1,26 @@
-# Ludwig core stays dependency-light. Heavy kernels are installed PER PHASE and imported
-# LAZILY (never at package import) so `cli.py --selftest` and CI stay green before they land.
+# Dependencies are declared in pyproject.toml — that is the single source of truth, and it is what
+# CI installs. This file stays as the plain-pip path (and for the Dockerfile's layer cache); it must
+# mirror pyproject's [project] dependencies.
+#
+#   pip install -e .                        # core: the spine + the OCCT kernel + IFC
+#   pip install -e ".[backends]"            # + DXF/SVG drawings and PNG previews
+#   pip install -e ".[mcp]"                 # + the MCP server (`cli.py mcp`)
+#   pip install -e ".[bench]"               # + the BenchCAD parquet reader (dev-only path)
+#   pip install -e ".[backends,bench,dev]"  # what CI installs
+#
+# Posture (BRIEF §4 / CLAUDE.md): the core stays dependency-light and heavy kernels are imported
+# LAZILY inside the modules that need them, never at package import — so `cli.py --selftest` and the
+# unit suite stay green before the optional extras land.
 
 PyYAML>=6.0          # standards.yaml loader (P0)
 cadquery>=2.8        # P0/S2 — OCCT exact B-rep geometry service (the locked kernel; imported lazily)
 ifcopenshell>=0.8    # P1/S9 — IFC (BIM) authoring (imported lazily)
 
-# --- installed per phase, imported lazily inside the modules that use them ---
-# ezdxf>=1.1         # P0.5/S7 — DXF drawing writer (HLR → DXF/SVG)
-# ifcopenshell       # P1     — IFC backend (IfcOpenShell authoring)
-# mcp>=1.2           # A2 — the MCP SDK for `cli.py mcp` (S-MCP). Imported lazily inside agent/mcp.py
-#                    #      only, so the spine + --selftest stay green without it. Install to serve MCP.
-# pyarrow>=15        # B1 — reads the BenchCAD parquet for `--eval --bench edit`. Imported lazily
-#                    #      inside eval/benchcad.py only; the dataset itself is pulled on demand
-#                    #      over stdlib urllib into the gitignored data/. Dev-only path.
+# Optional extras — see pyproject.toml [project.optional-dependencies]:
+#   ezdxf>=1.1       backends — DXF drawing writer (HLR → DXF/SVG)
+#   matplotlib>=3.7  backends — shop-drawing + section PNG previews (best-effort)
+#   mcp>=1.2         mcp      — the MCP SDK for `cli.py mcp` (S-MCP), imported lazily in agent/mcp.py
+#   pyarrow>=15      bench    — reads the BenchCAD parquet, imported lazily in eval/benchcad.py
+#   pytest, ruff     dev      — the test runner and the dead-code lint gate
+#
 # (Blender / bpy is BYO, headless, out-of-process — NOT a pip dependency)
-
-# --- dev/test (CI installs these) ---
-# pytest>=8.0        # test runner
-# ruff               # dead-code lint gate (`ruff check`; config in ruff.toml)

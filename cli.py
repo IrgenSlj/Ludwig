@@ -1644,5 +1644,11 @@ def main(argv: list[str]) -> int:
     )
 
 
+def main_entry() -> int:
+    """Console-script entry (`ludwig …`, declared in pyproject). `main()` keeps taking an explicit
+    argv so tests and the selftest can drive it without touching sys.argv."""
+    return main(sys.argv[1:])
+
+
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

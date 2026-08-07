@@ -1,6 +1,8 @@
 # Ludwig public demo image — the secure, $0-inference direct-manipulation demo (LUDWIG_DEMO=1).
 # pip-on-slim is smaller + simpler than conda for getting cadquery/OCP importable (~1.4 GB image).
-# OCP/vtk wheels pin CPython <=3.12, so we pin 3.12 here (the dev box runs 3.14 via .venv).
+# Pinned to 3.12 for a reproducible demo image, NOT because of a wheel ceiling: OCP now publishes
+# wheels well past 3.12 (the dev box runs cadquery 2.8 on 3.14, and CI gates 3.11 + 3.14). Bump this
+# deliberately, not incidentally — the public demo is the one build we don't want surprised.
 FROM python:3.12-slim-bookworm
 
 # OCP + vtk dlopen GL/X11 libs even headless; missing them = "libGL.so.1: cannot open shared object".
