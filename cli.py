@@ -890,6 +890,39 @@ def selftest() -> int:
     except _eb.ScreenError as _e:
         check("B1 bench: a clean CadQuery program passes the tripwire", False, str(_e))
 
+    # The spend gate (budget.cost_confirm_usd). `--eval --bench edit --live` defaults to the FULL
+    # 748-row set at the best tier — forgetting --bench-limit used to be an unbounded purchase.
+    import io as _io
+    from agent import budget as _budget
+    _bench_rows = [{"record_id": f"r{i}", "orig_code": "x" * 900, "instruction": "y" * 60}
+                   for i in range(748)]
+    _proj = _budget.project_edit_bench(_bench_rows, rounds=1, tier="best")
+    check("budget: the call ceiling is exact arithmetic (rows x (1 + rounds)), not an estimate",
+          _proj["calls"] == 1496 and _budget.project_edit_bench(_bench_rows, rounds=2)["calls"] == 2244)
+    check("budget: a full-set live bench run projects well over the confirmation threshold",
+          _proj["usd"] > _budget.threshold_from_config() > 0, f"est ${_proj['usd']:.2f}")
+    check("budget: the projection says ESTIMATE out loud (we show it before someone spends)",
+          "ESTIMATE" in _budget.format_projection(_proj) and
+          "cannot be exact" in _budget.format_projection(_proj))
+    _tty = sys.stdin.isatty
+    try:                                    # an unattended over-threshold run REFUSES, never proceeds
+        sys.stdin.isatty = lambda: False
+        _spent = os.environ.pop("LUDWIG_ASSUME_YES", None)
+        try:
+            _budget.confirm_spend(_proj, threshold=5.0, stream=_io.StringIO())
+            check("budget: an unattended over-threshold run is refused, not silently spent", False,
+                  "it proceeded")
+        except _budget.SpendRefused:
+            check("budget: an unattended over-threshold run is refused, not silently spent", True)
+        _budget.confirm_spend(_proj, threshold=5.0, assume_yes=True, stream=_io.StringIO())
+        _budget.confirm_spend(_budget.project_edit_bench(_bench_rows[:5], rounds=1),
+                              threshold=5.0, stream=_io.StringIO())
+        check("budget: --yes authorises up front, and an under-threshold run never asks", True)
+    finally:
+        sys.stdin.isatty = _tty
+        if _spent is not None:
+            os.environ["LUDWIG_ASSUME_YES"] = _spent
+
     ok = all(passed for _, passed, _ in checks)
     for label, passed, detail in checks:
         mark = "ok  " if passed else "FAIL"
@@ -1057,13 +1090,20 @@ def run_eval(*, live: bool = False, repair: bool = False, via_mcp: bool = False)
 
 
 def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
-                   download=True, report=None) -> int:
+                   download=True, report=None, assume_yes=False) -> int:
     """BenchCAD edit-bench — the third-party number (B1, docs/BENCH_PLAN.md).
 
     Default is ORACLE mode and costs zero tokens: it grades the ground truth (must score 1.0) and
     the unedited program (must score 0.0). That validates the grader BEFORE any model call — a
     grader that can't pass its own oracle can't be trusted to grade a model. `--live` then runs
     Ludwig's edit path (`--rounds N` for deterministic repair).
+
+    `--live` passes through two gates first, because it is the one command here that spends money and
+    it defaults to the FULL 748-row set at the best tier:
+      1. **Spend** — project the cost and require confirmation above `budget.cost_confirm_usd`
+         (`--yes` authorises up front for an unattended run).
+      2. **Oracle** — validate the grader against its own ground truth on THESE rows. The docstring
+         above has always claimed this happens before any token is spent; now it does.
     """
     try:
         import cadquery  # noqa: F401
@@ -1102,7 +1142,29 @@ def run_bench_edit(*, limit=None, family=None, seed=0, live=False, rounds=1,
         # compiles burst the inference CLI's session limit and every late failure came back empty,
         # which reads as a capability miss it isn't). Tune with LUDWIG_EVAL_PACE_S.
         import time
+        from agent import budget as _budget
         pace = float(os.environ.get("LUDWIG_EVAL_PACE_S", "6"))
+
+        # GATE 1 — spend. Nothing has been sent to a model yet; this is the last point at which the
+        # run is free to abandon.
+        proj = _budget.project_edit_bench(rows, rounds=rounds, tier="best")
+        try:
+            _budget.confirm_spend(proj, threshold=_budget.threshold_from_config(),
+                                  label=f"--eval --bench edit --live (rounds={rounds})",
+                                  pace_s=pace, assume_yes=assume_yes)
+        except _budget.SpendRefused as e:
+            print(f"{e}")
+            return 1
+
+        # GATE 2 — the grader must pass its own oracle on the rows it is about to grade. Token-free.
+        print(f"validating the grader on these {len(rows)} rows (token-free) …")
+        why = _budget.oracle_gate(rows)
+        if why is not None:
+            print(f"  REFUSED: {why}")
+            print("  fix the grader (or drop the offending rows) before spending tokens.")
+            return 1
+        print("  grader passes its own oracle — proceeding to spend.\n")
+
         print(f"mode: LIVE (Ludwig edit + {rounds} deterministic repair round(s), "
               f"pacing {pace:g}s)\n")
         first = [True]
@@ -1379,7 +1441,8 @@ def main(argv: list[str]) -> int:
             return run_bench_edit(limit=_val("--bench-limit", int), family=_val("--bench-family"),
                                   seed=_val("--seed", int, 0) or 0, live="--live" in argv,
                                   rounds=_val("--rounds", int, 1), download="--no-download" not in argv,
-                                  report=_val("--bench-report"))
+                                  report=_val("--bench-report"),
+                                  assume_yes="--yes" in argv)
         if "--repair" in argv and "--live" not in argv:
             print("note: --repair applies only to --live codegen; the reference-oracle eval ignores it.")
         return run_eval(live="--live" in argv, repair="--repair" in argv, via_mcp="--mcp" in argv)

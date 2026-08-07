@@ -109,8 +109,22 @@ no number. Nothing about the harness is blocked — this is a clean "run it" tas
     --no-download --bench-report runs/benchcad_live_40.json
 ```
 
-Budget ~25 min and ~40 best-tier calls for n=40 (pacing defaults to 6 s; `LUDWIG_EVAL_PACE_S` tunes it).
-Smoke-tested green at n=3: **3/3 exact, exec 100%**. Then:
+Budget ~25 min for n=40, and **up to 80 best-tier calls** — 40 edits plus one repair round each
+(`rows x (1 + --rounds)` is the ceiling; a row that verifies first time costs one call). Pacing
+defaults to 6 s; `LUDWIG_EVAL_PACE_S` tunes it. Smoke-tested green at n=3: **3/3 exact, exec 100%**.
+
+**`--live` passes two gates before it spends anything** (`agent/budget.py`):
+1. **Spend** — prints a projection (exact call ceiling, estimated USD from the prompts it is about to
+   send, wall time) and requires confirmation above `budget.cost_confirm_usd` in `ludwig.toml` ($5).
+   An unattended run over the threshold **refuses** rather than proceeding; `--yes` (or
+   `LUDWIG_ASSUME_YES=1`) authorises up front. n=40 projects **~$0.90**, so it runs without asking.
+   **Omitting `--bench-limit` is the case this exists for**: the full 748-row set projects **~$17 and
+   ~2.5 h**, and now stops to ask.
+2. **Oracle** — validates the grader against its own ground truth *on the rows it is about to grade*.
+   This was previously only a convention (`--live` skipped oracle mode and trusted you to have run it
+   earlier, on a different sample); it is now enforced, and it is token-free.
+
+Then:
 - Record **normalized accuracy** (the headline, comparable to GPT-5.3-thinking's published 0.865),
   **exec rate**, and the **code-only diff ratio** in FINDINGS. State the exact-vs-voxel IoU caveat.
 - **Check the sample's category mix before calling the number representative** — sampling is stratified

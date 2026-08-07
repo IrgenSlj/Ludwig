@@ -153,6 +153,18 @@ inference:
     cheap: haiku
     best: opus
 
+# Published list prices per MILLION tokens, keyed by the tier label above — read by `agent/budget.py`
+# to project what a token-spending run will cost BEFORE it runs (budget.cost_confirm_usd in
+# ludwig.toml gates it). Here rather than in code so a price change is a config edit, and so the
+# projection is never a magic number buried in a function. Update when the provider's rates move.
+pricing:
+  best:
+    input: 5.0            # opus-class
+    output: 25.0
+  cheap:
+    input: 1.0            # haiku-class
+    output: 5.0
+
 # Memory stores (S-MEM). Each is MEASURED before it ships default-on (HARNESS_BRIEF §12): a store
 # exists on-by-default only if a frozen-set eval shows it moves pass-rate, repair rounds, or tokens.
 memory:
