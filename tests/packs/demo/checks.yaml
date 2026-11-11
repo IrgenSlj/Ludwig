@@ -1,0 +1,14 @@
+- id: sash-width-max
+  kind: require
+  applies_to: {side: erp, type: window_sash}
+  require: width_mm <= limits.sash.max_width_mm
+  severity: blocker
+  message: "Sash {mark}: width {width_mm} mm exceeds machine limit {limits.sash.max_width_mm} mm"
+
+- id: fire-door-sound
+  kind: require
+  applies_to: {type: door_leaf}
+  when: props.fire_rating_min >= 30
+  require: props.sound_reduction_db >= limits.door.min_sound_db_when_fire_rated
+  severity: warning
+  message: "Door {mark}: {props.sound_reduction_db} dB, fire-rated doors need {limits.door.min_sound_db_when_fire_rated} dB"

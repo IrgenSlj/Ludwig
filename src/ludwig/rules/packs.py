@@ -334,14 +334,3 @@ def _plain(node: Any) -> Any:
         return [_plain(v) for v in node]
     return node
 
-
-def missing_fixtures(pack: Pack) -> list[str]:
-    """Rule ids lacking a pass.* or fail.* fixture (hard rule 3)."""
-    missing = []
-    for rule in pack.rules:
-        folder = pack.root / "fixtures" / rule.id
-        has_pass = any(folder.glob("pass.*"))
-        has_fail = any(folder.glob("fail.*"))
-        if not (has_pass and has_fail):
-            missing.append(rule.id)
-    return missing

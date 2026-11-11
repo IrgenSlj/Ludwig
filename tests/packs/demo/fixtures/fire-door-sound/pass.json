@@ -1,0 +1,4 @@
+{"elements": [
+  {"side": "architect", "type": "door_leaf", "mark": "D1", "props": {"fire_rating_min": 30, "sound_reduction_db": 32}},
+  {"side": "architect", "type": "door_leaf", "mark": "D2", "props": {"fire_rating_min": 0}}
+]}

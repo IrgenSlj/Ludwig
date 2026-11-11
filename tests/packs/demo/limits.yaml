@@ -1,0 +1,4 @@
+sash:
+  max_width_mm: 1500
+door:
+  min_sound_db_when_fire_rated: 30

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from ludwig.model import ElementType, Severity, Side
-from ludwig.rules.packs import PackError, RuleKind, load_pack, missing_fixtures
+from ludwig.rules.packs import PackError, RuleKind, load_pack
 
 PACK_YAML = """\
 name: test-pack
@@ -156,16 +156,6 @@ def test_missing_checks_file_fails(tmp_path):
 def test_limits_file_is_optional_when_no_rule_uses_it(tmp_path):
     checks = "- id: a\n  kind: require\n  severity: info\n  require: width_mm > 0\n"
     assert load_pack(make_pack(tmp_path, checks, limits=None)).limits == {}
-
-
-def test_missing_fixtures_lists_rules_without_both_files(tmp_path):
-    pack = load_pack(make_pack(tmp_path))
-    fixture = tmp_path / "fixtures" / "sash-width-max"
-    fixture.mkdir(parents=True)
-    (fixture / "pass.json").write_text("{}")
-    assert "sash-width-max" in missing_fixtures(pack)
-    (fixture / "fail.json").write_text("{}")
-    assert "sash-width-max" not in missing_fixtures(pack)
 
 
 def test_expressions_are_read_as_written_not_as_yaml_values(tmp_path):

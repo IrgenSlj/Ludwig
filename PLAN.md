@@ -46,7 +46,7 @@ Goal: `ludwig check` runs on an IFC model and an Excel schedule and produces a r
       values, and rejection of anything outside the grammar.
 - [x] 1.5 `rules/packs.py`: load and validate `pack.yaml`, `checks.yaml`, `limits.yaml`.
       Acceptance: an unknown key or a bad expression fails at load time with file and line.
-- [ ] 1.6 `rules/engine.py`: run checks over the element table and return findings,
+- [x] 1.6 `rules/engine.py`: run checks over the element table and return findings,
       including `not_checked`. Acceptance: fixture tests per rule.
 - [ ] 1.7 First ten rules in `packs/joinery-nl/checks.yaml`, chosen from the error
       catalogue, each with a passing and a failing fixture.
