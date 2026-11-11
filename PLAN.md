@@ -50,7 +50,7 @@ Goal: `ludwig check` runs on an IFC model and an Excel schedule and produces a r
       including `not_checked`. Acceptance: fixture tests per rule.
 - [ ] 1.7 First ten rules in `packs/joinery-nl/checks.yaml`, chosen from the error
       catalogue, each with a passing and a failing fixture.
-- [ ] 1.8 `report/json.py` and `report/excel.py`. Acceptance: Excel has one row per
+- [x] 1.8 `report/json.py` and `report/excel.py`. Acceptance: Excel has one row per
       finding, sorted by severity, with mark, measured, expected and source.
 - [ ] 1.9 `cli.py`: `ludwig check` as in `CLAUDE.md`. Exit code 0 with no blockers,
       1 with blockers, 2 on usage error.
