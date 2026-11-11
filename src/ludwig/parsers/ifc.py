@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from importlib import resources
@@ -12,10 +11,10 @@ from typing import Any
 import yaml
 
 from ludwig.model import Element, ElementType, ParseWarning, Side, SourceKind, SourceRef
+from ludwig.parsers.values import as_number
 
 _MAPPING_KEYS = {"classes", "mark", "width", "height", "props", "name_as_value_is_empty"}
 _PROP_KEYS = {"paths", "as", "ignore"}
-_NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?")
 
 
 def load_mapping(path: str | Path | None = None) -> dict[str, Any]:
@@ -79,15 +78,6 @@ def _prop_name(path: str) -> str:
     return path.partition(":")[2].partition(".")[2] or path.partition(":")[2]
 
 
-def _as_number(raw: Any) -> float | None:
-    if isinstance(raw, bool):
-        return None
-    if isinstance(raw, int | float):
-        return float(raw)
-    match = _NUMBER.search(str(raw))
-    return float(match.group().replace(",", ".")) if match else None
-
-
 def parse(
     path: str | Path, mapping: dict[str, Any] | None = None
 ) -> tuple[list[Element], list[ParseWarning]]:
@@ -122,7 +112,7 @@ def parse(
                 dims = []
                 for key in ("width", "height"):
                     raw, used = reader.value(occ, psets, mapping.get(key, []))
-                    number = _as_number(raw) if raw is not None else None
+                    number = as_number(raw) if raw is not None else None
                     if raw is not None and number is None:
                         warnings.append(ParseWarning(file, f"{used}: not a length: {raw!r}", src))
                     dims.append(round(number * to_mm, 1) if number is not None else None)
@@ -132,7 +122,7 @@ def parse(
                     if raw is None or str(raw) in spec.get("ignore", []):
                         continue
                     if spec["as"] == "number":
-                        number = _as_number(raw)
+                        number = as_number(raw)
                         if number is None:
                             warnings.append(
                                 ParseWarning(file, f"{used}: not a number: {raw!r}", src)

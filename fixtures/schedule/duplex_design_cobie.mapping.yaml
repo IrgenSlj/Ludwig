@@ -1,0 +1,14 @@
+# COBie Type sheet: one row per door or window type. COBie writes 0 for an unknown
+# nominal size, so 0 is read as not set here.
+sheet: Type
+header_row: 1
+type:
+  column: ExtObject
+  values: {IfcDoorStyle: frame, IfcWindowStyle: frame}
+  other: skip
+units: mm
+columns:
+  mark: Name
+  width_mm: NominalWidth
+  height_mm: NominalHeight
+empty_values: ["", "-", "0", "n/a"]

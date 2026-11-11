@@ -1,0 +1,13 @@
+Merk;Omschrijving;Aantal;Breedte;Hoogte;Verdieping;Draairichting;Brandwerendheid;Glas
+01;Vast raam 2800x2410;4;2800;2410;Level 2;;;HR++
+02;Vast raam 819x759;8;819;759;Level 2;;;HR++
+03;Vast raam 819x759;4;819;759;Level 2;;;HR++
+04;Vast raam 750x2200;4;750;2200;;;;HR++
+05;Vast raam 4835x2420;2;4835;2420;Level 1;;;HR++
+28;Binnendeur 762;2;762;2032;Level 1;links;;-
+28;Binnendeur 762;2;762;2032;Level 2;rechts;;-
+32;Binnendeur 864;2;864;2032;Level 2;links;;-
+32;Binnendeur 864;4;864;2032;Level 2;rechts;;-
+33;Buitendeur 1250;2;1250;2010;Level 1;rechts;30;-
+36;Dakraam;2;1172,5;634,8;Roof;;;HR++
+56;Buitendeur 813 glas;2;813;2420;Level 1;links;;HR++

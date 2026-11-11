@@ -101,7 +101,7 @@ class Element:
     type: ElementType
     sources: list[SourceRef]
     mark: str | None = None
-    quantity: int = 1
+    quantity: int | None = 1
     width_mm: float | None = None
     height_mm: float | None = None
     depth_mm: float | None = None

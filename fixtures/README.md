@@ -4,6 +4,13 @@ Public sample inputs shared by tests. Every file is unmodified from its source; 
 file name was changed. Invented fixtures (seeded errors, per-rule pass/fail files) live
 next to the rule that uses them under `packs/<name>/fixtures/`.
 
+Invented fixtures in this folder (no source, licence: same as the repository):
+
+| File | Contents |
+|---|---|
+| `schedule/duplex_joinery_schedule.csv` | Dutch-style joinery schedule (kozijnstaat) agreeing with the Duplex model: 12 rows, 38 units, `;` separated, decimal comma |
+| `schedule/*.mapping.yaml` | Column mappings for the invented schedule and for the COBie `Type` sheet |
+
 Counts below are raw entity counts from the file text, not hand counts of physical
 elements. PLAN 1.2 adds the hand count.
 
@@ -28,8 +35,9 @@ https://github.com/buildingsmart-community/Sample-Test-Files.
   comes from an invented model in phase 1.
 - The DXF block has no attributes. Attribute-bearing door and window blocks (PLAN 3.1)
   need an invented fixture.
-- The schedule is a COBie export, not a joinery schedule as an architect draws it up.
-  An invented joinery schedule is needed for PLAN 1.3.
+- The public schedule is a COBie export, not a joinery schedule as an architect draws it
+  up; the invented `duplex_joinery_schedule.csv` covers that. COBie writes 0 for unknown
+  nominal sizes, which its mapping reads as not set.
 - Rejected: the Schependomlaan dataset (Dutch, has windows and doors) is licensed for
   scientific and academic use only.
 
