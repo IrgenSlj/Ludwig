@@ -52,7 +52,7 @@ class _Reader:
                 raw = raw.strip()
                 if not raw:
                     continue
-                if self.mapping.get("name_as_value_is_empty") and raw == _prop_name(path):
+                if self.mapping.get("name_as_value_is_empty") and _same_name(raw, path):
                     self.placeholders[path] += 1
                     continue
             return raw, path
@@ -74,8 +74,14 @@ class _Reader:
         raise ValueError(f"IFC mapping: bad value path {path!r}")
 
 
-def _prop_name(path: str) -> str:
-    return path.partition(":")[2].partition(".")[2] or path.partition(":")[2]
+def _same_name(value: str, path: str) -> bool:
+    """Revit writes an empty parameter as its name, sometimes spaced ('Fire Rating')."""
+    name = path.partition(":")[2].partition(".")[2] or path.partition(":")[2]
+    return _squash(value) == _squash(name)
+
+
+def _squash(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
 
 
 def parse(

@@ -104,3 +104,10 @@ def test_mapping_rejects_unknown_keys(tmp_path):
 def test_parse_is_deterministic(duplex):
     again, _ = ifc.parse(DUPLEX)
     assert [e.to_dict() for e in again] == [e.to_dict() for e in duplex[0]]
+
+
+def test_spaced_revit_placeholder_is_not_set_either(clinic):
+    elements, warnings = clinic
+    assert not any("not a number" in w.message for w in warnings)
+    assert any("Pset_DoorCommon.FireRating" in w.message and "read as not set" in w.message
+               for w in warnings)  # fmt: skip
