@@ -52,7 +52,7 @@ Goal: `ludwig check` runs on an IFC model and an Excel schedule and produces a r
       catalogue, each with a passing and a failing fixture.
 - [x] 1.8 `report/json.py` and `report/excel.py`. Acceptance: Excel has one row per
       finding, sorted by severity, with mark, measured, expected and source.
-- [ ] 1.9 `cli.py`: `ludwig check` as in `CLAUDE.md`. Exit code 0 with no blockers,
+- [x] 1.9 `cli.py`: `ludwig check` as in `CLAUDE.md`. Exit code 0 with no blockers,
       1 with blockers, 2 on usage error.
 - [ ] 1.10 Internal consistency rule type: compare the IFC model with the schedule
       (count and dimensions per mark). Acceptance: fixture where the two disagree.
