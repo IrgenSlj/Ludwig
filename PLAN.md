@@ -1,6 +1,6 @@
 # Ludwig — development plan
 
-Status: phase 0 in progress. Update this line when a phase gate is passed.
+Status: phase 0 done except 0.5–0.6 (Irgen); phase 1 in progress, 1.7 waits for the catalogue.
 
 Each phase ends in a gate. A phase is finished only when its gate is met. Tasks marked
 **(Irgen)** need a person and cannot be done by Claude Code.

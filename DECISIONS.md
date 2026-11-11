@@ -16,3 +16,4 @@ decision is a new line, not an edit.
 - 2026-11-11 — CadQuery/OCCT geometry is not a dependency. Reason: first-trade checks are about attributes and dimensions, not solids. Revisit only if a rule needs it.
 - 2026-11-11 — The files ARCHITECTURE section 6 keeps live in `reference/`, outside any package and excluded from lint, and each is deleted when the task that uses it lands. Reason: keeping them at their old paths would leave the old top-level packages (`agent`, `critic`, `toolkit`, `webapp`) in place.
 - 2026-11-11 — Dev dependencies: pytest (MIT) and ruff (MIT). Reason: CI gate. Neither ships with the product.
+- 2026-11-11 — Phase 1 starts before the phase 0 gate (error catalogue, 0.5/0.6) is met, on Irgen's instruction. Task 1.7 (first ten rules, chosen from the catalogue) waits for the catalogue; the engine tasks do not depend on it.
