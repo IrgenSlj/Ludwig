@@ -41,7 +41,7 @@ Goal: `ludwig check` runs on an IFC model and an Excel schedule and produces a r
       Acceptance: both sample models parse; counts match a hand count noted in the test.
 - [x] 1.3 `parsers/schedule.py`: read an Excel or CSV schedule using a column mapping
       file. Acceptance: sample schedule parses; a missing column gives a parse warning.
-- [ ] 1.4 `rules/expr.py`: tokenizer, parser and evaluator for the expression language
+- [x] 1.4 `rules/expr.py`: tokenizer, parser and evaluator for the expression language
       in SPEC section 6. Acceptance: table-driven tests for every operator, missing
       values, and rejection of anything outside the grammar.
 - [ ] 1.5 `rules/packs.py`: load and validate `pack.yaml`, `checks.yaml`, `limits.yaml`.
