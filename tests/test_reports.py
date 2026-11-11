@@ -47,7 +47,7 @@ def test_json_report_orders_fail_then_not_checked_and_counts(run, tmp_path):
         ("not_applicable", "warning", "D2"),
     ]
     assert data["summary"] == {
-        "rules_run": 2, "elements_total": 5, "elements_covered": 4, "not_checked": 1,
+        "rules_run": 3, "elements_total": 5, "elements_covered": 4, "not_checked": 1,
         "by_status": {"fail": 2, "not_applicable": 1, "not_checked": 1, "pass": 1},
         "fails_by_severity": {"blocker": 1, "warning": 1}, "parse_warnings": 1,
     }  # fmt: skip
@@ -100,4 +100,4 @@ def test_excel_never_writes_customer_text_as_a_formula(run, tmp_path):
 def test_empty_run_still_reports_coverage(tmp_path):
     result = engine.run([], load_pack(DEMO))
     data = json_report.to_dict(result, "demo", "0.0.1", [])
-    assert data["findings"] == [] and data["summary"]["rules_run"] == 2
+    assert data["findings"] == [] and data["summary"]["rules_run"] == 3

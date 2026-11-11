@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from ludwig.model import Element, Finding, SourceRef, Status
@@ -153,6 +154,116 @@ def _run_require(rule: Rule, pack: Pack, elements: list[Element], by_id: dict) -
     return findings
 
 
+def _values_agree(values: list[Any], tolerance: float) -> bool:
+    numbers = [v for v in values if isinstance(v, int | float) and not isinstance(v, bool)]
+    if len(numbers) == len(values):
+        return max(numbers) - min(numbers) <= tolerance
+    return len({format_value(v) for v in values}) == 1
+
+
+def _run_consistent(rule: Rule, pack: Pack, elements: list[Element], by_id: dict) -> list:
+    """One finding per group: the field must agree across the architect's documents.
+
+    `quantity` is compared as a total per document; a document that has elements in this
+    rule's scope but none in the group counts 0. Other fields must take one value per group.
+    """
+    base = dict(rule_id=rule.id, pack=pack.name, pack_version=pack.version, severity=rule.severity)
+    findings: list[Finding] = []
+    groups: dict[str, list[Element]] = {}
+    documents: list[str] = []
+    for el in elements:
+        if not rule.applies_to(el.side, el.type):
+            continue
+        scope = _Scope(el, pack, by_id)
+        if rule.when is not None:
+            gate = rule.when.evaluate(scope)
+            if isinstance(gate.value, NotChecked):
+                reason = f"when: {gate.value.reason}"
+                findings.append(Finding(**base, status=Status.NOT_CHECKED, element_ids=[el.id],
+                                        mark=el.mark, reason=reason,
+                                        message=f"{rule.id}: not checked, {reason}"))  # fmt: skip
+                continue
+            if gate.value is not True:
+                continue
+        doc = el.sources[0].file
+        if doc not in documents:
+            documents.append(doc)
+        key = scope(rule.group_by)
+        if key is None:
+            reason = f"{rule.group_by} is not set"
+            findings.append(Finding(**base, status=Status.NOT_CHECKED, element_ids=[el.id],
+                                    reason=reason, evidence=list(el.sources[:1]),
+                                    message=f"{rule.id}: not checked, {reason}"))  # fmt: skip
+            continue
+        groups.setdefault(format_value(key), []).append(el)
+
+    expected = (
+        "same total in every document"
+        if rule.field == "quantity"
+        else "one value" + (f" (within {format_value(rule.tolerance)})" if rule.tolerance else "")
+    )
+    for key, members in groups.items():
+        scope = _Scope(members[0], pack, by_id)
+        evidence: list[SourceRef] = []
+        for el in members:
+            for src in el.sources if rule.field == "quantity" else [el.source_of(rule.field)]:
+                if src not in evidence:
+                    evidence.append(src)
+        group = dict(
+            **base,
+            element_ids=[el.id for el in members],
+            mark=key if rule.group_by == "mark" else members[0].mark,
+            expected=expected,
+            evidence=evidence,
+        )
+        missing = [el for el in members if _Scope(el, pack, by_id)(rule.field) is None]
+        if missing:
+            files = ", ".join(sorted({el.sources[0].file for el in missing}))
+            reason = f"{rule.field} is not set in {files}"
+            findings.append(Finding(**group, status=Status.NOT_CHECKED, reason=reason,
+                                    message=f"{rule.id} {key}: not checked, {reason}"))  # fmt: skip
+            continue
+
+        per_doc: dict[str, Any] = {}
+        if rule.field == "quantity":
+            for doc in documents:
+                per_doc[doc] = sum(el.quantity for el in members if el.sources[0].file == doc)
+            compared = list(per_doc.values())
+            if len(documents) < 2:
+                findings.append(Finding(**group, status=Status.NOT_APPLICABLE, measured=per_doc))
+                continue
+        else:
+            compared = []
+            raw_per_doc: dict[str, list[Any]] = {}
+            for el in members:
+                value = _Scope(el, pack, by_id)(rule.field)
+                compared.append(value)
+                raw_per_doc.setdefault(el.sources[0].file, []).append(value)
+            for doc, values in raw_per_doc.items():
+                distinct = sorted(set(values), key=format_value)
+                per_doc[doc] = distinct if len(distinct) > 1 else distinct[0]
+        ok = _values_agree(compared, rule.tolerance)
+        if ok:
+            message = ""
+        else:
+            shown = ", ".join(f"{Path(d).name} {_show(v)}" for d, v in per_doc.items())
+            default = f"{rule.group_by} {key}: {rule.field} differs: {shown}"
+            message = (
+                _render(rule.message, scope, {"measured": shown, "expected": expected})
+                if rule.message
+                else default
+            )
+        findings.append(Finding(**group, status=Status.PASS if ok else Status.FAIL,
+                                measured=per_doc, message=message))  # fmt: skip
+    return findings
+
+
+def _show(value: Any) -> str:
+    if isinstance(value, list):
+        return " / ".join(format_value(v) for v in value)
+    return format_value(value)
+
+
 def _unsupported(rule: Rule, pack: Pack) -> list[Finding]:
     reason = f"rule kind '{rule.kind}' is not supported yet"
     return [
@@ -176,6 +287,8 @@ def run(elements: list[Element], pack: Pack) -> RunResult:
     for rule in pack.rules:
         if rule.kind is RuleKind.REQUIRE:
             findings.extend(_run_require(rule, pack, elements, by_id))
+        elif rule.kind is RuleKind.CONSISTENT:
+            findings.extend(_run_consistent(rule, pack, elements, by_id))
         else:
             findings.extend(_unsupported(rule, pack))
     covered = {i for f in findings if f.status is not Status.NOT_APPLICABLE for i in f.element_ids}

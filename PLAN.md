@@ -54,7 +54,7 @@ Goal: `ludwig check` runs on an IFC model and an Excel schedule and produces a r
       finding, sorted by severity, with mark, measured, expected and source.
 - [x] 1.9 `cli.py`: `ludwig check` as in `CLAUDE.md`. Exit code 0 with no blockers,
       1 with blockers, 2 on usage error.
-- [ ] 1.10 Internal consistency rule type: compare the IFC model with the schedule
+- [x] 1.10 Internal consistency rule type: compare the IFC model with the schedule
       (count and dimensions per mark). Acceptance: fixture where the two disagree.
 
 Gate: on the sample set, every seeded error is reported, and the clean samples produce

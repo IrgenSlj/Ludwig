@@ -1,0 +1,14 @@
+# Invented Dutch-style joinery schedule (kozijnstaat) for the Duplex sample model.
+header_row: 1
+type: frame
+units: mm
+columns:
+  mark: Merk
+  quantity: Aantal
+  width_mm: Breedte
+  height_mm: Hoogte
+  location: Verdieping
+props:
+  opening_direction: {column: Draairichting, as: text}
+  fire_rating_min: {column: Brandwerendheid, as: number}
+  glazing_type: {column: Glas, as: text}

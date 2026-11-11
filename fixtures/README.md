@@ -9,6 +9,7 @@ Invented fixtures in this folder (no source, licence: same as the repository):
 | File | Contents |
 |---|---|
 | `schedule/duplex_joinery_schedule.csv` | Dutch-style joinery schedule (kozijnstaat) agreeing with the Duplex model: 12 rows, 38 units, `;` separated, decimal comma |
+| `schedule/duplex_joinery_schedule_seeded.csv` | The same schedule with three seeded mismatches: mark 02 quantity 8 → 7, mark 05 width 4835 → 4800, mark 56 row removed |
 | `schedule/*.mapping.yaml` | Column mappings for the invented schedule and for the COBie `Type` sheet |
 
 Counts below are raw entity counts from the file text, not hand counts of physical

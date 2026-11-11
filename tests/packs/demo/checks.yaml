@@ -12,3 +12,10 @@
   require: props.sound_reduction_db >= limits.door.min_sound_db_when_fire_rated
   severity: warning
   message: "Door {mark}: {props.sound_reduction_db} dB, fire-rated doors need {limits.door.min_sound_db_when_fire_rated} dB"
+
+- id: model-vs-schedule-count
+  kind: consistent
+  applies_to: {side: architect, type: frame}
+  group_by: mark
+  field: quantity
+  severity: warning

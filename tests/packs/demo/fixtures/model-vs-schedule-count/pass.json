@@ -1,0 +1,5 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "K1", "quantity": 2, "sources": [{"file": "model.ifc", "kind": "ifc", "ifc_guid": "a"}, {"file": "model.ifc", "kind": "ifc", "ifc_guid": "b"}]},
+  {"side": "architect", "type": "frame", "mark": "K1", "quantity": 1, "sources": [{"file": "schedule.xlsx", "kind": "sheet", "cell": "C2"}]},
+  {"side": "architect", "type": "frame", "mark": "K1", "quantity": 1, "sources": [{"file": "schedule.xlsx", "kind": "sheet", "cell": "C3"}]}
+]}

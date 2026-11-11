@@ -129,7 +129,7 @@ def test_rule_kinds_not_built_yet_say_so(tmp_path):
 def test_coverage_numbers(pack):
     result = engine.run([sash("R1", 1650.0), sash("R2", None), door({"fire_rating_min": 0.0})],
                         pack)  # fmt: skip
-    assert (result.rules_run, result.elements_total, result.elements_covered) == (2, 3, 2)
+    assert (result.rules_run, result.elements_total, result.elements_covered) == (3, 3, 2)
     assert result.not_checked == 1
 
 

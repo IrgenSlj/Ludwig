@@ -29,7 +29,7 @@ _COMMON_KEYS = {"id", "kind", "applies_to", "severity", "message", "description"
 _KIND_KEYS = {
     RuleKind.REQUIRE: {"require"},
     RuleKind.COMPARE: {"left", "right", "tolerance"},
-    RuleKind.CONSISTENT: {"group_by", "field"},
+    RuleKind.CONSISTENT: {"group_by", "field", "tolerance"},
 }
 _REQUIRED = {
     RuleKind.REQUIRE: {"require"},
@@ -245,6 +245,10 @@ def _load_rule(raw: Any, file: Path, limits: set[str], seen: set[str]) -> Rule:
             raise PackError(file, _line(raw, "tolerance"), "tolerance must be a number >= 0")
         fields["tolerance"] = float(tolerance)
     else:
+        tolerance = raw.get("tolerance", 0)
+        if isinstance(tolerance, bool) or not isinstance(tolerance, int | float) or tolerance < 0:
+            raise PackError(file, _line(raw, "tolerance"), "tolerance must be a number >= 0")
+        fields["tolerance"] = float(tolerance)
         for key in ("group_by", "field"):
             problem = _element_name_error(str(raw[key]), set())
             if problem or str(raw[key]).startswith("parent."):
