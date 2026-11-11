@@ -34,7 +34,7 @@ stop and reconsider the product before writing code.
 
 Goal: `ludwig check` runs on an IFC model and an Excel schedule and produces a report.
 
-- [ ] 1.1 `model.py`: `Element`, `SourceRef`, `Finding` as in SPEC sections 3 and 7.
+- [x] 1.1 `model.py`: `Element`, `SourceRef`, `Finding` as in SPEC sections 3 and 7.
       Acceptance: round-trips to and from JSON.
 - [ ] 1.2 `parsers/ifc.py`: read `IfcWindow`, `IfcDoor` and their types into elements
       (mark, overall width and height, quantity by mark, property sets into `props`).
