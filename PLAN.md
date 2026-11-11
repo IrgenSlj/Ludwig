@@ -23,7 +23,7 @@ Goal: a clean repository and a written list of the errors worth catching.
       company names, project names or real files.
 - [ ] 0.6 **(Irgen)** Mark each catalogue entry as catchable from files alone, catchable
       with ERP data, or not catchable.
-- [ ] 0.7 Collect public sample inputs into `fixtures/`: two IFC models containing
+- [x] 0.7 Collect public sample inputs into `fixtures/`: two IFC models containing
       windows and doors, one DXF with door or window blocks, one schedule in Excel.
       Record source and licence in `fixtures/README.md`.
 
