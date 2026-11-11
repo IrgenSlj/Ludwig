@@ -1,30 +1,10 @@
-renders/
 __pycache__/
 *.pyc
+*.egg-info/
 .DS_Store
 .env
 .venv/
-projects/
-*.db
-*.sqlite
-store/*.sqlite
 .pytest_cache/
-out/
-# Tauri desktop shell — native build artifacts (huge; produced by `npm run tauri build`)
-desktop/src-tauri/target/
-desktop/src-tauri/gen/
-*.app
-*.dmg
-# node deps — reproduced from package-lock.json by `npm install`, never committed
-node_modules/
-# local re-foundation salvage; gitignored, never tracked
-adapters/
-
-# lint cache
 .ruff_cache/
-
-# v2 telemetry run store (WS7) — per-run manifests/trajectories/media, never committed
-runs/
-
-# BenchCAD parquet cache (B-series) — public dataset, pulled on demand, never committed
-data/
+/report/
+/out/
