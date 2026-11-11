@@ -8,7 +8,10 @@ version = "0.1.0.dev0"
 description = "Pre-production check for building-component fabricators."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "ifcopenshell>=0.8",
+    "PyYAML>=6.0",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -18,6 +21,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+ludwig = ["**/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

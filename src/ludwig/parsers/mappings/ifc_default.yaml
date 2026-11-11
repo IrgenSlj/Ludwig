@@ -1,0 +1,47 @@
+# Default IFC mapping. An office whose models follow another convention gets its own file.
+#
+# Value paths:
+#   attr:<Name>              attribute of the occurrence (IfcWindow / IfcDoor)
+#   type_attr:<Name>         attribute of its type (IfcWindowStyle/Type, IfcDoorStyle/Type)
+#   pset:<Pset>.<Property>   property, occurrence first, then type
+# A list means: first path with a value wins.
+
+classes:
+  IfcWindow: frame
+  IfcDoor: frame
+
+# The position mark on the joinery schedule. Revit puts it in Type Mark; the IFC
+# standard place is Pset_*Common.Reference.
+mark:
+  - "pset:PSet_Revit_Type_Identity Data.Type Mark"
+  - "pset:Pset_WindowCommon.Reference"
+  - "pset:Pset_DoorCommon.Reference"
+
+width:
+  - "attr:OverallWidth"
+height:
+  - "attr:OverallHeight"
+
+# Standard property name -> paths and how to read the value.
+#   number: first number in the value ("EI 30" -> 30); text: kept as a trimmed string.
+props:
+  fire_rating_min:
+    paths: ["pset:Pset_DoorCommon.FireRating", "pset:Pset_WindowCommon.FireRating"]
+    as: number
+  u_value:
+    paths: ["pset:Pset_WindowCommon.ThermalTransmittance", "pset:Pset_DoorCommon.ThermalTransmittance"]
+    as: number
+  sound_reduction_db:
+    paths: ["pset:Pset_DoorCommon.AcousticRating", "pset:Pset_WindowCommon.AcousticRating"]
+    as: number
+  burglary_class:
+    paths: ["pset:Pset_DoorCommon.SecurityRating", "pset:Pset_WindowCommon.SecurityRating"]
+    as: text
+  opening_direction:
+    paths: ["type_attr:OperationType"]
+    as: text
+    ignore: ["NOTDEFINED", "USERDEFINED"]
+
+# Revit writes an empty parameter as its own name ("FireRating": "FireRating").
+# Such values are read as not set.
+name_as_value_is_empty: true
