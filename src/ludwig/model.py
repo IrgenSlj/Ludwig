@@ -43,6 +43,35 @@ class Severity(StrEnum):
     INFO = "info"
 
 
+# SPEC section 3. Extend only when a rule needs one.
+STANDARD_PROPS = frozenset(
+    {
+        "fire_rating_min",
+        "burglary_class",
+        "u_value",
+        "sound_reduction_db",
+        "glazing_type",
+        "opening_direction",
+        "material",
+        "finish",
+        "threshold_type",
+        "ventilation_grille",
+    }
+)
+
+ELEMENT_FIELDS = (
+    "id",
+    "side",
+    "type",
+    "mark",
+    "quantity",
+    "width_mm",
+    "height_mm",
+    "depth_mm",
+    "location",
+    "parent_id",
+)
+
 _LOCATORS = ("ifc_guid", "sheet", "cell", "dxf_handle", "layer", "page", "bbox")
 
 

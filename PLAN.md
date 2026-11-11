@@ -44,7 +44,7 @@ Goal: `ludwig check` runs on an IFC model and an Excel schedule and produces a r
 - [x] 1.4 `rules/expr.py`: tokenizer, parser and evaluator for the expression language
       in SPEC section 6. Acceptance: table-driven tests for every operator, missing
       values, and rejection of anything outside the grammar.
-- [ ] 1.5 `rules/packs.py`: load and validate `pack.yaml`, `checks.yaml`, `limits.yaml`.
+- [x] 1.5 `rules/packs.py`: load and validate `pack.yaml`, `checks.yaml`, `limits.yaml`.
       Acceptance: an unknown key or a bad expression fails at load time with file and line.
 - [ ] 1.6 `rules/engine.py`: run checks over the element table and return findings,
       including `not_checked`. Acceptance: fixture tests per rule.
