@@ -28,7 +28,9 @@ from ludwig.api.db import FindingRow, LimitChange, Project, Review, Run, Upload,
 from ludwig.api.guards import origin_ok, token_ok
 from ludwig.api.settings import Settings
 from ludwig.api.storage import Storage
-from ludwig.model import SourceRef
+from ludwig.assist import drafts
+from ludwig.assist.provider import AssistFailed, CommandProvider
+from ludwig.model import Finding, SourceRef
 from ludwig.report import describe_source
 from ludwig.rules import limits as pack_limits
 from ludwig.rules.packs import Pack, PackError, load_pack
@@ -50,6 +52,16 @@ class ReviewIn(BaseModel):
 class LimitsIn(BaseModel):
     values: dict[str, float] = Field(min_length=1)
     reason: str = Field(default="", max_length=2000)
+
+
+class RuleDraftIn(BaseModel):
+    pack: str
+    text: str = Field(min_length=1, max_length=20000)
+
+
+class MappingDraftIn(BaseModel):
+    headers: list[str] = Field(min_length=1, max_length=200)
+    sample: list[list[str]] = Field(default_factory=list, max_length=5)
 
 
 class RunIn(BaseModel):
@@ -217,6 +229,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                 reason=body.reason.strip()))  # fmt: skip
         session.commit()
         return pack_view(pack, session)
+
+    provider = CommandProvider(settings.assist_command) if settings.assist_command else None
+
+    def assist() -> CommandProvider:
+        if provider is None:
+            raise HTTPException(409, "assist is off; set LUDWIG_ASSIST_COMMAND to enable it")
+        return provider
+
+    def assisted(call: Any) -> Any:
+        try:
+            return call()
+        except AssistFailed as exc:
+            raise HTTPException(502, str(exc)) from None
+
+    @api.get("/assist")
+    def assist_state() -> dict[str, bool]:
+        return {"enabled": provider is not None}
+
+    @api.post("/assist/explain/{finding_id}")
+    def assist_explain(finding_id: int, session: DB) -> dict[str, Any]:
+        model = assist()
+        row = session.get(FindingRow, finding_id)
+        if row is None:
+            raise HTTPException(404, "no such finding")
+        finding = Finding.from_dict(row.data)
+        text = assisted(lambda: drafts.explain(finding, model))
+        note = "Written by a language model from the finding; the finding is unchanged."
+        return {"finding_id": row.id, "explanation": text, "original": row.data["message"],
+                "note": note}  # fmt: skip
+
+    @api.post("/assist/rule")
+    def assist_rule(body: RuleDraftIn) -> dict[str, Any]:
+        model = assist()
+        pack = pack_or_404(body.pack)
+        return vars(assisted(lambda: drafts.draft_rule(body.text, pack, model)))
+
+    @api.post("/assist/mapping")
+    def assist_mapping(body: MappingDraftIn) -> dict[str, Any]:
+        return vars(assisted(lambda: drafts.suggest_mapping(body.headers, assist(), body.sample)))
 
     @api.post("/projects", status_code=201)
     def create_project(body: ProjectIn, session: DB) -> dict[str, Any]:

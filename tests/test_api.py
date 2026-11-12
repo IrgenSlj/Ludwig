@@ -219,3 +219,30 @@ def test_web_build_is_served_beside_the_api(tmp_path):
     client = TestClient(create_app(settings))
     assert "Ludwig" in client.get("/").text
     assert client.get("/api/packs").status_code == 200
+
+
+def test_assist_is_off_unless_configured_and_never_changes_findings(tmp_path):
+    import sys
+
+    plain = Settings(database_url=f"sqlite:///{tmp_path / 'a'}", storage_dir=tmp_path / "s",
+                     packs_dir=ROOT / "packs")  # fmt: skip
+    off = TestClient(create_app(plain))
+    assert off.get("/api/assist").json() == {"enabled": False}
+    assert off.post("/api/assist/explain/1").status_code == 409
+
+    answers = tmp_path / "answers.txt"
+    answers.write_text("Frame 02 is ordered 6 times but drawn 8 times.\n=====\nx\n=====\ny")
+    command = f"{sys.executable} {ROOT / 'tests' / 'assist' / 'fake_model.py'} {answers}"
+    settings = Settings(database_url=f"sqlite:///{tmp_path / 'b'}", storage_dir=tmp_path / "s2",
+                        packs_dir=ROOT / "packs", assist_command=command)  # fmt: skip
+    client = TestClient(create_app(settings))
+    assert client.get("/api/assist").json() == {"enabled": True}
+    run = finished_run(client, [FIX / "ifc" / "duplex_architectural_ifc2x3.ifc"])
+    fail = client.get(f"/api/runs/{run['id']}/findings", params={"status": "fail"}).json()[0]
+    r = client.post(f"/api/assist/explain/{fail['id']}").json()
+    assert r["explanation"].startswith("Frame 02") and r["original"] == fail["message"]
+    after = client.get(f"/api/findings/{fail['id']}").json()
+    assert after["status"] == fail["status"] and after["message"] == fail["message"]
+    assert after["review"] is None
+    draft = client.post("/api/assist/rule", json={"pack": "joinery-nl", "text": "x"}).json()
+    assert draft["problems"]  # "y" is not a rule; shown to the person, never saved

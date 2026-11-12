@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, fetchBlob, pageUrl, PAGE_SCALE, type FindingDetail, type SourceRef } from "../api";
+import { api, assist, fetchBlob, pageUrl, PAGE_SCALE, type FindingDetail, type SourceRef } from "../api";
 import { href } from "../route";
 import { bySide, describeSource, formatValue, type Side } from "../sides";
 import { useLoad } from "../useLoad";
@@ -54,6 +54,8 @@ export function FindingPage({ id }: { id: number }) {
           </>
         )}
       </dl>
+
+      <Explain id={f.id} />
 
       <div className="columns">
         <SideCard title="Drawings" side="architect" value={sides.values.architect} sources={sides.sources.architect} />
@@ -166,6 +168,42 @@ function ReviewForm({ finding, onDone }: { finding: FindingDetail; onDone: () =>
           Dismiss
         </button>
       </div>
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
+function Explain({ id }: { id: number }) {
+  const state = useLoad(assist.state, []);
+  const [text, setText] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setText(null), [id]);
+  if (!state.data?.enabled) return null;
+  return (
+    <div className="explain">
+      {text ? (
+        <p>
+          {text} <span className="muted small">(written by a language model; the finding above is what counts)</span>
+        </p>
+      ) : (
+        <button
+          className="secondary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              setText((await assist.explain(id)).explanation);
+              setError(null);
+            } catch (e) {
+              setError(String(e));
+            }
+            setBusy(false);
+          }}
+        >
+          {busy ? "Explaining…" : "Explain in plain words"}
+        </button>
+      )}
       {error && <p className="error">{error}</p>}
     </div>
   );

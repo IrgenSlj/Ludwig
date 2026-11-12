@@ -180,6 +180,21 @@ export const api = {
     call<Review>(`/findings/${id}/review`, json({ decision, reason })),
 };
 
+export interface Draft {
+  text: string;
+  problems: string[];
+  note: string;
+}
+
+export const assist = {
+  state: () => call<{ enabled: boolean }>("/assist"),
+  explain: (finding: number) =>
+    call<{ explanation: string; original: string; note: string }>(`/assist/explain/${finding}`, {
+      method: "POST",
+    }),
+  rule: (pack: string, text: string) => call<Draft>("/assist/rule", json({ pack, text })),
+};
+
 export const reportUrl = (run: number, name: string) => `/api/runs/${run}/reports/${name}`;
 export const csvUrl = (run: number) => `/api/runs/${run}/findings.csv`;
 export const pageUrl = (upload: number, page: number) => `/api/uploads/${upload}/pages/${page}.png`;

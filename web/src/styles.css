@@ -97,3 +97,5 @@ table.grid { width: 100%; border-collapse: collapse; background: var(--panel); b
 .top > a:not(.brand) { color: var(--ink); }
 input.number { width: 90px; text-align: right; }
 code { font-size: 13px; }
+.explain { margin: 8px 0 12px; }
+pre.draft { background: var(--bg); border: 1px solid var(--line); padding: 8px; overflow: auto; }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { api, assist, type Draft } from "../api";
 import { href } from "../route";
 import { useLoad } from "../useLoad";
 
@@ -139,6 +139,8 @@ export function PackPage({ name }: { name: string }) {
         </>
       )}
 
+      <DraftRule pack={p.name} />
+
       <h2>Rules</h2>
       <table className="grid">
         <tbody>
@@ -157,5 +159,53 @@ export function PackPage({ name }: { name: string }) {
         </tbody>
       </table>
     </section>
+  );
+}
+
+function DraftRule({ pack }: { pack: string }) {
+  const state = useLoad(assist.state, []);
+  const [text, setText] = useState("");
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!state.data?.enabled) return null;
+  return (
+    <div className="card review">
+      <h2>Draft a rule from specification text</h2>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Paste a requirement, e.g. 'Sashes wider than 1500 mm do not fit our glazing line.'"
+      />
+      <div className="row">
+        <button
+          disabled={!text.trim() || busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              setDraft(await assist.rule(pack, text));
+              setError(null);
+            } catch (e) {
+              setError(String(e));
+            }
+            setBusy(false);
+          }}
+        >
+          {busy ? "Drafting…" : "Draft"}
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+      {draft && (
+        <>
+          <pre className="draft">{draft.text}</pre>
+          {draft.problems.length > 0 ? (
+            <p className="error">Does not load: {draft.problems.join("; ")}</p>
+          ) : (
+            <p className="muted">Loads with this pack.</p>
+          )}
+          <p className="muted small">{draft.note}</p>
+        </>
+      )}
+    </div>
   );
 }

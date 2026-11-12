@@ -21,6 +21,7 @@ lives in the `ludwig-data` volume; back up that volume.
 | `LUDWIG_PACKS_DIR` | `/app/packs` | rule packs; mount a folder here to use a factory's own pack |
 | `LUDWIG_MAX_UPLOAD_MB` | `200` | largest accepted file |
 | `LUDWIG_ALLOWED_ORIGINS` | not set | extra origins allowed to change data from a browser |
+| `LUDWIG_ASSIST_COMMAND` | not set | optional language-model command (prompt on stdin, answer on stdout), e.g. a local `ollama run <model>`; unset means nothing is sent to any model |
 
 A factory pack (own limits, own ERP mapping) is mounted read-only:
 
