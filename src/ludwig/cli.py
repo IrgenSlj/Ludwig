@@ -46,6 +46,18 @@ def check(args: argparse.Namespace) -> int:
     return EXIT_BLOCKERS if blockers else EXIT_OK
 
 
+def serve(args: argparse.Namespace) -> int:
+    """Run the service with settings from LUDWIG_* environment variables."""
+    try:
+        import uvicorn
+
+        from ludwig.api.app import create_app
+    except ImportError:
+        raise UsageError("the service needs: pip install 'ludwig[api]'") from None
+    uvicorn.run(create_app(), host=args.host, port=args.port)
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The argument parser for the `ludwig` command."""
     parser = argparse.ArgumentParser(prog="ludwig", description=__doc__)
@@ -66,6 +78,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pack", required=True, metavar="DIR", help="rule pack folder")
     p.add_argument("--out", required=True, metavar="DIR", help="folder for the reports")
     p.set_defaults(func=check)
+    s = sub.add_parser("serve", help="run the HTTP service (needs the api extra)")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8000)
+    s.set_defaults(func=serve)
     return parser
 
 

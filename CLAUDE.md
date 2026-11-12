@@ -70,6 +70,7 @@ pip install -e ".[dev]"
 ruff check
 pytest
 ludwig check --architect <files...> [--erp <file> --mapping <file>] --pack packs/joinery-nl --out report/
+pip install -e ".[api]" && ludwig serve        # HTTP service, settings from LUDWIG_* env
 ```
 
 ## Definition of done for a task

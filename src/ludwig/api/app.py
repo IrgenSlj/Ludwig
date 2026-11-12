@@ -1,0 +1,217 @@
+"""FastAPI application: projects, uploads, runs and findings (PLAN 5.1)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Annotated, Any
+
+from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from ludwig.api import jobs
+from ludwig.api.db import FindingRow, Project, Run, Upload, connect
+from ludwig.api.guards import origin_ok, token_ok
+from ludwig.api.settings import Settings
+from ludwig.api.storage import Storage
+from ludwig.rules.packs import Pack, PackError, load_pack
+
+ROLES = ("architect", "erp", "mapping")
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+REPORTS = {"report.json": "application/json", "report.bcf": "application/zip", "report.xlsx": XLSX}
+
+
+class ProjectIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+class RunIn(BaseModel):
+    pack: str
+    uploads: list[int] = Field(min_length=1)
+
+
+def _packs(folder: Path) -> dict[str, Pack]:
+    packs = {}
+    for pack_file in sorted(folder.glob("*/pack.yaml")):
+        try:
+            pack = load_pack(pack_file.parent)
+        except PackError:
+            continue  # a broken pack is not offered; `ludwig check` names its error
+        packs[pack.name] = pack
+    return packs
+
+
+def _project(p: Project) -> dict[str, Any]:
+    return {"id": p.id, "name": p.name, "created": p.created.isoformat()}
+
+
+def _upload(u: Upload) -> dict[str, Any]:
+    return {"id": u.id, "project_id": u.project_id, "role": u.role, "filename": u.filename,
+            "sha256": u.sha256, "size": u.size, "for_upload": u.for_upload_id}  # fmt: skip
+
+
+def _run(r: Run) -> dict[str, Any]:
+    return {"id": r.id, "project_id": r.project_id, "status": r.status, "error": r.error,
+            "pack": {"name": r.pack_name, "version": r.pack_version, "hash": r.pack_hash},
+            "uploads": r.upload_ids, "upload_hashes": r.upload_hashes, "summary": r.summary,
+            "created": r.created.isoformat(),
+            "finished": r.finished.isoformat() if r.finished else None}  # fmt: skip
+
+
+def _safe_name(name: str | None) -> str:
+    base = Path(name or "").name.strip()
+    if not base or base in (".", "..") or len(base) > 255:
+        raise HTTPException(422, "a file name is required")
+    return base
+
+
+def _db(request: Request) -> Any:
+    with request.app.state.sessions() as session:
+        yield session
+
+
+DB = Annotated[Session, Depends(_db)]
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """The service, with its database, storage and packs from `settings`."""
+    settings = settings or Settings.from_env()
+    sessions = connect(settings.database_url)
+    storage = Storage(settings.storage_dir)
+    app = FastAPI(title="Ludwig", version="0.1")
+    app.state.sessions = sessions
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next: Any) -> Any:
+        if request.url.path != "/health":
+            auth = request.headers.get("authorization", "")
+            given = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else None
+            if not token_ok(settings.api_token, given):
+                return JSONResponse({"detail": "missing or wrong token"}, status_code=401)
+            if request.method not in ("GET", "HEAD", "OPTIONS") and not origin_ok(
+                request.headers.get("origin"), request.headers.get("host"), settings.allowed_origins
+            ):
+                return JSONResponse({"detail": "cross-origin request refused"}, status_code=403)
+        return await call_next(request)
+
+    def project_or_404(session: Session, project_id: int) -> Project:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise HTTPException(404, "no such project")
+        return project
+
+    def run_or_404(session: Session, run_id: int) -> Run:
+        run = session.get(Run, run_id)
+        if run is None:
+            raise HTTPException(404, "no such run")
+        return run
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/packs")
+    def packs() -> list[dict[str, Any]]:
+        return [{"name": p.name, "version": p.version, "hash": p.content_hash,
+                 "description": p.description, "rules": len(p.rules) + len(p.ids_specs)}
+                for p in _packs(settings.packs_dir).values()]  # fmt: skip
+
+    @app.post("/projects", status_code=201)
+    def create_project(body: ProjectIn, session: DB) -> dict[str, Any]:
+        project = Project(name=body.name)
+        session.add(project)
+        session.commit()
+        return _project(project)
+
+    @app.get("/projects")
+    def list_projects(session: DB) -> list[dict[str, Any]]:
+        return [_project(p) for p in session.query(Project).order_by(Project.id)]
+
+    @app.get("/projects/{project_id}")
+    def get_project(project_id: int, session: DB) -> dict[str, Any]:
+        return _project(project_or_404(session, project_id))
+
+    @app.post("/projects/{project_id}/uploads", status_code=201)
+    async def upload(project_id: int, session: DB, file: UploadFile,
+                     role: Annotated[str, Form()],
+                     for_upload: Annotated[int | None, Form()] = None,
+                     ) -> dict[str, Any]:  # fmt: skip
+        project_or_404(session, project_id)
+        if role not in ROLES:
+            raise HTTPException(422, f"role must be one of {', '.join(ROLES)}")
+        if (role == "mapping") != (for_upload is not None):
+            raise HTTPException(422, "a mapping names the upload it describes (for_upload)")
+        if for_upload is not None:
+            target = session.get(Upload, for_upload)
+            if target is None or target.project_id != project_id or target.role == "mapping":
+                raise HTTPException(422, "for_upload must be a file of this project")
+        limit = settings.max_upload_mb * 1024 * 1024
+        data = await file.read(limit + 1)
+        if len(data) > limit:
+            raise HTTPException(413, f"files are limited to {settings.max_upload_mb} MB")
+        row = Upload(project_id=project_id, role=role, filename=_safe_name(file.filename),
+                     sha256=storage.put(data), size=len(data),
+                     for_upload_id=for_upload)  # fmt: skip
+        session.add(row)
+        session.commit()
+        return _upload(row)
+
+    @app.get("/projects/{project_id}/uploads")
+    def list_uploads(project_id: int, session: DB) -> list[dict[str, Any]]:
+        project_or_404(session, project_id)
+        rows = session.query(Upload).filter(Upload.project_id == project_id).order_by(Upload.id)
+        return [_upload(u) for u in rows]
+
+    @app.post("/projects/{project_id}/runs", status_code=202)
+    def start_run(project_id: int, body: RunIn, session: DB,
+                  background: BackgroundTasks) -> dict[str, Any]:  # fmt: skip
+        project_or_404(session, project_id)
+        pack = _packs(settings.packs_dir).get(body.pack)
+        if pack is None:
+            raise HTTPException(422, f"no pack named {body.pack!r}")
+        uploads = session.query(Upload).filter(Upload.id.in_(body.uploads)).all()
+        foreign = any(u.project_id != project_id for u in uploads)
+        if len(uploads) != len(set(body.uploads)) or foreign:
+            raise HTTPException(422, "uploads must be files of this project")
+        if not any(u.role == "architect" for u in uploads):
+            raise HTTPException(422, "a run needs at least one architect file")
+        uploads.sort(key=lambda u: u.id)
+        run = Run(project_id=project_id, pack_name=pack.name, pack_version=pack.version,
+                  pack_hash=pack.content_hash, upload_ids=[u.id for u in uploads],
+                  upload_hashes=[u.sha256 for u in uploads])  # fmt: skip
+        session.add(run)
+        session.commit()
+        background.add_task(jobs.execute, run.id, sessions, storage, pack)
+        return _run(run)
+
+    @app.get("/projects/{project_id}/runs")
+    def list_runs(project_id: int, session: DB) -> list[dict[str, Any]]:
+        project_or_404(session, project_id)
+        return [_run(r) for r in session.query(Run).filter(Run.project_id == project_id)
+                .order_by(Run.id)]  # fmt: skip
+
+    @app.get("/runs/{run_id}")
+    def get_run(run_id: int, session: DB) -> dict[str, Any]:
+        return _run(run_or_404(session, run_id))
+
+    @app.get("/runs/{run_id}/findings")
+    def findings(run_id: int, session: DB, status: str | None = None) -> list[dict[str, Any]]:
+        run_or_404(session, run_id)
+        rows = session.query(FindingRow).filter(FindingRow.run_id == run_id)
+        if status:
+            rows = rows.filter(FindingRow.status.in_(status.split(",")))
+        return [{"id": r.id, **r.data} for r in rows.order_by(FindingRow.position)]
+
+    @app.get("/runs/{run_id}/reports/{name}")
+    def report(run_id: int, name: str, session: DB) -> FileResponse:
+        run_or_404(session, run_id)
+        folder = storage.run_dir(run_id)
+        path = folder / Path(name).name
+        is_report = name in REPORTS or (name.endswith(".marked.pdf") and "/" not in name)
+        if not is_report or not path.is_file():
+            raise HTTPException(404, "no such report")
+        media = REPORTS.get(name, "application/pdf")
+        return FileResponse(path, media_type=media, filename=path.name)
+
+    return app

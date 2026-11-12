@@ -109,7 +109,7 @@ Gate: findings from one run open correctly as BCF in two different viewers.
 
 ## Phase 5 — Product
 
-- [ ] 5.1 `api/`: FastAPI service with projects, uploads, runs and findings; Postgres;
+- [x] 5.1 `api/`: FastAPI service with projects, uploads, runs and findings; Postgres;
       a background job per run.
 - [ ] 5.2 Web app (TypeScript, React): upload, findings list, finding detail with
       source side by side, accept or dismiss with a reason, export.
