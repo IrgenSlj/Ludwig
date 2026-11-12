@@ -9,6 +9,7 @@ from ludwig.cli import EXIT_BLOCKERS, EXIT_OK, EXIT_USAGE, main
 ROOT = Path(__file__).resolve().parent.parent
 DUPLEX = ROOT / "fixtures" / "ifc" / "duplex_architectural_ifc2x3.ifc"
 SCHEDULE = ROOT / "fixtures" / "schedule" / "duplex_joinery_schedule.csv"
+ERP = ROOT / "fixtures" / "erp" / "duplex_erp_export.csv"
 
 
 def make_pack(tmp_path: Path, max_width: int) -> Path:
@@ -67,11 +68,20 @@ def test_missing_file_unknown_type_bad_pack_and_erp_give_exit_2(tmp_path, capsys
     dwg.write_text("x")
     assert run(tmp_path, "--architect", str(dwg), "--pack", str(pack)) == EXIT_USAGE
     assert run(tmp_path, "--architect", str(DUPLEX), "--pack", str(tmp_path)) == EXIT_USAGE
-    erp = ["--erp", str(SCHEDULE), "--mapping", "m.yaml"]
+    erp = ["--erp", str(ERP), "--mapping", "m.yaml"]
     assert run(tmp_path, "--architect", str(DUPLEX), *erp, "--pack", str(pack)) == EXIT_USAGE
+    assert run(tmp_path, "--architect", str(DUPLEX), "--mapping", "m.yaml",
+               "--pack", str(pack)) == EXIT_USAGE  # fmt: skip
     err = capsys.readouterr().err
     assert "file not found" in err and "unsupported file type .dwg" in err
-    assert "phase 2" in err
+    assert "m.yaml: file not found" in err and "--mapping needs --erp" in err
+
+
+def test_erp_export_is_read_with_its_mapping(tmp_path):
+    pack = make_pack(tmp_path, 5000)
+    assert run(tmp_path, "--architect", str(DUPLEX), "--erp", str(ERP), "--pack", str(pack)) == 0
+    data = json.loads((tmp_path / "out" / "report.json").read_text())
+    assert data["summary"]["elements_total"] == 12 + 12  # IFC groups + ERP frame lines
 
 
 def test_schedule_without_mapping_gives_exit_2(tmp_path, capsys):

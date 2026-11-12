@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from ludwig.adapters import erp_table
 from ludwig.model import Element, ParseWarning, Severity, Status
 from ludwig.parsers import ifc, schedule
 from ludwig.report import excel
@@ -51,15 +52,35 @@ def read_architect(files: list[Path]) -> tuple[list[Element], list[ParseWarning]
     return elements, warnings
 
 
+def read_erp(path: Path, mapping: Path | None) -> tuple[list[Element], list[ParseWarning]]:
+    """Parse the production export with its mapping (default: <name>.mapping.yaml beside it)."""
+    if not path.is_file():
+        raise UsageError(f"{path}: file not found")
+    if path.suffix.lower() not in SCHEDULE_SUFFIXES:
+        raise UsageError(f"{path}: unsupported file type {path.suffix or '(none)'}")
+    mapping = mapping or _schedule_mapping(path)
+    if not mapping.is_file():
+        raise UsageError(f"{mapping}: file not found")
+    try:
+        loaded = erp_table.load_mapping(mapping)
+    except ValueError as exc:
+        raise UsageError(str(exc)) from None
+    return erp_table.parse(path, loaded)
+
+
 def check(args: argparse.Namespace) -> int:
     """Run `ludwig check` and return the exit code."""
-    if args.erp or args.mapping:
-        raise UsageError("--erp and --mapping arrive with production-data reconciliation (phase 2)")
+    if args.mapping and not args.erp:
+        raise UsageError("--mapping needs --erp")
     try:
         pack = load_pack(args.pack)
     except PackError as exc:
         raise UsageError(f"pack: {exc}") from None
     elements, warnings = read_architect([Path(p) for p in args.architect])
+    if args.erp:
+        found, warned = read_erp(Path(args.erp), Path(args.mapping) if args.mapping else None)
+        elements.extend(found)
+        warnings.extend(warned)
     result = engine.run(elements, pack)
 
     out = Path(args.out)
@@ -92,8 +113,10 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="IFC models and schedules (.xlsx/.csv with a <name>.mapping.yaml)",
     )
-    p.add_argument("--erp", metavar="FILE", help="production export (phase 2)")
-    p.add_argument("--mapping", metavar="FILE", help="mapping for the production export (phase 2)")
+    p.add_argument("--erp", metavar="FILE", help="production export (.xlsx/.csv)")
+    p.add_argument(
+        "--mapping", metavar="FILE", help="export mapping (default: <name>.mapping.yaml beside it)"
+    )
     p.add_argument("--pack", required=True, metavar="DIR", help="rule pack folder")
     p.add_argument("--out", required=True, metavar="DIR", help="folder for report.json/.xlsx")
     p.set_defaults(func=check)

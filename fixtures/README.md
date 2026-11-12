@@ -11,6 +11,8 @@ Invented fixtures in this folder (no source, licence: same as the repository):
 | `schedule/duplex_joinery_schedule.csv` | Dutch-style joinery schedule (kozijnstaat) agreeing with the Duplex model: 12 rows, 38 units, `;` separated, decimal comma |
 | `schedule/duplex_joinery_schedule_seeded.csv` | The same schedule with three seeded mismatches: mark 02 quantity 8 → 7, mark 05 width 4835 → 4800, mark 56 row removed |
 | `schedule/*.mapping.yaml` | Column mappings for the invented schedule and for the COBie `Type` sheet |
+| `erp/duplex_erp_export.csv` | Production export (order lines) for the Duplex project, agreeing with the model: 12 frame lines plus one non-joinery line, `,` separated, decimal point. Column names are invented, not taken from any real ERP |
+| `erp/duplex_erp_export.mapping.yaml` | Column mapping for that export |
 
 Counts below are raw entity counts from the file text, not hand counts of physical
 elements. PLAN 1.2 adds the hand count.

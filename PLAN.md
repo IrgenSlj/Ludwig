@@ -1,6 +1,6 @@
 # Ludwig — development plan
 
-Status: phase 0 done except 0.5–0.6 (Irgen); phase 1 in progress, 1.7 waits for the catalogue.
+Status: phase 0 done except 0.5–0.6 (Irgen); phase 1 done except 1.7 (waits for the catalogue); phase 2 started on invented data, 2.1 open.
 
 Each phase ends in a gate. A phase is finished only when its gate is met. Tasks marked
 **(Irgen)** need a person and cannot be done by Claude Code.
@@ -66,7 +66,7 @@ Goal: compare what the architect asked for with what was entered for production.
 
 - [ ] 2.1 **(Irgen)** Name the production software and obtain one export with invented
       or anonymised content, or describe its columns.
-- [ ] 2.2 `adapters/erp_table.py`: generic CSV/Excel importer driven by `mapping.yaml`
+- [x] 2.2 `adapters/erp_table.py`: generic CSV/Excel importer driven by `mapping.yaml`
       (column names, units, type vocabulary). Acceptance: sample export parses.
 - [ ] 2.3 `match.py`: pair architect and ERP elements as in SPEC section 5.
       Acceptance: tests for exact, fallback, unmatched and ambiguous cases.

@@ -1,0 +1,14 @@
+Ordernr,Positie,Artikelsoort,Omschrijving,Aantal,Breedte,Hoogte,Draairichting,Beglazing,Brandwerendheid,Verdieping
+24-0117,01,Kozijn,Vast raam 2800x2410,4,2800,2410,,HR++,,Level 2
+24-0117,02,Kozijn,Vast raam 819x759,8,819,759,,HR++,,Level 2
+24-0117,03,Kozijn,Vast raam 819x759,4,819,759,,HR++,,Level 2
+24-0117,04,Kozijn,Vast raam 750x2200,4,750,2200,,HR++,,
+24-0117,05,Kozijn,Vast raam 4835x2420,2,4835,2420,,HR++,,Level 1
+24-0117,28,Deurkozijn,Binnendeur 762 L,2,762,2032,links,,,Level 1
+24-0117,28,Deurkozijn,Binnendeur 762 R,2,762,2032,rechts,,,Level 2
+24-0117,32,Deurkozijn,Binnendeur 864 L,2,864,2032,links,,,Level 2
+24-0117,32,Deurkozijn,Binnendeur 864 R,4,864,2032,rechts,,,Level 2
+24-0117,33,Deurkozijn,Buitendeur 1250,2,1250,2010,rechts,,30,Level 1
+24-0117,36,Kozijn,Dakraam,2,1172.5,634.8,,HR++,,Roof
+24-0117,56,Deurkozijn,Buitendeur 813 glas,2,813,2420,links,HR++,,Level 1
+24-0117,,Montage,Montagemateriaal,1,,,,,,
