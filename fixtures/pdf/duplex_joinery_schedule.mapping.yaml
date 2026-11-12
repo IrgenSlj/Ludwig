@@ -1,0 +1,14 @@
+# The invented joinery schedule as a vector PDF table (two pages, header repeated).
+header_row: 1
+type: frame
+units: mm
+columns:
+  mark: Merk
+  quantity: Aantal
+  width_mm: Breedte
+  height_mm: Hoogte
+  location: Verdieping
+props:
+  opening_direction: {column: Draairichting, as: text, values: {links: left, rechts: right}}
+  fire_rating_min: {column: Brandwerendheid, as: number, default: 0}  # empty cell: no fire rating
+  glazing_type: {column: Glas, as: text}

@@ -107,3 +107,13 @@ def test_dxf_drawing_is_read_with_the_default_mapping(tmp_path):
     data = json.loads((tmp_path / "out" / "report.json").read_text())
     [fail] = [f for f in data["findings"] if f["status"] == "fail"]
     assert fail["mark"] == "05" and fail["evidence"][0]["kind"] == "dxf"
+
+
+def test_pdf_schedule_needs_its_mapping(tmp_path, capsys):
+    pdf = ROOT / "fixtures" / "pdf" / "duplex_joinery_schedule.pdf"
+    pack = make_pack(tmp_path, 5000)
+    assert run(tmp_path, "--architect", str(pdf), "--pack", str(pack)) == EXIT_OK
+    lonely = tmp_path / "staat.pdf"
+    shutil.copy(pdf, lonely)
+    assert run(tmp_path, "--architect", str(lonely), "--pack", str(pack)) == EXIT_USAGE
+    assert "staat.mapping.yaml" in capsys.readouterr().err

@@ -10,7 +10,7 @@ from typing import Any
 from ludwig.adapters import erp_table
 from ludwig.match import pairs
 from ludwig.model import Element, ParseWarning, Severity, Status
-from ludwig.parsers import dxf, ifc, schedule
+from ludwig.parsers import dxf, ifc, pdf, schedule
 from ludwig.report import excel
 from ludwig.report import json as json_report
 from ludwig.rules import engine
@@ -52,6 +52,12 @@ def read_architect(files: list[Path]) -> tuple[list[Element], list[ParseWarning]
             found, warned = ifc.parse(path)
         elif suffix == ".dxf":
             found, warned = dxf.parse(path, _optional_mapping(path, dxf.load_mapping))
+        elif suffix == ".pdf":
+            try:
+                mapping = pdf.load_mapping(_schedule_mapping(path))
+            except ValueError as exc:
+                raise UsageError(str(exc)) from None
+            found, warned = pdf.parse(path, mapping)
         elif suffix in SCHEDULE_SUFFIXES:
             try:
                 mapping = schedule.load_mapping(_schedule_mapping(path))
@@ -124,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         required=True,
         metavar="FILE",
-        help="IFC models, DXF drawings and schedules (.xlsx/.csv with a <name>.mapping.yaml)",
+        help="IFC, DXF, and schedules (.xlsx/.csv/.pdf with a <name>.mapping.yaml)",
     )
     p.add_argument("--erp", metavar="FILE", help="production export (.xlsx/.csv)")
     p.add_argument(

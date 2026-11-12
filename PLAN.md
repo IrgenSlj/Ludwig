@@ -85,7 +85,7 @@ Goal: work for projects that arrive without a model.
 - [x] 3.1 `parsers/dxf.py`: block references with attributes on mapped layers become
       elements; dimensions come from attributes first, block extents second.
 - [x] 3.2 Table extraction from DXF (schedules drawn as text and lines).
-- [ ] 3.3 `parsers/pdf.py`: vector PDF only. Extract text with positions and ruled
+- [x] 3.3 `parsers/pdf.py`: vector PDF only. Extract text with positions and ruled
       tables (pdfplumber). A page with no vector text gives a parse warning, not a guess.
 - [ ] 3.4 DWG: document the conversion step (external converter to DXF, run as a
       separate process). No DWG library in-process.

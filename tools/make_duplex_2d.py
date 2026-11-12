@@ -1,6 +1,6 @@
 """Write the invented 2D delivery of the Duplex project: a DXF floor plan with joinery blocks.
 
-Usage: python tools/make_duplex_2d.py   (rewrites the invented files in fixtures/dxf/)
+Usage: python tools/make_duplex_2d.py   (rewrites the invented files in fixtures/dxf/, pdf/)
 
 The positions, sizes, levels and opening directions come from the Duplex IFC model, so the
 2D delivery describes the same project as the IFC version (PLAN phase 3 gate).
@@ -19,6 +19,7 @@ MODEL = ROOT / "fixtures" / "ifc" / "duplex_architectural_ifc2x3.ifc"
 OUT = ROOT / "fixtures" / "dxf" / "duplex_joinery_plan.dxf"
 SCHEDULE = ROOT / "fixtures" / "schedule" / "duplex_joinery_schedule.csv"
 SCHEDULE_DXF = ROOT / "fixtures" / "dxf" / "duplex_joinery_schedule.dxf"
+SCHEDULE_PDF = ROOT / "fixtures" / "pdf" / "duplex_joinery_schedule.pdf"
 COLUMN_WIDTHS = [600, 2600, 700, 900, 900, 1100, 1300, 1500, 700]
 ROW_HEIGHT = 300
 DIRECTION = {"left": "L", "right": "R"}
@@ -52,10 +53,41 @@ def schedule_dxf() -> None:
     doc.saveas(SCHEDULE_DXF)
 
 
+def schedule_pdf() -> None:
+    """The invented schedule as a vector PDF over two pages, the header repeated on each."""
+    import csv
+
+    import minipdf
+
+    rows = list(csv.reader(SCHEDULE.read_text(encoding="utf-8").splitlines(), delimiter=";"))
+    header, body = rows[0], rows[1:]
+    widths = [w * 0.07 for w in COLUMN_WIDTHS]  # points
+    pages = []
+    for chunk in (body[:7], body[7:]):
+        page = minipdf.Page()
+        page.text(40, 555, "Kozijnstaat Duplex (invented)", size=12)
+        table = [header, *chunk]
+        xs = [40.0]
+        for w in widths:
+            xs.append(xs[-1] + w)
+        top, height = 530.0, 18.0
+        for i in range(len(table) + 1):
+            page.line(xs[0], top - i * height, xs[-1], top - i * height)
+        for x in xs:
+            page.line(x, top, x, top - len(table) * height)
+        for r, row in enumerate(table):
+            for c, value in enumerate(row):
+                if value:
+                    page.text(xs[c] + 3, top - (r + 1) * height + 5, value)
+        pages.append(page)
+    minipdf.write(SCHEDULE_PDF, pages)
+
+
 def main() -> None:
-    """Rebuild the DXF fixtures from the model and the invented schedule."""
+    """Rebuild the 2D fixtures from the model and the invented schedule."""
     ezdxf.options.write_fixed_meta_data_for_testing = True  # same bytes on every run
     schedule_dxf()
+    schedule_pdf()
     elements, _ = ifc.parse(MODEL)
     doc = ezdxf.new("R2018", setup=False)
     doc.header["$INSUNITS"] = 4  # millimetres

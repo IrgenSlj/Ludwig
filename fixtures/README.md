@@ -16,6 +16,7 @@ Invented fixtures in this folder (no source, licence: same as the repository):
 | `erp/*.mapping.yaml` | Column mappings for those exports |
 | `dxf/duplex_joinery_plan.dxf` | The Duplex joinery as a 2D delivery: one attributed block reference per opening on layer `KOZIJNEN` (MERK, BREEDTE for windows, HOOGTE, VERDIEPING, DRAAIRICHTING; door widths only as block extents). Written by `tools/make_duplex_2d.py` from the Duplex model; same bytes on every run |
 | `dxf/duplex_joinery_schedule.dxf` + `.mapping.yaml` | The invented joinery schedule drawn as a ruled table (LINEs and TEXT on layer `STAAT`); written by the same script from the CSV |
+| `pdf/duplex_joinery_schedule.pdf` + `.mapping.yaml` | The invented joinery schedule as a vector PDF table over two pages, header repeated; written by the same script with `tools/minipdf.py` |
 
 Counts below are raw entity counts from the file text, not hand counts of physical
 elements. PLAN 1.2 adds the hand count.
