@@ -1,0 +1,13 @@
+# One layer for all frames, office tags, attribute sizes in centimetres.
+layers: [31-KOZIJN]
+blocks:
+  "*": frame
+attributes:
+  mark: [KOZ_NR]
+  width_mm: [B_MM]
+  height_mm: [H_MM]
+  location: [BOUWLAAG]
+units: cm
+props:
+  opening_direction: {tags: [DRAAI], as: text, values: {L: left, R: right}}
+  fire_rating_min: {tags: [WBDBO], as: number}

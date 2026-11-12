@@ -89,7 +89,7 @@ Goal: work for projects that arrive without a model.
       tables (pdfplumber). A page with no vector text gives a parse warning, not a guess.
 - [x] 3.4 DWG: document the conversion step (external converter to DXF, run as a
       separate process). No DWG library in-process.
-- [ ] 3.5 Parser mapping files per office convention (layer names, attribute tags).
+- [x] 3.5 Parser mapping files per office convention (layer names, attribute tags).
 
 Gate: the same invented project, delivered as DXF plus PDF schedule, gives the same
 findings as the IFC version.

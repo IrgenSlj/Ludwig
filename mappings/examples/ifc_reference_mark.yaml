@@ -1,0 +1,19 @@
+# Models whose mark is the IFC standard Reference property, not Revit's Type Mark.
+classes:
+  IfcWindow: frame
+  IfcDoor: frame
+mark:
+  - "pset:Pset_WindowCommon.Reference"
+  - "pset:Pset_DoorCommon.Reference"
+width: ["attr:OverallWidth"]
+height: ["attr:OverallHeight"]
+props:
+  fire_rating_min:
+    paths: ["pset:Pset_DoorCommon.FireRating", "pset:Pset_WindowCommon.FireRating"]
+    as: number
+  opening_direction:
+    paths: ["type_attr:OperationType"]
+    as: text
+    ignore: ["NOTDEFINED", "USERDEFINED"]
+    values: {SINGLE_SWING_LEFT: left, SINGLE_SWING_RIGHT: right}
+name_as_value_is_empty: true

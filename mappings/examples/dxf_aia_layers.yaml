@@ -1,0 +1,16 @@
+# Joinery blocks on AIA layers, English attribute tags.
+layers: [A-DOOR, A-GLAZ]
+blocks:
+  "*": frame        # every block on those layers is a door or window
+attributes:
+  mark: [MARK, TAG, NUMBER]
+  width_mm: [WIDTH, W]
+  height_mm: [HEIGHT, H]
+  location: [LEVEL, FLOOR]
+units: mm
+extents:
+  width_mm: x
+props:
+  opening_direction: {tags: [SWING, HAND], as: text, values: {L: left, LH: left, R: right, RH: right}}
+  fire_rating_min: {tags: [FIRE_RATING, RATING], as: number}
+  glazing_type: {tags: [GLAZING], as: text}

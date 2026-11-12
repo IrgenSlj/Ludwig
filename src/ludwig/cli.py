@@ -49,7 +49,7 @@ def read_architect(files: list[Path]) -> tuple[list[Element], list[ParseWarning]
             raise UsageError(f"{path}: file not found")
         suffix = path.suffix.lower()
         if suffix == ".ifc":
-            found, warned = ifc.parse(path)
+            found, warned = ifc.parse(path, _optional_mapping(path, ifc.load_mapping))
         elif suffix == ".dxf":
             found, warned = dxf.parse(path, _optional_mapping(path, dxf.load_mapping))
         elif suffix == ".pdf":
@@ -133,7 +133,8 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         required=True,
         metavar="FILE",
-        help="IFC, DXF, and schedules (.xlsx/.csv/.pdf with a <name>.mapping.yaml)",
+        help="IFC and DXF (office mapping <name>.mapping.yaml optional), schedules "
+        "(.xlsx/.csv/.pdf, <name>.mapping.yaml required)",
     )
     p.add_argument("--erp", metavar="FILE", help="production export (.xlsx/.csv)")
     p.add_argument(
