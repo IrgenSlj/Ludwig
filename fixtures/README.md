@@ -15,6 +15,7 @@ Invented fixtures in this folder (no source, licence: same as the repository):
 | `erp/duplex_erp_export_seeded.csv` | The same export with ten seeded mismatches (PLAN phase 2 gate): 01 glazing Triple, 02 quantity 6, 03 height 795, 05 width 4855, 28 both pairs right-hand, 32 left/right counts swapped, 33 fire rating left blank, 36 width 1127.5, 56 line removed, 99 extra line |
 | `erp/*.mapping.yaml` | Column mappings for those exports |
 | `dxf/duplex_joinery_plan.dxf` | The Duplex joinery as a 2D delivery: one attributed block reference per opening on layer `KOZIJNEN` (MERK, BREEDTE for windows, HOOGTE, VERDIEPING, DRAAIRICHTING; door widths only as block extents). Written by `tools/make_duplex_2d.py` from the Duplex model; same bytes on every run |
+| `dxf/duplex_joinery_schedule.dxf` + `.mapping.yaml` | The invented joinery schedule drawn as a ruled table (LINEs and TEXT on layer `STAAT`); written by the same script from the CSV |
 
 Counts below are raw entity counts from the file text, not hand counts of physical
 elements. PLAN 1.2 adds the hand count.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -69,7 +70,7 @@ def _text(value: Any) -> str:
     return str(value).strip().lower()
 
 
-def _cell(col: int, row: int) -> str:
+def cell_name(col: int, row: int) -> str:
     letters = ""
     col += 1
     while col:
@@ -114,6 +115,26 @@ def parse(
         return [], [ParseWarning(file, f"cannot read schedule: {exc}")]
 
     kind = SourceKind.ERP if side is Side.ERP else SourceKind.SHEET
+
+    def locate(col: int | None, row: int) -> SourceRef:
+        cell = cell_name(col, row) if col is not None else f"A{row}"
+        return SourceRef(file, kind, sheet=sheet, cell=cell)
+
+    return parse_rows(rows, file, f"{path.name}!{sheet or ''}", mapping, side, locate)
+
+
+def parse_rows(
+    rows: list[list[Any]],
+    file: str,
+    id_prefix: str,
+    mapping: dict[str, Any],
+    side: Side,
+    locate: Callable[[int | None, int], SourceRef],
+) -> tuple[list[Element], list[ParseWarning]]:
+    """Turn table rows (header included) into elements; `locate(col, row)` gives each source.
+
+    Shared by spreadsheets, CSV, and tables drawn in DXF or PDF files.
+    """
     header_row = int(mapping.get("header_row", 1))
     if len(rows) < header_row:
         return [], [ParseWarning(file, f"no header row {header_row}")]
@@ -149,8 +170,7 @@ def parse(
             return None if value is None or _text(value) in empty else value
 
         def ref(idx: int | None, _row_no: int = row_no) -> SourceRef:
-            cell = _cell(idx, _row_no) if idx is not None else f"A{_row_no}"
-            return SourceRef(file, kind, sheet=sheet, cell=cell)
+            return locate(idx, _row_no)
 
         used = [i for i in [*columns.values(), type_col, *prop_cols.values()] if i is not None]
         if all(get(i) is None for i in used):
@@ -207,7 +227,7 @@ def parse(
         quantity = values["quantity"] if "quantity" in columns else 1
         elements.append(
             Element(
-                id=f"{path.name}!{sheet or ''}!{row_no}",
+                id=f"{id_prefix}!{row_no}",
                 side=side,
                 type=ElementType(etype),
                 sources=[ref(anchor)],

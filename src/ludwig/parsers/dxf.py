@@ -19,10 +19,12 @@ from ludwig.model import (
     SourceRef,
     normalise_mark,
 )
+from ludwig.parsers import schedule
+from ludwig.parsers.tables import Segment, Text, cell_text, grid
 from ludwig.parsers.values import UNIT_TO_MM, as_number, as_term
 
 DEFAULT_MAPPING = Path(__file__).parent / "mappings" / "dxf_default.yaml"
-_MAPPING_KEYS = {"layers", "blocks", "attributes", "units", "extents", "props"}
+_MAPPING_KEYS = {"layers", "blocks", "attributes", "units", "extents", "props", "tables"}
 _FIELDS = {"mark", "width_mm", "height_mm", "location"}
 # $INSUNITS codes -> millimetres; 0 (unitless) is read as millimetres with a warning.
 _INSUNITS_TO_MM = {1: 25.4, 2: 304.8, 4: 1.0, 5: 10.0, 6: 1000.0}
@@ -49,6 +51,11 @@ def load_mapping(path: str | Path | None = None) -> dict[str, Any]:
             raise ValueError(f"{path}: prop {name} is malformed")
         if spec.get("as") not in ("number", "text") or not spec.get("tags"):
             raise ValueError(f"{path}: prop {name} needs tags and as: number|text")
+    for i, table in enumerate(mapping.get("tables", []), start=1):
+        if not isinstance(table, dict) or not table.get("layers"):
+            raise ValueError(f"{path}: table {i} needs layers")
+        schedule.load_mapping_dict({k: v for k, v in table.items() if k != "layers"},
+                                   f"{path}: table {i}")  # fmt: skip
     return mapping
 
 
@@ -164,5 +171,60 @@ def parse(
                 props=dict(props),
             )
         )
+    for i, table in enumerate(mapping.get("tables", []), start=1):
+        found, warned = _table(doc, file, i, table)
+        elements.extend(found)
+        warnings.extend(warned)
     elements.sort(key=lambda e: (e.type.value, e.mark or "", e.id))
     return elements, warnings
+
+
+def _segments(entity: Any) -> list[Segment]:
+    kind = entity.dxftype()
+    if kind == "LINE":
+        s, e = entity.dxf.start, entity.dxf.end
+        return [Segment(s.x, s.y, e.x, e.y)]
+    if kind in ("LWPOLYLINE", "POLYLINE"):
+        points = [(p[0], p[1]) for p in (entity.get_points("xy") if kind == "LWPOLYLINE"
+                  else [v.dxf.location for v in entity.vertices])]  # fmt: skip
+        if entity.is_closed and points:
+            points.append(points[0])
+        return [Segment(a[0], a[1], b[0], b[1]) for a, b in zip(points, points[1:], strict=False)]
+    return []
+
+
+def _table(doc: Any, file: str, number: int, spec: dict[str, Any]) -> tuple[list, list]:
+    """A schedule drawn as lines and text on the table's layers, read like a spreadsheet."""
+    from ezdxf import bbox
+
+    layers = {name.casefold() for name in spec["layers"]}
+    segments: list[Segment] = []
+    texts: list[Text] = []
+    for entity in doc.modelspace():
+        if entity.dxf.layer.casefold() not in layers:
+            continue
+        kind = entity.dxftype()
+        if kind in ("TEXT", "MTEXT"):
+            box = bbox.extents([entity])
+            if not box.has_data:
+                continue
+            content = entity.dxf.text if kind == "TEXT" else entity.plain_text()
+            texts.append(Text(box.center.x, box.center.y, content, entity))
+        else:
+            segments.extend(_segments(entity))
+    cells = grid(segments, texts)
+    if not cells:
+        message = f"table {number}: no ruled table on layers {spec['layers']}"
+        return [], [ParseWarning(file, message)]
+    rows = [[cell_text(c) for c in row] for row in cells]
+
+    def locate(col: int | None, row: int) -> SourceRef:
+        cell = cells[row - 1][col] if col is not None else []
+        first = cell[0].origin if cell else None
+        return SourceRef(file, SourceKind.DXF, cell=schedule.cell_name(col or 0, row),
+                         dxf_handle=first.dxf.handle if first is not None else None,
+                         layer=first.dxf.layer if first is not None else None)  # fmt: skip
+
+    mapping = {k: v for k, v in spec.items() if k != "layers"}
+    return schedule.parse_rows(rows, file, f"{Path(file).name}!table{number}", mapping,
+                               Side.ARCHITECT, locate)  # fmt: skip

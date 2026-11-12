@@ -1,6 +1,6 @@
 """Write the invented 2D delivery of the Duplex project: a DXF floor plan with joinery blocks.
 
-Usage: python tools/make_duplex_2d.py   (rewrites fixtures/dxf/duplex_joinery_plan.dxf)
+Usage: python tools/make_duplex_2d.py   (rewrites the invented files in fixtures/dxf/)
 
 The positions, sizes, levels and opening directions come from the Duplex IFC model, so the
 2D delivery describes the same project as the IFC version (PLAN phase 3 gate).
@@ -17,13 +17,46 @@ from ludwig.parsers import ifc
 ROOT = Path(__file__).resolve().parent.parent
 MODEL = ROOT / "fixtures" / "ifc" / "duplex_architectural_ifc2x3.ifc"
 OUT = ROOT / "fixtures" / "dxf" / "duplex_joinery_plan.dxf"
+SCHEDULE = ROOT / "fixtures" / "schedule" / "duplex_joinery_schedule.csv"
+SCHEDULE_DXF = ROOT / "fixtures" / "dxf" / "duplex_joinery_schedule.dxf"
+COLUMN_WIDTHS = [600, 2600, 700, 900, 900, 1100, 1300, 1500, 700]
+ROW_HEIGHT = 300
 DIRECTION = {"left": "L", "right": "R"}
 
 
+def schedule_dxf() -> None:
+    """The invented joinery schedule drawn as a ruled table of lines and text."""
+    import csv
+
+    rows = list(csv.reader(SCHEDULE.read_text(encoding="utf-8").splitlines(), delimiter=";"))
+    doc = ezdxf.new("R2018", setup=False)
+    doc.header["$INSUNITS"] = 4
+    doc.layers.add("STAAT")
+    msp = doc.modelspace()
+    xs = [0]
+    for w in COLUMN_WIDTHS:
+        xs.append(xs[-1] + w)
+    top = len(rows) * ROW_HEIGHT
+    for i in range(len(rows) + 1):
+        msp.add_line((0, top - i * ROW_HEIGHT), (xs[-1], top - i * ROW_HEIGHT),
+                     dxfattribs={"layer": "STAAT"})  # fmt: skip
+    for x in xs:
+        msp.add_line((x, 0), (x, top), dxfattribs={"layer": "STAAT"})
+    for r, row in enumerate(rows):
+        for c, value in enumerate(row):
+            if value:
+                y = top - r * ROW_HEIGHT - 200
+                at = {"layer": "STAAT", "insert": (xs[c] + 50, y)}
+                msp.add_text(value, height=100, dxfattribs=at)
+    msp.add_text("KOZIJNSTAAT", height=200, dxfattribs={"layer": "STAAT", "insert": (0, top + 200)})
+    doc.saveas(SCHEDULE_DXF)
+
+
 def main() -> None:
-    """Rebuild the DXF fixture from the model."""
-    elements, _ = ifc.parse(MODEL)
+    """Rebuild the DXF fixtures from the model and the invented schedule."""
     ezdxf.options.write_fixed_meta_data_for_testing = True  # same bytes on every run
+    schedule_dxf()
+    elements, _ = ifc.parse(MODEL)
     doc = ezdxf.new("R2018", setup=False)
     doc.header["$INSUNITS"] = 4  # millimetres
     doc.layers.add("KOZIJNEN")
