@@ -119,13 +119,6 @@ def test_parent_fields_are_readable(tmp_path):
     assert findings[1].reason == "parent.width_mm is not set"
 
 
-def test_rule_kinds_not_built_yet_say_so(tmp_path):
-    pack = write_pack(tmp_path, "- id: w\n  kind: compare\n  severity: blocker\n"
-                      "  left: architect.width_mm\n  right: erp.width_mm\n")  # fmt: skip
-    (f,) = engine.run([sash("R1", 1.0)], pack).findings
-    assert f.status is Status.NOT_CHECKED and "not supported yet" in f.reason
-
-
 def test_coverage_numbers(pack):
     result = engine.run([sash("R1", 1650.0), sash("R2", None), door({"fire_rating_min": 0.0})],
                         pack)  # fmt: skip

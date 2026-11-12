@@ -70,7 +70,7 @@ Goal: compare what the architect asked for with what was entered for production.
       (column names, units, type vocabulary). Acceptance: sample export parses.
 - [x] 2.3 `match.py`: pair architect and ERP elements as in SPEC section 5.
       Acceptance: tests for exact, fallback, unmatched and ambiguous cases.
-- [ ] 2.4 `compare` rule type in the engine with tolerance. Acceptance: fixtures.
+- [x] 2.4 `compare` rule type in the engine with tolerance. Acceptance: fixtures.
 - [ ] 2.5 Reconciliation rules: quantity per mark, width, height, opening direction,
       glazing type, fire rating, elements missing on either side.
 - [ ] 2.6 Report shows both values side by side with both sources.

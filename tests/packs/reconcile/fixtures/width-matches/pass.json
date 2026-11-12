@@ -1,0 +1,5 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "K1", "width_mm": 1200, "sources": [{"file": "model.ifc", "kind": "ifc", "ifc_guid": "g1"}]},
+  {"side": "architect", "type": "frame", "mark": "K1", "width_mm": 1200.5, "sources": [{"file": "schedule.csv", "kind": "sheet", "cell": "D2"}]},
+  {"side": "erp", "type": "frame", "mark": "K1", "width_mm": 1200}
+]}

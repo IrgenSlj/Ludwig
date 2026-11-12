@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from ludwig.match import pairs
 from ludwig.model import Element, Side, SourceKind, SourceRef, Status
 from ludwig.rules import engine
 from ludwig.rules.packs import Pack
@@ -37,7 +38,8 @@ def check(pack: Pack) -> list[str]:
                 if path.suffix != ".json":
                     problems.append(f"{rule.id}: {path.name}: only .json fixtures are supported")
                     continue
-                result = engine.run(load_elements(path), pack)
+                elements = load_elements(path)
+                result = engine.run(elements, pack, pairs(elements, pack.match_tolerance_mm))
                 statuses = [f.status for f in result.findings if f.rule_id == rule.id]
                 if case == "pass" and (Status.PASS not in statuses or Status.FAIL in statuses):
                     problems.append(f"{rule.id}: {path.name} should pass, got {statuses}")

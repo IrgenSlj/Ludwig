@@ -119,3 +119,10 @@ def match(elements: list[Element], tolerance_mm: float = 0.0) -> list[Match]:
         return (m.type.value, m.mark or "", m.status.value, m.elements[0].id)
 
     return sorted(out, key=order)
+
+
+def pairs(elements: list[Element], tolerance_mm: float = 0.0) -> list[Match] | None:
+    """`match` when the table holds production data, else None (compare rules not checked)."""
+    if not any(el.side is Side.ERP for el in elements):
+        return None
+    return match(elements, tolerance_mm)

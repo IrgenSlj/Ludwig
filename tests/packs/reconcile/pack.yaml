@@ -1,0 +1,4 @@
+name: reconcile
+version: 0.0.1
+description: Engine test pack for compare rules. Invented.
+match_tolerance_mm: 1

@@ -1,0 +1,23 @@
+- id: width-matches
+  kind: compare
+  applies_to: {type: frame}
+  left: architect.width_mm
+  right: erp.width_mm
+  tolerance: 1
+  severity: blocker
+  message: "Frame {mark}: width {architect.width_mm} in the drawings, {erp.width_mm} in production"
+
+- id: quantity-matches
+  kind: compare
+  applies_to: {type: frame}
+  left: architect.quantity
+  right: erp.quantity
+  severity: blocker
+
+- id: glazing-matches
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.glazing_type)
+  left: architect.props.glazing_type
+  right: erp.props.glazing_type
+  severity: warning

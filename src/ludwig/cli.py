@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from ludwig.adapters import erp_table
+from ludwig.match import pairs
 from ludwig.model import Element, ParseWarning, Severity, Status
 from ludwig.parsers import ifc, schedule
 from ludwig.report import excel
@@ -81,7 +82,7 @@ def check(args: argparse.Namespace) -> int:
         found, warned = read_erp(Path(args.erp), Path(args.mapping) if args.mapping else None)
         elements.extend(found)
         warnings.extend(warned)
-    result = engine.run(elements, pack)
+    result = engine.run(elements, pack, pairs(elements, pack.match_tolerance_mm))
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
