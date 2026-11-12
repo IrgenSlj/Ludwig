@@ -1,6 +1,6 @@
 # Ludwig — development plan
 
-Status: phase 0 done except 0.5–0.6 (Irgen); phase 1 done except 1.7 (waits for the catalogue); phase 2 gate met on invented data, 2.1 open until a real export is mapped; phase 3 gate met; phase 4 tasks done, gate needs a person to open the BCF in two viewers.
+Status: phases 2–5 built on invented data. Waiting on people: 0.5–0.6 and 1.7 (error catalogue), 2.1 (real ERP export), phase 4 gate (BCF in two viewers), phase 5 gate (a work preparer uses it unaided); 5.3 deferred.
 
 Each phase ends in a gate. A phase is finished only when its gate is met. Tasks marked
 **(Irgen)** need a person and cannot be done by Claude Code.
