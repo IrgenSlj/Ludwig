@@ -19,8 +19,9 @@ DRAWN_SET = [FIX / "dxf" / "duplex_joinery_plan.dxf",
 
 def findings(tmp_path, architect, export):
     out = tmp_path / f"{architect[0].suffix[1:]}-{export}"
-    code = main(["check", "--architect", *map(str, architect),
-                 "--erp", str(FIX / "erp" / export), "--pack", PACK, "--out", str(out)])  # fmt: skip
+    erp = str(FIX / "erp" / export)
+    code = main(["check", "--architect", *map(str, architect), "--erp", erp,
+                 "--pack", PACK, "--out", str(out)])  # fmt: skip
     report = json.loads((out / "report.json").read_text())
     return code, sorted((f["rule_id"], f["mark"] or "", f["status"], f["severity"])
                         for f in report["findings"])  # fmt: skip
