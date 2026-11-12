@@ -99,7 +99,7 @@ findings as the IFC version.
 - [ ] 4.1 `rules/ids.py`: evaluate IDS specifications against the element table for the
       entity, attribute, property, classification and material facets, with value
       restrictions. Acceptance: fixtures per facet; unsupported facets give `not_checked`.
-- [ ] 4.2 `report/bcf.py`: one topic per blocker and warning, with the element
+- [x] 4.2 `report/bcf.py`: one topic per blocker and warning, with the element
       reference, so findings open in common model checkers.
 - [ ] 4.3 `report/pdf_markup.py`: add annotations to a copy of the source PDF at the
       evidence location.

@@ -149,6 +149,15 @@ class Element:
         """The source of one field: its own if recorded, else the element's first source."""
         return self.field_sources.get(name, self.sources[0])
 
+    def sources_of(self, name: str) -> list[SourceRef]:
+        """Every source behind one field: its own if recorded, else all the element's sources.
+
+        A grouped IFC element states each value once for all its occurrences, so each
+        occurrence is evidence.
+        """
+        own = self.field_sources.get(name)
+        return [own] if own is not None else list(self.sources)
+
     def to_dict(self) -> dict[str, Any]:
         """JSON form."""
         return {

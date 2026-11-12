@@ -61,15 +61,15 @@ class _Scope:
         value = getattr(element, name)
         return value.value if hasattr(value, "value") else value
 
-    def source(self, name: str) -> SourceRef | None:
+    def sources(self, name: str) -> list[SourceRef]:
         if name.startswith("limits."):
-            return None
+            return []
         element = self.element
         if name.startswith("parent."):
             if self.parent is None:
-                return None
+                return []
             element, name = self.parent, name[len("parent.") :]
-        return element.source_of(name)
+        return element.sources_of(name)
 
 
 def _render(template: str, scope: _Scope, extra: dict[str, Any]) -> str:
@@ -83,9 +83,9 @@ def _render(template: str, scope: _Scope, extra: dict[str, Any]) -> str:
 def _evidence(scope: _Scope, names: list[str]) -> list[SourceRef]:
     out: list[SourceRef] = []
     for name in names:
-        src = scope.source(name)
-        if src is not None and src not in out:
-            out.append(src)
+        for src in scope.sources(name):
+            if src not in out:
+                out.append(src)
     return out
 
 
@@ -206,7 +206,7 @@ def _run_consistent(rule: Rule, pack: Pack, elements: list[Element], by_id: dict
         scope = _Scope(members[0], pack, by_id)
         evidence: list[SourceRef] = []
         for el in members:
-            for src in el.sources if rule.field == "quantity" else [el.source_of(rule.field)]:
+            for src in el.sources if rule.field == "quantity" else el.sources_of(rule.field):
                 if src not in evidence:
                     evidence.append(src)
         group = dict(
@@ -483,7 +483,7 @@ def _run_compare(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: dic
         rside = _side_values(rmembers, right, pack, by_id)
         evidence: list[SourceRef] = []
         for el, name in [*((e, left) for e in lmembers), *((e, right) for e in rmembers)]:
-            for src in el.sources if name == "quantity" else [el.source_of(name)]:
+            for src in el.sources if name == "quantity" else el.sources_of(name):
                 if src is not None and src not in evidence:
                     evidence.append(src)
         lshown, rshown = lside.shown(), rside.shown()

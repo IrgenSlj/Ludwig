@@ -11,7 +11,7 @@ from ludwig.adapters import erp_table
 from ludwig.match import pairs
 from ludwig.model import Element, ParseWarning, Severity, Status
 from ludwig.parsers import dxf, ifc, pdf, schedule
-from ludwig.report import excel
+from ludwig.report import bcf, excel
 from ludwig.report import json as json_report
 from ludwig.rules import engine
 from ludwig.rules.packs import PackError, load_pack
@@ -110,6 +110,7 @@ def check(args: argparse.Namespace) -> int:
     meta = (pack.name, pack.version, warnings, pack.content_hash)
     json_path = json_report.write(out / "report.json", result, *meta)
     excel.write(out / "report.xlsx", result, *meta)
+    bcf.write(out / "report.bcf", result)
 
     def fails(severity: Severity) -> int:
         return sum(f.status is Status.FAIL and f.severity is severity for f in result.findings)
@@ -142,7 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mapping", metavar="FILE", help="export mapping (default: <name>.mapping.yaml beside it)"
     )
     p.add_argument("--pack", required=True, metavar="DIR", help="rule pack folder")
-    p.add_argument("--out", required=True, metavar="DIR", help="folder for report.json/.xlsx")
+    p.add_argument("--out", required=True, metavar="DIR", help="folder for report.json/.xlsx/.bcf")
     p.set_defaults(func=check)
     return parser
 

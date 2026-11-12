@@ -182,5 +182,5 @@ configurable and an EU-hosted option must exist.
    fallback matching matters.
 3. Which Dutch requirements belong in the first pack beyond factory limits. Each must
    be checked against the current official text before it becomes a rule.
-4. The exact package for writing BCF, and whether IfcOpenShell's IDS parser can be
-   reused for reading IDS files. Verify before adding either.
+4. Whether IfcOpenShell's IDS parser can be reused for reading IDS files. Verify before
+   adding it. (BCF is written with the standard library; see DECISIONS 2026-11-12.)

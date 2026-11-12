@@ -51,3 +51,11 @@ def test_clean_export_gives_no_findings(tmp_path):
     assert code == EXIT_OK
     assert report["summary"]["by_status"].get("fail", 0) == 0
     assert report["summary"]["not_checked"] == 0
+
+
+def test_grouped_model_elements_cite_every_occurrence(tmp_path):
+    _, report = check(tmp_path, "duplex_erp_export_seeded.csv")
+    [door28] = [f for f in report["findings"]
+                if f["rule_id"] == "erp-opening-direction" and f["mark"] == "28"]  # fmt: skip
+    guids = [e["ifc_guid"] for e in door28["evidence"] if e["kind"] == "ifc"]
+    assert len(guids) == len(set(guids)) == 4
