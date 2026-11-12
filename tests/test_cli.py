@@ -98,3 +98,12 @@ def test_unreadable_ifc_is_a_parse_warning_not_a_crash(tmp_path):
     assert run(tmp_path, "--architect", str(bad), "--pack", str(make_pack(tmp_path, 1))) == EXIT_OK
     data = json.loads((tmp_path / "out" / "report.json").read_text())
     assert data["summary"]["parse_warnings"] == 1
+
+
+def test_dxf_drawing_is_read_with_the_default_mapping(tmp_path):
+    plan = ROOT / "fixtures" / "dxf" / "duplex_joinery_plan.dxf"
+    pack = make_pack(tmp_path, 4000)
+    assert run(tmp_path, "--architect", str(plan), "--pack", str(pack)) == EXIT_BLOCKERS
+    data = json.loads((tmp_path / "out" / "report.json").read_text())
+    [fail] = [f for f in data["findings"] if f["status"] == "fail"]
+    assert fail["mark"] == "05" and fail["evidence"][0]["kind"] == "dxf"

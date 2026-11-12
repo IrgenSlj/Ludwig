@@ -1,0 +1,38 @@
+# Default DXF mapping: joinery drawn as block references with attributes.
+# An office with other layer names, block names or attribute tags gets its own file.
+
+# Only INSERTs on these layers are read (names ignore case). Empty list: every layer.
+layers: []
+
+# Block name pattern (fnmatch, ignoring case) -> element type. Unlisted blocks are skipped.
+blocks:
+  "KOZ*": frame
+  "KOZIJN*": frame
+  "DEUR*": frame
+  "RAAM*": frame
+  "WINDOW*": frame
+  "DOOR*": frame
+
+# Attribute tags per field; the first tag present with a value wins (tags ignore case).
+attributes:
+  mark: [MERK, POS, MARK, TYPE_MARK]
+  width_mm: [BREEDTE, B, WIDTH]
+  height_mm: [HOOGTE, H, HEIGHT]
+  location: [VERDIEPING, LEVEL]
+
+# Unit of length values in attributes. Block extents use the drawing's $INSUNITS.
+units: mm
+
+# When an attribute gives no size: block extent along the insert's own x or y axis.
+# Plan drawings show the width along x; y is the wall depth, so height is not taken.
+extents:
+  width_mm: x
+
+props:
+  opening_direction:
+    tags: [DRAAIRICHTING, DRAAI, SWING]
+    as: text
+    values: {links: left, l: left, rechts: right, r: right}
+  fire_rating_min: {tags: [BRANDWERENDHEID, WBDBO, FIRE], as: number}
+  glazing_type: {tags: [GLAS, BEGLAZING, GLAZING], as: text}
+  burglary_class: {tags: [INBRAAK, WK, RC], as: text}

@@ -82,7 +82,7 @@ mismatches) runs end to end, and all ten are found.
 
 Goal: work for projects that arrive without a model.
 
-- [ ] 3.1 `parsers/dxf.py`: block references with attributes on mapped layers become
+- [x] 3.1 `parsers/dxf.py`: block references with attributes on mapped layers become
       elements; dimensions come from attributes first, block extents second.
 - [ ] 3.2 Table extraction from DXF (schedules drawn as text and lines).
 - [ ] 3.3 `parsers/pdf.py`: vector PDF only. Extract text with positions and ruled

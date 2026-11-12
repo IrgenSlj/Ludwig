@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from ludwig.adapters import erp_table
 from ludwig.match import pairs
 from ludwig.model import Element, ParseWarning, Severity, Status
-from ludwig.parsers import ifc, schedule
+from ludwig.parsers import dxf, ifc, schedule
 from ludwig.report import excel
 from ludwig.report import json as json_report
 from ludwig.rules import engine
@@ -30,6 +31,15 @@ def _schedule_mapping(path: Path) -> Path:
     return mapping
 
 
+def _optional_mapping(path: Path, load: Any) -> Any:
+    """The office mapping `<name>.mapping.yaml` beside a drawing, else the default one."""
+    mapping = path.with_name(f"{path.stem}.mapping.yaml")
+    try:
+        return load(mapping if mapping.exists() else None)
+    except ValueError as exc:
+        raise UsageError(str(exc)) from None
+
+
 def read_architect(files: list[Path]) -> tuple[list[Element], list[ParseWarning]]:
     """Parse every architect file by its extension."""
     elements: list[Element] = []
@@ -40,6 +50,8 @@ def read_architect(files: list[Path]) -> tuple[list[Element], list[ParseWarning]
         suffix = path.suffix.lower()
         if suffix == ".ifc":
             found, warned = ifc.parse(path)
+        elif suffix == ".dxf":
+            found, warned = dxf.parse(path, _optional_mapping(path, dxf.load_mapping))
         elif suffix in SCHEDULE_SUFFIXES:
             try:
                 mapping = schedule.load_mapping(_schedule_mapping(path))
@@ -112,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         required=True,
         metavar="FILE",
-        help="IFC models and schedules (.xlsx/.csv with a <name>.mapping.yaml)",
+        help="IFC models, DXF drawings and schedules (.xlsx/.csv with a <name>.mapping.yaml)",
     )
     p.add_argument("--erp", metavar="FILE", help="production export (.xlsx/.csv)")
     p.add_argument(
