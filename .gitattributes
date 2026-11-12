@@ -1,1 +1,3 @@
 fixtures/** -text
+packs/** -text
+tests/packs/** -text

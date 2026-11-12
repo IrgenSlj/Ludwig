@@ -107,8 +107,9 @@ def check(args: argparse.Namespace) -> int:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    json_path = json_report.write(out / "report.json", result, pack.name, pack.version, warnings)
-    excel.write(out / "report.xlsx", result, pack.name, pack.version, warnings)
+    meta = (pack.name, pack.version, warnings, pack.content_hash)
+    json_path = json_report.write(out / "report.json", result, *meta)
+    excel.write(out / "report.xlsx", result, *meta)
 
     def fails(severity: Severity) -> int:
         return sum(f.status is Status.FAIL and f.severity is severity for f in result.findings)

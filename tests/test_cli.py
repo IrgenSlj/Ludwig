@@ -121,3 +121,12 @@ def test_pdf_schedule_needs_its_mapping(tmp_path, capsys):
     shutil.copy(pdf, lonely)
     assert run(tmp_path, "--architect", str(lonely), "--pack", str(pack)) == EXIT_USAGE
     assert "staat.mapping.yaml" in capsys.readouterr().err
+
+
+def test_report_records_pack_name_version_and_hash(tmp_path):
+    from ludwig.rules.packs import load_pack
+
+    pack = make_pack(tmp_path, 5000)
+    run(tmp_path, "--architect", str(DUPLEX), "--pack", str(pack))
+    data = json.loads((tmp_path / "out" / "report.json").read_text())
+    assert data["pack"] == {"name": "t", "version": "1", "hash": load_pack(pack).content_hash}

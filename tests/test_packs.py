@@ -180,3 +180,20 @@ def test_unmatched_rules_take_type_only(tmp_path):
     )
     with pytest.raises(PackError, match="missing_on must be one of architect, erp"):
         load_pack(tmp_path)
+
+
+def test_content_hash_follows_verdict_files_not_fixtures(tmp_path):
+    import shutil
+
+    from ludwig.rules.packs import load_pack
+
+    demo = Path(__file__).resolve().parent / "packs" / "demo"
+    copy = tmp_path / "demo"
+    shutil.copytree(demo, copy)
+    first = load_pack(copy).content_hash
+    assert first.startswith("sha256:") and first == load_pack(demo).content_hash
+    (copy / "fixtures" / "extra.txt").write_text("x")
+    assert load_pack(copy).content_hash == first
+    limits = copy / "limits.yaml"
+    limits.write_text(limits.read_text().replace("1500", "1501"))
+    assert load_pack(copy).content_hash != first

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -130,6 +131,7 @@ class Pack:
     limits: dict[str, Any] = field(default_factory=dict)
     rules: list[Rule] = field(default_factory=list)
     ids_path: Path | None = None
+    content_hash: str = ""
 
     def limit(self, path: str) -> Any:
         """A value from limits.yaml by dotted path (without the `limits.` prefix)."""
@@ -329,6 +331,7 @@ def load_pack(root: str | Path) -> Pack:
     rules = [_load_rule(raw, checks_file, limit_names, seen) for raw in checks]
 
     ids_path = root / files["ids"] if "ids" in files else None
+    hashed = [pack_file, checks_file, limits_file, *([ids_path] if ids_path else [])]
     return Pack(
         name=meta["name"],
         version=meta["version"],
@@ -338,7 +341,21 @@ def load_pack(root: str | Path) -> Pack:
         limits=_plain(limits),
         rules=rules,
         ids_path=ids_path,
+        content_hash=content_hash(root, hashed),
     )
+
+
+def content_hash(root: Path, files: list[Path]) -> str:
+    """sha256 over the pack files that decide its verdicts: each file's path and bytes.
+
+    Fixtures do not count; any byte changed in pack, checks, limits or IDS file does.
+    """
+    digest = hashlib.sha256()
+    present = {f for f in files if f.exists()}
+    for path in sorted(present, key=lambda f: f.relative_to(root).as_posix()):
+        digest.update(path.relative_to(root).as_posix().encode() + b"\0")
+        digest.update(path.read_bytes() + b"\0")
+    return "sha256:" + digest.hexdigest()
 
 
 def _plain(node: Any) -> Any:

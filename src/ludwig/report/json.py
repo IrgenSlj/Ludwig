@@ -16,7 +16,11 @@ SCHEMA_VERSION = 1
 
 
 def to_dict(
-    result: RunResult, pack_name: str, pack_version: str, warnings: list[ParseWarning]
+    result: RunResult,
+    pack_name: str,
+    pack_version: str,
+    warnings: list[ParseWarning],
+    pack_hash: str | None = None,
 ) -> dict[str, Any]:
     """The report as plain data."""
     statuses = Counter(f.status.value for f in result.findings)
@@ -24,7 +28,7 @@ def to_dict(
     return {
         "schema_version": SCHEMA_VERSION,
         "ludwig_version": ludwig.__version__,
-        "pack": {"name": pack_name, "version": pack_version},
+        "pack": {"name": pack_name, "version": pack_version, "hash": pack_hash},
         "summary": {
             "rules_run": result.rules_run,
             "elements_total": result.elements_total,
@@ -50,8 +54,10 @@ def write(
     pack_name: str,
     pack_version: str,
     warnings: list[ParseWarning],
+    pack_hash: str | None = None,
 ) -> Path:
     """Write report.json."""
     path = Path(path)
-    path.write_text(dumps(to_dict(result, pack_name, pack_version, warnings)), encoding="utf-8")
+    data = to_dict(result, pack_name, pack_version, warnings, pack_hash)
+    path.write_text(dumps(data), encoding="utf-8")
     return path

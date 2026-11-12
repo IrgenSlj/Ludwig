@@ -103,7 +103,7 @@ findings as the IFC version.
       reference, so findings open in common model checkers.
 - [ ] 4.3 `report/pdf_markup.py`: add annotations to a copy of the source PDF at the
       evidence location.
-- [ ] 4.4 Pack versioning: reports record pack name, version and a content hash.
+- [x] 4.4 Pack versioning: reports record pack name, version and a content hash.
 
 Gate: findings from one run open correctly as BCF in two different viewers.
 

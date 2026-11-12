@@ -76,6 +76,7 @@ def write(
     pack_name: str,
     pack_version: str,
     warnings: list[ParseWarning],
+    pack_hash: str | None = None,
 ) -> Path:
     """Write report.xlsx with Findings, Passed, Summary and Parse warnings sheets."""
     import openpyxl
@@ -98,6 +99,7 @@ def write(
 
     summary = [
         ["Pack", f"{pack_name} {pack_version}"],
+        ["Pack hash", pack_hash],
         ["Rules run", result.rules_run],
         ["Elements", result.elements_total],
         ["Elements covered", result.elements_covered],
