@@ -266,3 +266,27 @@ class Finding:
             evidence=[SourceRef.from_dict(s) for s in d.get("evidence", [])],
             reason=d.get("reason"),
         )
+
+
+class MatchStatus(StrEnum):
+    MATCHED = "matched"
+    MISSING_IN_ERP = "missing_in_erp"
+    NOT_IN_ARCHITECT_SET = "not_in_architect_set"
+    AMBIGUOUS = "ambiguous"
+
+
+@dataclass
+class Match:
+    """Architect elements paired with ERP elements (SPEC section 5); one side may be empty."""
+
+    status: MatchStatus
+    type: ElementType
+    mark: str | None
+    architect: list[Element]
+    erp: list[Element]
+    by: str | None = None  # "mark" or "fallback" when matched
+
+    @property
+    def elements(self) -> list[Element]:
+        """Both sides, architect first."""
+        return [*self.architect, *self.erp]

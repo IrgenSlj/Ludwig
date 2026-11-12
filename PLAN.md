@@ -68,7 +68,7 @@ Goal: compare what the architect asked for with what was entered for production.
       or anonymised content, or describe its columns.
 - [x] 2.2 `adapters/erp_table.py`: generic CSV/Excel importer driven by `mapping.yaml`
       (column names, units, type vocabulary). Acceptance: sample export parses.
-- [ ] 2.3 `match.py`: pair architect and ERP elements as in SPEC section 5.
+- [x] 2.3 `match.py`: pair architect and ERP elements as in SPEC section 5.
       Acceptance: tests for exact, fallback, unmatched and ambiguous cases.
 - [ ] 2.4 `compare` rule type in the engine with tolerance. Acceptance: fixtures.
 - [ ] 2.5 Reconciliation rules: quantity per mark, width, height, opening direction,
