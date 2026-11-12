@@ -35,3 +35,12 @@ def as_int(raw: Any) -> int | None:
     if number is None or number < 0 or not number.is_integer():
         return None
     return int(number)
+
+
+def as_term(raw: Any, vocabulary: dict[str, str] | None) -> str:
+    """Trimmed text, translated through the mapping's vocabulary (keys ignore case)."""
+    text = str(raw).strip()
+    if not vocabulary:
+        return text
+    lookup = {str(k).strip().casefold(): str(v) for k, v in vocabulary.items()}
+    return lookup.get(text.casefold(), text)

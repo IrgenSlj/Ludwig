@@ -18,7 +18,7 @@ from ludwig.model import (
     SourceRef,
     normalise_mark,
 )
-from ludwig.parsers.values import UNIT_TO_MM, as_int, as_number
+from ludwig.parsers.values import UNIT_TO_MM, as_int, as_number, as_term
 
 _MAPPING_KEYS = {"sheet", "header_row", "type", "columns", "units", "props", "empty_values"}
 _FIELDS = {"mark", "quantity", "width_mm", "height_mm", "depth_mm", "location"}
@@ -53,8 +53,10 @@ def load_mapping_dict(mapping: dict[str, Any], path: str = "mapping") -> dict[st
     else:
         raise ValueError(f"{path}: type is required")
     for name, spec in mapping.get("props", {}).items():
-        if set(spec) - {"column", "as"} or spec.get("as") not in ("number", "text"):
+        if set(spec) - {"column", "as", "values"} or spec.get("as") not in ("number", "text"):
             raise ValueError(f"{path}: prop {name} is malformed")
+        if "values" in spec and (spec["as"] != "text" or not isinstance(spec["values"], dict)):
+            raise ValueError(f"{path}: prop {name}: values needs as: text and a mapping")
     return mapping
 
 
@@ -193,7 +195,7 @@ def parse(
                     continue
                 props[name] = number
             else:
-                props[name] = str(raw)
+                props[name] = as_term(raw, mapping["props"][name].get("values"))
             field_sources[f"props.{name}"] = ref(idx)
 
         anchor = columns.get("mark") if columns.get("mark") is not None else (used or [None])[0]

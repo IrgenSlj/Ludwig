@@ -11,10 +11,10 @@ from typing import Any
 import yaml
 
 from ludwig.model import Element, ElementType, ParseWarning, Side, SourceKind, SourceRef
-from ludwig.parsers.values import as_number
+from ludwig.parsers.values import as_number, as_term
 
 _MAPPING_KEYS = {"classes", "mark", "width", "height", "props", "name_as_value_is_empty"}
-_PROP_KEYS = {"paths", "as", "ignore"}
+_PROP_KEYS = {"paths", "as", "ignore", "values"}
 
 
 def load_mapping(path: str | Path | None = None) -> dict[str, Any]:
@@ -33,6 +33,8 @@ def load_mapping(path: str | Path | None = None) -> dict[str, Any]:
         bad = set(spec) - _PROP_KEYS
         if bad or spec.get("as") not in ("number", "text"):
             raise ValueError(f"IFC mapping: prop {name} is malformed")
+        if "values" in spec and (spec["as"] != "text" or not isinstance(spec["values"], dict)):
+            raise ValueError(f"IFC mapping: prop {name}: values needs as: text and a mapping")
     return mapping
 
 
@@ -136,7 +138,7 @@ def parse(
                             continue
                         props[name] = number
                     else:
-                        props[name] = str(raw)
+                        props[name] = as_term(raw, spec.get("values"))
                 container = ue.get_container(occ)
                 location = getattr(container, "Name", None) or None
             except Exception as exc:  # noqa: BLE001

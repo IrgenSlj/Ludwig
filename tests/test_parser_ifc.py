@@ -78,10 +78,10 @@ def test_revit_placeholder_values_are_not_set_and_reported(duplex):
 def test_opening_direction_comes_from_the_type(duplex):
     elements, _ = duplex
     doors = [e for e in elements if e.mark in {"28", "32", "33", "56"}]
-    assert {e.props.get("opening_direction") for e in doors} <= {
-        "SINGLE_SWING_LEFT",
-        "SINGLE_SWING_RIGHT",
-    }
+    by_mark = sorted((e.mark, e.location, e.props["opening_direction"]) for e in doors)
+    assert by_mark == [("28", "Level 1", "left"), ("28", "Level 2", "right"),
+                       ("32", "Level 2", "left"), ("32", "Level 2", "right"),
+                       ("33", "Level 1", "right"), ("56", "Level 1", "left")]  # fmt: skip
     assert not any("opening_direction" in e.props for e in elements if e.mark == "01")
 
 

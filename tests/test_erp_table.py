@@ -27,7 +27,7 @@ def test_sample_export_parses_to_erp_frames():
     roof = next(e for e in elements if e.mark == "36")
     assert (roof.width_mm, roof.height_mm) == (1172.5, 634.8)
     door = next(e for e in elements if e.mark == "33")
-    assert door.props == {"fire_rating_min": 30.0, "opening_direction": "rechts"}
+    assert door.props == {"fire_rating_min": 30.0, "opening_direction": "right"}
     assert door.source_of("props.fire_rating_min").cell == "J11"
 
 

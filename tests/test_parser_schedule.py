@@ -33,7 +33,7 @@ def test_invented_csv_schedule_parses():
     roof = next(e for e in elements if e.mark == "36")
     assert (roof.width_mm, roof.height_mm) == (1172.5, 634.8)  # decimal comma
     door = next(e for e in elements if e.mark == "33")
-    assert door.props == {"opening_direction": "rechts", "fire_rating_min": 30.0}
+    assert door.props == {"opening_direction": "right", "fire_rating_min": 30.0}
     assert door.field_sources["width_mm"].cell == "D11"
     assert door.sources[0].kind is SourceKind.SHEET and door.sources[0].cell == "A11"
     assert "glazing_type" not in door.props  # "-" is empty
@@ -128,3 +128,9 @@ def test_as_number(raw, number):
 def test_as_int():
     assert as_int("4") == 4 and as_int(4.0) == 4
     assert as_int("1.5") is None and as_int("-1") is None
+
+
+def test_values_need_text_and_a_mapping():
+    with pytest.raises(ValueError, match="values needs as: text"):
+        schedule.load_mapping_dict({"type": "frame", "props": {
+            "fire_rating_min": {"column": "F", "as": "number", "values": {"a": "b"}}}})  # fmt: skip

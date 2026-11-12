@@ -41,6 +41,8 @@ props:
     paths: ["type_attr:OperationType"]
     as: text
     ignore: ["NOTDEFINED", "USERDEFINED"]
+    # Shared vocabulary: left / right as seen from the opening side; other values stay as read.
+    values: {SINGLE_SWING_LEFT: left, SINGLE_SWING_RIGHT: right}
 
 # Revit writes an empty parameter as its own name ("FireRating": "FireRating").
 # Such values are read as not set.
