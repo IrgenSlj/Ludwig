@@ -53,7 +53,10 @@ def load_mapping_dict(mapping: dict[str, Any], path: str = "mapping") -> dict[st
     else:
         raise ValueError(f"{path}: type is required")
     for name, spec in mapping.get("props", {}).items():
-        if set(spec) - {"column", "as", "values"} or spec.get("as") not in ("number", "text"):
+        if set(spec) - {"column", "as", "values", "default"} or spec.get("as") not in (
+            "number",
+            "text",
+        ):
             raise ValueError(f"{path}: prop {name} is malformed")
         if "values" in spec and (spec["as"] != "text" or not isinstance(spec["values"], dict)):
             raise ValueError(f"{path}: prop {name}: values needs as: text and a mapping")
@@ -186,6 +189,8 @@ def parse(
         props: dict[str, Any] = {}
         for name, idx in prop_cols.items():
             raw = get(idx)
+            if raw is None and "default" in mapping["props"][name] and idx is not None:
+                raw = mapping["props"][name]["default"]
             if raw is None:
                 continue
             if mapping["props"][name]["as"] == "number":

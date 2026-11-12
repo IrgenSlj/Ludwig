@@ -1,0 +1,4 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "K1", "width_mm": 900, "height_mm": 2100},
+  {"side": "erp", "type": "frame", "width_mm": 901, "height_mm": 2100}
+]}

@@ -1,0 +1,69 @@
+# Reconciliation: architect set against production data (PLAN 2.5).
+# Tolerances are placeholders until a factory states its own.
+
+- id: missing-in-erp
+  kind: unmatched
+  applies_to: {type: frame}
+  missing_on: erp
+  severity: blocker
+  message: "Frame {mark}: in the drawings, not in production ({measured})"
+
+- id: not-in-architect-set
+  kind: unmatched
+  applies_to: {type: frame}
+  missing_on: architect
+  severity: warning
+  message: "Frame {mark}: in production, not in the drawings ({measured})"
+
+- id: erp-quantity
+  kind: compare
+  applies_to: {type: frame}
+  left: architect.quantity
+  right: erp.quantity
+  severity: blocker
+  message: "Frame {mark}: drawings {architect.quantity}, production {erp.quantity}"
+
+- id: erp-width
+  kind: compare
+  applies_to: {type: frame}
+  left: architect.width_mm
+  right: erp.width_mm
+  tolerance: 1
+  severity: blocker
+  message: "Frame {mark}: width in drawings {architect.width_mm} mm, production {erp.width_mm} mm"
+
+- id: erp-height
+  kind: compare
+  applies_to: {type: frame}
+  left: architect.height_mm
+  right: erp.height_mm
+  tolerance: 1
+  severity: blocker
+  message: "Frame {mark}: height in drawings {architect.height_mm} mm, production {erp.height_mm} mm"
+
+- id: erp-opening-direction
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.opening_direction)
+  left: architect.props.opening_direction
+  right: erp.props.opening_direction
+  severity: blocker
+  message: "Frame {mark}: opening direction in drawings {architect.props.opening_direction}, production {erp.props.opening_direction}"
+
+- id: erp-glazing-type
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.glazing_type)
+  left: architect.props.glazing_type
+  right: erp.props.glazing_type
+  severity: warning
+  message: "Frame {mark}: glazing in drawings {architect.props.glazing_type}, production {erp.props.glazing_type}"
+
+- id: erp-fire-rating
+  kind: compare
+  applies_to: {type: frame}
+  when: props.fire_rating_min > 0
+  left: architect.props.fire_rating_min
+  right: erp.props.fire_rating_min
+  severity: blocker
+  message: "Frame {mark}: fire rating in drawings {architect.props.fire_rating_min} min, production {erp.props.fire_rating_min} min"

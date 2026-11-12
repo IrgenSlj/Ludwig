@@ -1,0 +1,6 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "D1", "quantity": 2, "props": {"opening_direction": "left"}},
+  {"side": "architect", "type": "frame", "mark": "D1", "quantity": 2, "props": {"opening_direction": "right"}},
+  {"side": "erp", "type": "frame", "mark": "D1", "quantity": 2, "props": {"opening_direction": "left"}},
+  {"side": "erp", "type": "frame", "mark": "D1", "quantity": 2, "props": {"opening_direction": "right"}}
+]}

@@ -261,51 +261,171 @@ def _run_consistent(rule: Rule, pack: Pack, elements: list[Element], by_id: dict
 def _show(value: Any) -> str:
     if isinstance(value, list):
         return " / ".join(format_value(v) for v in value)
+    if isinstance(value, dict):
+        return " / ".join(f"{k} x{format_value(n)}" for k, n in value.items())
     return format_value(value)
 
 
-def _side_values(
-    members: list[Element], name: str, pack: Pack, by_id: dict
-) -> tuple[dict[str, Any], list[Element]]:
-    """Per document: the quantity total, or the distinct values; plus members lacking a value."""
-    per_doc: dict[str, Any] = {}
-    missing = []
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+@dataclass
+class _SideValues:
+    """One side of a compare: per document, quantity per stated value (or the total)."""
+
+    counts: dict[str, dict[Any, int]]
+    missing: list[Element]
+    partial: set[str]  # documents where some element does not state the value
+
+    def values(self) -> list[Any]:
+        """Every distinct value stated on this side."""
+        out: list[Any] = []
+        for counts in self.counts.values():
+            out.extend(v for v in counts if v not in out)
+        return out
+
+    def shown(self) -> dict[str, Any]:
+        """Per document: the single value, else {value: quantity}."""
+        out: dict[str, Any] = {}
+        for doc, counts in self.counts.items():
+            if len(counts) == 1:
+                out[doc] = next(iter(counts))
+            else:
+                out[doc] = {format_value(v): n for v, n in sorted(counts.items(),
+                            key=lambda kv: format_value(kv[0]))}  # fmt: skip
+        return out
+
+
+def _side_values(members: list[Element], name: str, pack: Pack, by_id: dict) -> _SideValues:
+    counts: dict[str, dict[Any, int]] = {}
+    missing: list[Element] = []
+    partial: set[str] = set()
     for el in members:
+        doc = el.sources[0].file
         value = _Scope(el, pack, by_id)(name)
         if value is None:
             missing.append(el)
+            partial.add(doc)
             continue
-        doc = el.sources[0].file
         if name == "quantity":
-            per_doc[doc] = per_doc.get(doc, 0) + value
-        else:
-            values = per_doc.setdefault(doc, [])
-            if value not in values:
-                values.append(value)
-    if name != "quantity":
-        per_doc = {d: (sorted(v, key=format_value) if len(v) > 1 else v[0])
-                   for d, v in per_doc.items()}  # fmt: skip
-    return per_doc, missing
+            total = counts.setdefault(doc, {0: 0})
+            counts[doc] = {next(iter(total)) + value: 1}
+            continue
+        if el.quantity is None:
+            partial.add(doc)
+        per_value = counts.setdefault(doc, {})
+        per_value[value] = per_value.get(value, 0) + (el.quantity or 0)
+    return _SideValues(counts, missing, partial)
 
 
-def _flat(per_doc: dict[str, Any]) -> list[Any]:
-    return [x for v in per_doc.values() for x in (v if isinstance(v, list) else [v])]
+def _same(a: Any, b: Any, tolerance: float) -> bool | None:
+    """Two values agree; None when one is a number and the other is not."""
+    if _is_number(a) and _is_number(b):
+        return abs(a - b) <= tolerance
+    if isinstance(a, str) and isinstance(b, str):
+        return a.strip().casefold() == b.strip().casefold()
+    return None
 
 
-def _agree(left: list[Any], right: list[Any], tolerance: float) -> bool | None:
-    """Every left value against every right value; None when they cannot be compared."""
-    for a in left:
-        for b in right:
-            numbers = all(isinstance(v, int | float) and not isinstance(v, bool) for v in (a, b))
-            if numbers:
-                if abs(a - b) > tolerance:
-                    return False
-            elif isinstance(a, str) and isinstance(b, str):
-                if a.strip().casefold() != b.strip().casefold():
-                    return False
-            else:
+def _agree(left: _SideValues, right: _SideValues, tolerance: float) -> bool | None:
+    """Each side's values have a counterpart on the other side; with several text values,
+    every complete document also holds them in the same quantities. None: not comparable."""
+    lv, rv = left.values(), right.values()
+    for xs, ys in ((lv, rv), (rv, lv)):
+        for x in xs:
+            found = [_same(x, y, tolerance) for y in ys]
+            if None in found:
                 return None
+            if not any(found):
+                return False
+    if len(lv) > 1 or len(rv) > 1:
+        texts = [v for v in lv + rv if isinstance(v, str)]
+        if len(texts) == len(lv) + len(rv):
+            spreads = []
+            for side in (left, right):
+                for doc, counts in side.counts.items():
+                    if doc in side.partial:
+                        continue
+                    spread: dict[str, int] = {}
+                    for value, n in counts.items():
+                        key = value.strip().casefold()
+                        spread[key] = spread.get(key, 0) + n
+                    spreads.append(spread)
+            if any(s != spreads[0] for s in spreads):
+                return False
     return True
+
+
+def _no_production_data(rule: Rule, pack: Pack) -> Finding:
+    reason = "no production data given"
+    return Finding(rule_id=rule.id, pack=pack.name, pack_version=pack.version,
+                   status=Status.NOT_CHECKED, severity=rule.severity, element_ids=[],
+                   message=f"{rule.id}: not checked, {reason}", reason=reason)  # fmt: skip
+
+
+def _match_evidence(m: Match) -> list[SourceRef]:
+    out: list[SourceRef] = []
+    for el in m.elements:
+        for src in el.sources:
+            if src not in out:
+                out.append(src)
+    return out
+
+
+def _describe(m: Match) -> str:
+    """How a position is named in messages: its mark, else its size and location."""
+    if m.mark:
+        return f"mark {m.mark}"
+    el = m.elements[0]
+    size = f"{format_value(el.width_mm)} x {format_value(el.height_mm)}"
+    return f"unmarked {m.type.value} {size}" + (f" ({el.location})" if el.location else "")
+
+
+def _ambiguous(rule: Rule, pack: Pack, m: Match) -> Finding:
+    reason = (f"ambiguous match: {len(m.architect)} architect and {len(m.erp)} production "
+              "elements fit each other")  # fmt: skip
+    return Finding(rule_id=rule.id, pack=pack.name, pack_version=pack.version,
+                   status=Status.NOT_CHECKED, severity=rule.severity,
+                   element_ids=[e.id for e in m.elements], mark=m.mark, reason=reason,
+                   evidence=_match_evidence(m),
+                   message=f"{rule.id}: {_describe(m)}: not checked, {reason}")  # fmt: skip
+
+
+def _run_unmatched(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: dict) -> list:
+    """One finding per position: pass when paired, fail when missing on `missing_on`."""
+    if matches is None:
+        return [_no_production_data(rule, pack)]
+    missing = (MatchStatus.MISSING_IN_ERP if rule.missing_on is Side.ERP
+               else MatchStatus.NOT_IN_ARCHITECT_SET)  # fmt: skip
+    present = "architect set" if rule.missing_on is Side.ERP else "production data"
+    absent = "production data" if rule.missing_on is Side.ERP else "architect set"
+    expected = f"a counterpart in the {absent}"
+    findings = []
+    for m in matches:
+        if rule.types and m.type not in rule.types:
+            continue
+        if m.status is MatchStatus.AMBIGUOUS:
+            findings.append(_ambiguous(rule, pack, m))
+            continue
+        if m.status is not MatchStatus.MATCHED and m.status is not missing:
+            continue
+        ok = m.status is MatchStatus.MATCHED
+        quantity = sum(el.quantity or 0 for el in m.elements)
+        message = ""
+        if not ok:
+            default = f"{_describe(m)}: in the {present} ({quantity}), not in the {absent}"
+            scope = _Scope(m.elements[0], pack, by_id)
+            extra = {"measured": f"{quantity} in the {present}", "expected": expected}
+            message = _render(rule.message, scope, extra) if rule.message else default
+        findings.append(Finding(rule_id=rule.id, pack=pack.name, pack_version=pack.version,
+                                status=Status.PASS if ok else Status.FAIL,
+                                severity=rule.severity, mark=m.mark,
+                                element_ids=[e.id for e in m.elements],
+                                measured=None if ok else {present: quantity, absent: 0},
+                                expected=expected, message=message,
+                                evidence=_match_evidence(m)))  # fmt: skip
+    return findings
 
 
 def _run_compare(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: dict) -> list:
@@ -315,17 +435,19 @@ def _run_compare(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: dic
     `consistent` rules' business); every ERP element must state the value.
     """
     if matches is None:
-        reason = "no production data given"
-        return [Finding(rule_id=rule.id, pack=pack.name, pack_version=pack.version,
-                        status=Status.NOT_CHECKED, severity=rule.severity, element_ids=[],
-                        message=f"{rule.id}: not checked, {reason}", reason=reason)]  # fmt: skip
+        return [_no_production_data(rule, pack)]
     left_side, left = rule.left.split(".", 1)
     right_side, right = rule.right.split(".", 1)
     tol = f" (within {format_value(rule.tolerance)})" if rule.tolerance else ""
     expected = f"{rule.left} == {rule.right}{tol}"
     findings = []
     for m in matches:
-        if m.status is not MatchStatus.MATCHED or (rule.types and m.type not in rule.types):
+        if rule.types and m.type not in rule.types:
+            continue
+        if m.status is MatchStatus.AMBIGUOUS:
+            findings.append(_ambiguous(rule, pack, m))
+            continue
+        if m.status is not MatchStatus.MATCHED:
             continue
         sides = {Side.ARCHITECT.value: m.architect, Side.ERP.value: m.erp}
         lmembers, rmembers = sides[left_side], sides[right_side]
@@ -336,7 +458,7 @@ def _run_compare(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: dic
             gates = [rule.when.evaluate(_Scope(el, pack, by_id)).value for el in m.elements]
             if True not in gates:
                 unclear = next((g for g in gates if isinstance(g, NotChecked)), None)
-                if unclear is None:
+                if unclear is None or False in gates:
                     findings.append(Finding(**base, status=Status.NOT_APPLICABLE))
                 else:
                     reason = f"when: {unclear.reason}"
@@ -344,32 +466,37 @@ def _run_compare(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: dic
                     findings.append(Finding(**base, status=Status.NOT_CHECKED, reason=reason,
                                             message=message))  # fmt: skip
                 continue
-        lvals, _ = _side_values(lmembers, left, pack, by_id)
-        rvals, rmissing = _side_values(rmembers, right, pack, by_id)
+        lside = _side_values(lmembers, left, pack, by_id)
+        rside = _side_values(rmembers, right, pack, by_id)
         evidence: list[SourceRef] = []
         for el, name in [*((e, left) for e in lmembers), *((e, right) for e in rmembers)]:
             for src in el.sources if name == "quantity" else [el.source_of(name)]:
                 if src is not None and src not in evidence:
                     evidence.append(src)
+        lshown, rshown = lside.shown(), rside.shown()
+        if left == "quantity":
+            lshown = {d: next(iter(c)) for d, c in lside.counts.items()}
+        if right == "quantity":
+            rshown = {d: next(iter(c)) for d, c in rside.counts.items()}
         base.update(expected=expected, evidence=evidence,
-                    measured={rule.left: lvals, rule.right: rvals})  # fmt: skip
+                    measured={rule.left: lshown, rule.right: rshown})  # fmt: skip
         reason = None
-        if not lvals:
+        if not lside.counts:
             reason = f"{rule.left} is not set"
-        elif rmissing or not rvals:
-            files = ", ".join(sorted({Path(e.sources[0].file).name for e in rmissing}))
+        elif rside.missing or not rside.counts:
+            files = ", ".join(sorted({Path(e.sources[0].file).name for e in rside.missing}))
             reason = f"{rule.right} is not set" + (f" in {files}" if files else "")
-        ok = _agree(_flat(lvals), _flat(rvals), rule.tolerance) if reason is None else None
+        ok = _agree(lside, rside, rule.tolerance) if reason is None else None
         if reason is None and ok is None:
             reason = "values of different kinds cannot be compared"
         if reason:
-            message = f"{rule.id}: mark {m.mark}: not checked, {reason}"
+            message = f"{rule.id}: {_describe(m)}: not checked, {reason}"
             findings.append(Finding(**base, status=Status.NOT_CHECKED, reason=reason,
                                     message=message))  # fmt: skip
             continue
         shown = {
-            rule.left: ", ".join(f"{Path(d).name} {_show(v)}" for d, v in lvals.items()),
-            rule.right: ", ".join(f"{Path(d).name} {_show(v)}" for d, v in rvals.items()),
+            rule.left: ", ".join(f"{Path(d).name} {_show(v)}" for d, v in lshown.items()),
+            rule.right: ", ".join(f"{Path(d).name} {_show(v)}" for d, v in rshown.items()),
         }
         message = ""
         if not ok:
@@ -377,7 +504,7 @@ def _run_compare(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: dic
             extra = {**shown, "expected": expected, "measured": both}
             scope = _Scope((lmembers or rmembers)[0], pack, by_id)
             message = (_render(rule.message, scope, extra) if rule.message
-                       else f"mark {m.mark}: {left} differs: {both}")  # fmt: skip
+                       else f"{_describe(m)}: {left} differs: {both}")  # fmt: skip
         findings.append(Finding(**base, status=Status.PASS if ok else Status.FAIL,
                                 message=message))  # fmt: skip
     return findings
@@ -392,6 +519,8 @@ def run(elements: list[Element], pack: Pack, matches: list[Match] | None = None)
             findings.extend(_run_require(rule, pack, elements, by_id))
         elif rule.kind is RuleKind.CONSISTENT:
             findings.extend(_run_consistent(rule, pack, elements, by_id))
+        elif rule.kind is RuleKind.UNMATCHED:
+            findings.extend(_run_unmatched(rule, pack, matches, by_id))
         else:
             findings.extend(_run_compare(rule, pack, matches, by_id))
     covered = {i for f in findings if f.status is not Status.NOT_APPLICABLE for i in f.element_ids}

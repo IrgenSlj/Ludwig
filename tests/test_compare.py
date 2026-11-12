@@ -109,3 +109,37 @@ def test_duplex_model_agrees_with_the_invented_export(pack):
     assert (("width-matches", Status.PASS) in statuses
             and ("quantity-matches", Status.PASS) in statuses)  # fmt: skip
     assert not [f for f in result.findings if f.status is Status.FAIL]
+
+
+def test_ambiguous_position_is_not_checked(pack):
+    def loose(eid, side):
+        kind = SourceKind.ERP if side is Side.ERP else SourceKind.SHEET
+        return Element(eid, side, ElementType.FRAME, [SourceRef("f", kind)], width_mm=900.0,
+                       height_mm=2100.0)  # fmt: skip
+
+    result = run([loose("a1", Side.ARCHITECT), loose("a2", Side.ARCHITECT), loose("e", Side.ERP)],
+                 pack)  # fmt: skip
+    [f] = by_rule(result, "width-matches")
+    assert f.status is Status.NOT_CHECKED and f.reason.startswith("ambiguous match")
+    assert f.message.startswith("width-matches: unmarked frame 900 x 2100")
+
+
+def test_count_per_value_must_agree_when_a_mark_has_several_values(pack):
+    def door(eid, side, file, qty, glass):
+        return frame(eid, side, file, quantity=qty, props={"glazing_type": glass})
+
+    same = [
+        door("a", Side.ARCHITECT, "s.csv", 2, "HR++"),
+        door("b", Side.ARCHITECT, "s.csv", 2, "Triple"),
+        door("e", Side.ERP, "erp.csv", 2, "HR++"),
+        door("f", Side.ERP, "erp.csv", 2, "triple"),
+    ]
+    assert [f.status for f in by_rule(run(same, pack), "glazing-matches")] == [Status.PASS]
+    skewed = [
+        *same[:2],
+        door("e", Side.ERP, "erp.csv", 3, "HR++"),
+        door("f", Side.ERP, "erp.csv", 1, "Triple"),
+    ]
+    [f] = by_rule(run(skewed, pack), "glazing-matches")
+    assert f.status is Status.FAIL
+    assert f.measured["erp.props.glazing_type"] == {"erp.csv": {"HR++": 3, "Triple": 1}}

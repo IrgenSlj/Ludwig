@@ -106,7 +106,17 @@ Rule kinds:
   group_by: mark
   field: quantity
   severity: warning
+
+- id: missing-in-erp
+  kind: unmatched
+  applies_to: {type: frame}
+  missing_on: erp          # or: architect (gives not-in-architect-set)
+  severity: blocker
 ```
+
+`compare` and `unmatched` rules run over matched positions (section 5). An ambiguous
+position gives `not_checked` on every such rule; without production data each gives one
+`not_checked` finding.
 
 Expression language (used in `require`, and in `when` filters):
 

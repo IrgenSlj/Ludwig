@@ -1,0 +1,6 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "K1", "quantity": 4, "sources": [{"file": "model.ifc", "kind": "ifc"}]},
+  {"side": "architect", "type": "frame", "mark": "K1", "quantity": 4, "sources": [{"file": "kozijnstaat.xlsx", "kind": "sheet"}]},
+  {"side": "erp", "type": "frame", "mark": "K1", "quantity": 2, "location": "begane grond"},
+  {"side": "erp", "type": "frame", "mark": "K1", "quantity": 2, "location": "verdieping"}
+]}

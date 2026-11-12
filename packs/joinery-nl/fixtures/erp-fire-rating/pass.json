@@ -1,0 +1,4 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "D1", "props": {"fire_rating_min": 30}},
+  {"side": "erp", "type": "frame", "mark": "D1", "props": {"fire_rating_min": 30}}
+]}

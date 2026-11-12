@@ -10,5 +10,5 @@ columns:
   location: Verdieping
 props:
   opening_direction: {column: Draairichting, as: text, values: {links: left, rechts: right}}
-  fire_rating_min: {column: Brandwerendheid, as: number}
+  fire_rating_min: {column: Brandwerendheid, as: number, default: 0}  # empty cell: no fire rating
   glazing_type: {column: Glas, as: text}

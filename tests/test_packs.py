@@ -163,3 +163,20 @@ def test_expressions_are_read_as_written_not_as_yaml_values(tmp_path):
     assert load_pack(make_pack(tmp_path, checks)).rules[0].require.text == "true"
     _bad(tmp_path, "- id: a\n  kind: require\n  severity: info\n  require: yes\n",
          "unknown name 'yes'")  # fmt: skip
+
+
+def test_unmatched_rules_take_type_only(tmp_path):
+    from ludwig.rules.packs import PackError, load_pack
+
+    (tmp_path / "pack.yaml").write_text("name: t\nversion: '1'\n")
+    (tmp_path / "checks.yaml").write_text(
+        "- id: m\n  kind: unmatched\n  missing_on: erp\n  severity: blocker\n"
+        "  when: is_set(mark)\n"
+    )
+    with pytest.raises(PackError, match="checks.yaml:5: unmatched checks take"):
+        load_pack(tmp_path)
+    (tmp_path / "checks.yaml").write_text(
+        "- id: m\n  kind: unmatched\n  missing_on: nowhere\n  severity: blocker\n"
+    )
+    with pytest.raises(PackError, match="missing_on must be one of architect, erp"):
+        load_pack(tmp_path)

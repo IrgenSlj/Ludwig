@@ -21,6 +21,7 @@ class RuleKind(StrEnum):
     REQUIRE = "require"
     COMPARE = "compare"
     CONSISTENT = "consistent"
+    UNMATCHED = "unmatched"
 
 
 _PACK_KEYS = {"name", "version", "description", "files", "match_tolerance_mm"}
@@ -30,11 +31,13 @@ _KIND_KEYS = {
     RuleKind.REQUIRE: {"require"},
     RuleKind.COMPARE: {"left", "right", "tolerance"},
     RuleKind.CONSISTENT: {"group_by", "field", "tolerance"},
+    RuleKind.UNMATCHED: {"missing_on"},
 }
 _REQUIRED = {
     RuleKind.REQUIRE: {"require"},
     RuleKind.COMPARE: {"left", "right"},
     RuleKind.CONSISTENT: {"group_by", "field"},
+    RuleKind.UNMATCHED: {"missing_on"},
 }
 _APPLIES_KEYS = {"side", "type"}
 
@@ -107,6 +110,7 @@ class Rule:
     tolerance: float = 0.0
     group_by: str | None = None
     field: str | None = None
+    missing_on: Side | None = None
     description: str = ""
 
     def applies_to(self, side: Side, etype: ElementType) -> bool:
@@ -244,6 +248,12 @@ def _load_rule(raw: Any, file: Path, limits: set[str], seen: set[str]) -> Rule:
         if isinstance(tolerance, bool) or not isinstance(tolerance, int | float) or tolerance < 0:
             raise PackError(file, _line(raw, "tolerance"), "tolerance must be a number >= 0")
         fields["tolerance"] = float(tolerance)
+    elif kind is RuleKind.UNMATCHED:
+        if "when" in raw or "side" in applies:
+            key = "when" if "when" in raw else "applies_to"
+            raise PackError(file, _line(raw, key), "unmatched checks take applies_to: {type} only")
+        fields["missing_on"] = _one_of(raw["missing_on"], Side, "missing_on", file,
+                                       _line(raw, "missing_on"))  # fmt: skip
     else:
         tolerance = raw.get("tolerance", 0)
         if isinstance(tolerance, bool) or not isinstance(tolerance, int | float) or tolerance < 0:
