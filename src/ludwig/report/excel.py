@@ -6,34 +6,49 @@ from pathlib import Path
 from typing import Any
 
 from ludwig.model import Finding, ParseWarning, Severity, Status
-from ludwig.report import SEVERITY_ORDER, STATUS_ORDER, describe_source
+from ludwig.report import SEVERITY_ORDER, STATUS_ORDER, by_side, describe_source
 from ludwig.rules.engine import RunResult, format_value
 
 COLUMNS = (
-    "Severity", "Status", "Mark", "Rule", "Message", "Measured", "Expected", "Reason",
-    "Source", "Elements",
+    "Severity", "Status", "Mark", "Rule", "Message", "Drawings", "Production", "Expected",
+    "Reason", "Drawings source", "Production source", "Elements",
 )  # fmt: skip
 
 
 def _measured(value: Any) -> Any:
     if isinstance(value, dict):
-        return ", ".join(f"{k}={format_value(v)}" for k, v in value.items())
+        if len(value) == 1 and not isinstance(next(iter(value.values())), dict):
+            return _measured(next(iter(value.values())))  # one document: the value alone
+        return ", ".join(f"{Path(str(k)).name}: {_text(v)}" for k, v in value.items())
+    if isinstance(value, list):
+        return " / ".join(format_value(v) for v in value)
     if isinstance(value, bool) or value is None or not isinstance(value, int | float):
         return format_value(value) if value is not None else None
     return value
 
 
+def _text(value: Any) -> str:
+    if isinstance(value, dict):
+        return " / ".join(f"{k} x{format_value(n)}" for k, n in value.items())
+    if isinstance(value, list):
+        return " / ".join(format_value(v) for v in value)
+    return format_value(value)
+
+
 def _row(f: Finding) -> list[Any]:
+    sides = by_side(f)
     return [
         f.severity.value,
         f.status.value,
         f.mark,
         f.rule_id,
         f.message,
-        _measured(f.measured),
+        _measured(sides["values"]["architect"]),
+        _measured(sides["values"]["erp"]),
         format_value(f.expected) if f.expected is not None else None,
         f.reason,
-        "; ".join(describe_source(s) for s in f.evidence),
+        "; ".join(describe_source(s) for s in sides["sources"]["architect"]) or None,
+        "; ".join(describe_source(s) for s in sides["sources"]["erp"]) or None,
         ", ".join(f.element_ids),
     ]
 

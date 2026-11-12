@@ -73,7 +73,7 @@ Goal: compare what the architect asked for with what was entered for production.
 - [x] 2.4 `compare` rule type in the engine with tolerance. Acceptance: fixtures.
 - [x] 2.5 Reconciliation rules: quantity per mark, width, height, opening direction,
       glazing type, fire rating, elements missing on either side.
-- [ ] 2.6 Report shows both values side by side with both sources.
+- [x] 2.6 Report shows both values side by side with both sources.
 
 Gate: one complete invented project (architect files plus ERP export, with ten seeded
 mismatches) runs end to end, and all ten are found.

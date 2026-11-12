@@ -4,7 +4,17 @@ from pathlib import Path
 import openpyxl
 import pytest
 
-from ludwig.model import Element, ElementType, ParseWarning, Side, SourceKind, SourceRef
+from ludwig.model import (
+    Element,
+    ElementType,
+    Finding,
+    ParseWarning,
+    Severity,
+    Side,
+    SourceKind,
+    SourceRef,
+    Status,
+)
 from ludwig.report import excel
 from ludwig.report import json as json_report
 from ludwig.rules import engine
@@ -77,9 +87,9 @@ def test_excel_report_rows_sorted_by_severity_with_sources(run, tmp_path):
         ("warning", "fail", "D1"),
     ]
     first = body[0]
-    assert first["Measured"] == 1650
+    assert first["Production"] == 1650 and first["Drawings"] is None
     assert first["Expected"] == "width_mm <= 1500"
-    assert first["Source"] == "erp.xlsx, sheet Orders, cell A2"
+    assert first["Production source"] == "erp.xlsx, sheet Orders, cell A2"
     assert first["Message"] == "Sash R2: width 1650 mm exceeds machine limit 1500 mm"
     assert body[1]["Reason"] == "width_mm is not set"
     assert [r[2] for r in wb["Passed"].iter_rows(min_row=2, values_only=True)] == ["R1"]
@@ -101,3 +111,33 @@ def test_empty_run_still_reports_coverage(tmp_path):
     result = engine.run([], load_pack(DEMO))
     data = json_report.to_dict(result, "demo", "0.0.1", [])
     assert data["findings"] == [] and data["summary"]["rules_run"] == 3
+
+
+def test_compare_findings_show_drawings_and_production_side_by_side(tmp_path):
+    from ludwig.match import pairs
+    from ludwig.report import by_side
+
+    pack = load_pack(Path(__file__).resolve().parent / "packs" / "reconcile")
+    elements = [
+        Element("m", Side.ARCHITECT, ElementType.FRAME, [SourceRef("model.ifc", SourceKind.IFC,
+                ifc_guid="g1")], mark="K1", width_mm=1200.0, quantity=2),
+        Element("s", Side.ARCHITECT, ElementType.FRAME, [SourceRef("architect.csv",
+                SourceKind.SHEET, cell="C2")], mark="K1", width_mm=1200.0, quantity=2),
+        Element("e", Side.ERP, ElementType.FRAME, [SourceRef("erp.csv", SourceKind.ERP,
+                cell="F2")], mark="K1", width_mm=1180.0, quantity=1),
+    ]  # fmt: skip
+    result = engine.run(elements, pack, pairs(elements))
+    path = excel.write(tmp_path / "r.xlsx", result, pack.name, pack.version, [])
+    rows = list(openpyxl.load_workbook(path)["Findings"].iter_rows(values_only=True))
+    body = {r[3]: dict(zip(excel.COLUMNS, r, strict=True)) for r in rows[1:]}
+    width = body["width-matches"]
+    assert width["Drawings"] == "model.ifc: 1200, architect.csv: 1200"
+    assert width["Production"] == 1180
+    assert width["Drawings source"] == "model.ifc, GlobalId g1; architect.csv, cell C2"
+    assert width["Production source"] == "erp.csv, cell F2"
+    qty = body["quantity-matches"]
+    assert (qty["Drawings"], qty["Production"]) == ("model.ifc: 2, architect.csv: 2", 1)
+    consistent = Finding("c", "p", "1", Status.FAIL, Severity.WARNING, ["s"],
+                         measured={"architect.csv": 2, "model.ifc": 3})  # fmt: skip
+    assert by_side(consistent)["values"] == {"architect": {"architect.csv": 2, "model.ifc": 3},
+                                            "erp": None}  # fmt: skip
