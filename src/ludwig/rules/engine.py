@@ -28,6 +28,13 @@ class RunResult:
     def __post_init__(self) -> None:
         self.not_checked = sum(f.status is Status.NOT_CHECKED for f in self.findings)
 
+    def extended(self, findings: list[Finding], rules: int) -> RunResult:
+        """This result plus findings from `rules` more checks (IDS specifications)."""
+        merged = [*self.findings, *findings]
+        looked = [f for f in merged if f.status is not Status.NOT_APPLICABLE]
+        covered = {i for f in looked for i in f.element_ids}
+        return RunResult(merged, self.rules_run + rules, self.elements_total, len(covered))
+
 
 def format_value(value: Any) -> str:
     """A value as shown in messages: 1200.0 -> '1200', None -> 'not set'."""

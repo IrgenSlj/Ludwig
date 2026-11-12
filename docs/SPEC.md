@@ -40,6 +40,7 @@ Every parser and adapter produces `Element` records. Rules see only this table.
 | `parent_id` | str or None | e.g. a sash inside a frame |
 | `props` | dict | named properties, see below |
 | `sources` | list of `SourceRef` | at least one |
+| `facts` | list of dict | IFC only: raw data per source for IDS (entity, predefined type, attributes, property sets, classification, material) |
 
 `SourceRef`: `file`, `kind` (`ifc`, `sheet`, `dxf`, `pdf`, `erp`), and a locator
 (`ifc_guid`, or `sheet` plus `cell`, or `dxf_handle` plus `layer`, or `page` plus `bbox`).
@@ -182,5 +183,5 @@ configurable and an EU-hosted option must exist.
    fallback matching matters.
 3. Which Dutch requirements belong in the first pack beyond factory limits. Each must
    be checked against the current official text before it becomes a rule.
-4. Whether IfcOpenShell's IDS parser can be reused for reading IDS files. Verify before
-   adding it. (BCF is written with the standard library; see DECISIONS 2026-11-12.)
+4. Settled 2026-11-12: BCF and IDS are both handled with the standard library (see
+   DECISIONS).

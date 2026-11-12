@@ -139,10 +139,15 @@ class Element:
     props: dict[str, Any] = field(default_factory=dict)
     # A field whose value came from somewhere other than `sources[0]` records that place here.
     field_sources: dict[str, SourceRef] = field(default_factory=dict)
+    # Raw IFC data per source (same order as `sources`) for IDS checks: entity,
+    # predefined_type, attributes, properties, classification, material, unit_scale_m.
+    facts: list[dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.sources:
             raise ValueError(f"element {self.id}: at least one source is required")
+        if self.facts and len(self.facts) != len(self.sources):
+            raise ValueError(f"element {self.id}: facts must align with sources")
         self.mark = normalise_mark(self.mark)
 
     def source_of(self, name: str) -> SourceRef:
@@ -174,6 +179,7 @@ class Element:
             "props": dict(sorted(self.props.items())),
             "sources": [s.to_dict() for s in self.sources],
             "field_sources": {k: v.to_dict() for k, v in sorted(self.field_sources.items())},
+            "facts": list(self.facts),
         }
 
     @classmethod
@@ -195,6 +201,7 @@ class Element:
             field_sources={
                 k: SourceRef.from_dict(v) for k, v in d.get("field_sources", {}).items()
             },
+            facts=list(d.get("facts", [])),
         )
 
 

@@ -13,7 +13,7 @@ from ludwig.model import Element, ParseWarning, Severity, Status
 from ludwig.parsers import dxf, ifc, pdf, schedule
 from ludwig.report import bcf, excel, pdf_markup
 from ludwig.report import json as json_report
-from ludwig.rules import engine
+from ludwig.rules import engine, ids
 from ludwig.rules.packs import PackError, load_pack
 
 EXIT_OK, EXIT_BLOCKERS, EXIT_USAGE = 0, 1, 2
@@ -104,6 +104,9 @@ def check(args: argparse.Namespace) -> int:
         elements.extend(found)
         warnings.extend(warned)
     result = engine.run(elements, pack, pairs(elements, pack.match_tolerance_mm))
+    if pack.ids_specs:
+        found = ids.run(pack.ids_specs, elements, pack.name, pack.version, pack.ids_severity)
+        result = result.extended(found, len(pack.ids_specs))
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

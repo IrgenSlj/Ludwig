@@ -86,6 +86,44 @@ def _squash(text: str) -> str:
     return "".join(ch for ch in text.lower() if ch.isalnum())
 
 
+def _plain(value: Any) -> Any:
+    """A JSON-safe scalar, or None for entity references and lists."""
+    if isinstance(value, bool | int | float | str) or value is None:
+        return value
+    return None
+
+
+def _facts(occ: Any, psets: dict, unit_scale_m: float, placeholders: bool) -> dict[str, Any]:
+    """What IDS facets look at, for one occurrence (PLAN 4.1)."""
+    import ifcopenshell.util.classification as uc
+    import ifcopenshell.util.element as ue
+
+    attributes = {k: v for k, v in occ.get_info(recursive=False).items()
+                  if k not in ("id", "type") and _plain(v) is not None}  # fmt: skip
+    properties = {
+        pset: {k: _plain(v) for k, v in props.items() if k != "id"
+               and not (placeholders and isinstance(v, str) and _squash(v) == _squash(k))}
+        for pset, props in psets.items()
+    }  # fmt: skip
+    classification = []
+    for ref in uc.get_references(occ):
+        code = getattr(ref, "Identification", None) or getattr(ref, "ItemReference", None)
+        system = uc.get_classification(ref)
+        classification.append([getattr(system, "Name", None), code])
+    material = []
+    for mat in ue.get_materials(occ):
+        material.extend(v for v in (mat.Name, getattr(mat, "Category", None)) if v)
+    return {
+        "entity": occ.is_a().upper(),
+        "predefined_type": ue.get_predefined_type(occ),
+        "attributes": attributes,
+        "properties": properties,
+        "classification": classification,
+        "material": material,
+        "unit_scale_m": unit_scale_m,
+    }
+
+
 def parse(
     path: str | Path, mapping: dict[str, Any] | None = None
 ) -> tuple[list[Element], list[ParseWarning]]:
@@ -98,7 +136,8 @@ def parse(
         import ifcopenshell.util.unit as uu
 
         model = ifcopenshell.open(file)
-        to_mm = uu.calculate_unit_scale(model) * 1000.0
+        unit_scale_m = uu.calculate_unit_scale(model)
+        to_mm = unit_scale_m * 1000.0
     except Exception as exc:  # noqa: BLE001 - any read failure becomes a warning
         return [], [ParseWarning(file, f"cannot read IFC file: {exc}")]
 
@@ -141,12 +180,14 @@ def parse(
                         props[name] = as_term(raw, spec.get("values"))
                 container = ue.get_container(occ)
                 location = getattr(container, "Name", None) or None
+                placeholders = bool(mapping.get("name_as_value_is_empty"))
+                facts = _facts(occ, psets, unit_scale_m, placeholders)
             except Exception as exc:  # noqa: BLE001
                 warnings.append(ParseWarning(file, f"{cls} {guid}: cannot read: {exc}", src))
                 continue
             mark_key = str(mark) if mark is not None else f"\0{guid}"
             key = (etype, mark_key, dims[0], dims[1], tuple(sorted(props.items())))
-            groups[key].append((guid, location))
+            groups[key].append((guid, location, facts))
 
     for path_, count in sorted(reader.placeholders.items()):
         warnings.append(
@@ -155,8 +196,9 @@ def parse(
 
     elements = []
     for (etype, mark_key, width, height, props), members in groups.items():
-        guids = sorted(g for g, _ in members)
-        locations = {loc for _, loc in members}
+        members = sorted(members, key=lambda m: m[0])
+        guids = [g for g, _, _ in members]
+        locations = {loc for _, loc, _ in members}
         elements.append(
             Element(
                 id=f"{Path(file).name}#{guids[0]}",
@@ -169,6 +211,7 @@ def parse(
                 height_mm=height,
                 location=locations.pop() if len(locations) == 1 else None,
                 props=dict(props),
+                facts=[f for _, _, f in members],
             )
         )
     elements.sort(key=lambda e: (e.type.value, e.mark or "", e.id))

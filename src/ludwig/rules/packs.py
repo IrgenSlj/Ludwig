@@ -25,7 +25,7 @@ class RuleKind(StrEnum):
     UNMATCHED = "unmatched"
 
 
-_PACK_KEYS = {"name", "version", "description", "files", "match_tolerance_mm"}
+_PACK_KEYS = {"name", "version", "description", "files", "match_tolerance_mm", "ids_severity"}
 _FILES_KEYS = {"checks", "limits", "ids"}
 _COMMON_KEYS = {"id", "kind", "applies_to", "severity", "message", "description", "when"}
 _KIND_KEYS = {
@@ -131,6 +131,8 @@ class Pack:
     limits: dict[str, Any] = field(default_factory=dict)
     rules: list[Rule] = field(default_factory=list)
     ids_path: Path | None = None
+    ids_specs: list[Any] = field(default_factory=list)
+    ids_severity: Severity = Severity.WARNING
     content_hash: str = ""
 
     def limit(self, path: str) -> Any:
@@ -331,6 +333,16 @@ def load_pack(root: str | Path) -> Pack:
     rules = [_load_rule(raw, checks_file, limit_names, seen) for raw in checks]
 
     ids_path = root / files["ids"] if "ids" in files else None
+    ids_specs = []
+    if ids_path is not None:
+        from ludwig.rules import ids
+
+        try:
+            ids_specs = ids.load(ids_path)
+        except ids.IdsError as exc:
+            raise PackError(ids_path, None, str(exc)) from None
+    ids_severity = _one_of(meta.get("ids_severity", "warning"), Severity, "ids_severity",
+                           pack_file, _line(meta, "ids_severity"))  # fmt: skip
     hashed = [pack_file, checks_file, limits_file, *([ids_path] if ids_path else [])]
     return Pack(
         name=meta["name"],
@@ -341,6 +353,8 @@ def load_pack(root: str | Path) -> Pack:
         limits=_plain(limits),
         rules=rules,
         ids_path=ids_path,
+        ids_specs=ids_specs,
+        ids_severity=ids_severity,
         content_hash=content_hash(root, hashed),
     )
 

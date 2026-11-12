@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <info><title>Invented requirements for the Duplex sample</title></info>
+  <specifications>
+    <specification name="Doors have a fire rating" ifcVersion="IFC2X3">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCDOOR</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property><propertySet><simpleValue>Pset_DoorCommon</simpleValue></propertySet>
+          <baseName><simpleValue>FireRating</simpleValue></baseName></property>
+      </requirements>
+    </specification>
+    <specification name="Windows are external" ifcVersion="IFC2X3">
+      <applicability>
+        <entity><name><simpleValue>IFCWINDOW</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCBOOLEAN"><propertySet><simpleValue>Pset_WindowCommon</simpleValue></propertySet>
+          <baseName><simpleValue>IsExternal</simpleValue></baseName>
+          <value><simpleValue>true</simpleValue></value></property>
+      </requirements>
+    </specification>
+    <specification name="Door width between 0.7 and 1.2 m" ifcVersion="IFC2X3">
+      <applicability>
+        <entity><name><simpleValue>IFCDOOR</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute><name><simpleValue>OverallWidth</simpleValue></name>
+          <value><xs:restriction base="xs:double">
+            <xs:minInclusive value="0.7"/><xs:maxInclusive value="1.2"/>
+          </xs:restriction></value></attribute>
+      </requirements>
+    </specification>
+    <specification name="Revit identity pset present" ifcVersion="IFC2X3">
+      <applicability>
+        <entity><name><xs:restriction base="xs:string"><xs:enumeration value="IFCDOOR"/><xs:enumeration value="IFCWINDOW"/></xs:restriction></name></entity>
+      </applicability>
+      <requirements>
+        <property><propertySet><xs:restriction base="xs:string"><xs:pattern value="PSet_Revit_Type_.*"/></xs:restriction></propertySet>
+          <baseName><simpleValue>Type Mark</simpleValue></baseName>
+          <value><xs:restriction base="xs:string"><xs:pattern value="[0-9]{2}"/></xs:restriction></value></property>
+      </requirements>
+    </specification>
+    <specification name="No material named Glass" ifcVersion="IFC2X3">
+      <applicability>
+        <entity><name><simpleValue>IFCWINDOW</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <material cardinality="prohibited"><value><simpleValue>Glass</simpleValue></value></material>
+      </requirements>
+    </specification>
+    <specification name="Doors classified" ifcVersion="IFC2X3">
+      <applicability>
+        <entity><name><simpleValue>IFCDOOR</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <classification cardinality="optional"><system><simpleValue>NL-SfB</simpleValue></system></classification>
+      </requirements>
+    </specification>
+    <specification name="Doors in a storey" ifcVersion="IFC2X3">
+      <applicability>
+        <entity><name><simpleValue>IFCDOOR</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <partOf relation="IFCRELCONTAINEDINSPATIALSTRUCTURE"><entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity></partOf>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

@@ -1,6 +1,6 @@
 # Ludwig — development plan
 
-Status: phase 0 done except 0.5–0.6 (Irgen); phase 1 done except 1.7 (waits for the catalogue); phase 2 gate met on invented data, 2.1 open until a real export is mapped; phase 3 gate met (test_gate_phase3).
+Status: phase 0 done except 0.5–0.6 (Irgen); phase 1 done except 1.7 (waits for the catalogue); phase 2 gate met on invented data, 2.1 open until a real export is mapped; phase 3 gate met; phase 4 tasks done, gate needs a person to open the BCF in two viewers.
 
 Each phase ends in a gate. A phase is finished only when its gate is met. Tasks marked
 **(Irgen)** need a person and cannot be done by Claude Code.
@@ -96,7 +96,7 @@ findings as the IFC version.
 
 ## Phase 4 — Standards and exchange
 
-- [ ] 4.1 `rules/ids.py`: evaluate IDS specifications against the element table for the
+- [x] 4.1 `rules/ids.py`: evaluate IDS specifications against the element table for the
       entity, attribute, property, classification and material facets, with value
       restrictions. Acceptance: fixtures per facet; unsupported facets give `not_checked`.
 - [x] 4.2 `report/bcf.py`: one topic per blocker and warning, with the element
