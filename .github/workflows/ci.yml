@@ -54,3 +54,15 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the on-site image
+        run: docker build -t ludwig:ci .
+      - name: Start it and wait for health
+        run: |
+          docker run -d --name ludwig -p 8000:8000 ludwig:ci
+          for i in $(seq 30); do curl -sf localhost:8000/health && exit 0; sleep 2; done
+          docker logs ludwig; exit 1
