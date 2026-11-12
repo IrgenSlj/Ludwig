@@ -1,6 +1,6 @@
 # Ludwig — development plan
 
-Status: phase 0 done except 0.5–0.6 (Irgen); phase 1 done except 1.7 (waits for the catalogue); phase 2 started on invented data, 2.1 open.
+Status: phase 0 done except 0.5–0.6 (Irgen); phase 1 done except 1.7 (waits for the catalogue); phase 2 gate met on invented data (test_gate_phase2), 2.1 open until a real export is mapped.
 
 Each phase ends in a gate. A phase is finished only when its gate is met. Tasks marked
 **(Irgen)** need a person and cannot be done by Claude Code.

@@ -258,6 +258,14 @@ def _run_consistent(rule: Rule, pack: Pack, elements: list[Element], by_id: dict
     return findings
 
 
+def _per_doc_text(per_doc: dict[str, Any]) -> str:
+    """Values per document for a message; one value when every document agrees."""
+    texts = {d: _show(v) for d, v in per_doc.items()}
+    if len(set(texts.values())) == 1:
+        return next(iter(texts.values()))
+    return ", ".join(f"{Path(d).name} {v}" for d, v in texts.items())
+
+
 def _show(value: Any) -> str:
     if isinstance(value, list):
         return " / ".join(format_value(v) for v in value)
@@ -411,12 +419,17 @@ def _run_unmatched(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: d
         if m.status is not MatchStatus.MATCHED and m.status is not missing:
             continue
         ok = m.status is MatchStatus.MATCHED
-        quantity = sum(el.quantity or 0 for el in m.elements)
+        per_doc: dict[str, int] = {}
+        for el in m.elements:
+            doc = el.sources[0].file
+            per_doc[doc] = per_doc.get(doc, 0) + (el.quantity or 0)
+        quantity = next(iter(per_doc.values())) if len(set(per_doc.values())) == 1 else per_doc
         message = ""
         if not ok:
-            default = f"{_describe(m)}: in the {present} ({quantity}), not in the {absent}"
+            count = _per_doc_text(per_doc)
+            default = f"{_describe(m)}: in the {present} ({count}), not in the {absent}"
             scope = _Scope(m.elements[0], pack, by_id)
-            extra = {"measured": f"{quantity} in the {present}", "expected": expected}
+            extra = {"measured": f"{count} in the {present}", "expected": expected}
             message = _render(rule.message, scope, extra) if rule.message else default
         findings.append(Finding(rule_id=rule.id, pack=pack.name, pack_version=pack.version,
                                 status=Status.PASS if ok else Status.FAIL,
@@ -494,10 +507,7 @@ def _run_compare(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: dic
             findings.append(Finding(**base, status=Status.NOT_CHECKED, reason=reason,
                                     message=message))  # fmt: skip
             continue
-        shown = {
-            rule.left: ", ".join(f"{Path(d).name} {_show(v)}" for d, v in lshown.items()),
-            rule.right: ", ".join(f"{Path(d).name} {_show(v)}" for d, v in rshown.items()),
-        }
+        shown = {rule.left: _per_doc_text(lshown), rule.right: _per_doc_text(rshown)}
         message = ""
         if not ok:
             both = f"{shown[rule.left]} vs {shown[rule.right]}"

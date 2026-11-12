@@ -11,8 +11,9 @@ Invented fixtures in this folder (no source, licence: same as the repository):
 | `schedule/duplex_joinery_schedule.csv` | Dutch-style joinery schedule (kozijnstaat) agreeing with the Duplex model: 12 rows, 38 units, `;` separated, decimal comma |
 | `schedule/duplex_joinery_schedule_seeded.csv` | The same schedule with three seeded mismatches: mark 02 quantity 8 → 7, mark 05 width 4835 → 4800, mark 56 row removed |
 | `schedule/*.mapping.yaml` | Column mappings for the invented schedule and for the COBie `Type` sheet |
-| `erp/duplex_erp_export.csv` | Production export (order lines) for the Duplex project, agreeing with the model: 12 frame lines plus one non-joinery line, `,` separated, decimal point. Column names are invented, not taken from any real ERP |
-| `erp/duplex_erp_export.mapping.yaml` | Column mapping for that export |
+| `erp/duplex_erp_export.csv` | Production export (order lines) for the Duplex project, agreeing with the model and the schedule: 12 frame lines plus one non-joinery line, `,` separated, decimal point. Column names are invented, not taken from any real ERP |
+| `erp/duplex_erp_export_seeded.csv` | The same export with ten seeded mismatches (PLAN phase 2 gate): 01 glazing Triple, 02 quantity 6, 03 height 795, 05 width 4855, 28 both pairs right-hand, 32 left/right counts swapped, 33 fire rating left blank, 36 width 1127.5, 56 line removed, 99 extra line |
+| `erp/*.mapping.yaml` | Column mappings for those exports |
 
 Counts below are raw entity counts from the file text, not hand counts of physical
 elements. PLAN 1.2 adds the hand count.

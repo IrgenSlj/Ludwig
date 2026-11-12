@@ -45,7 +45,7 @@ def test_fail_shows_both_values_and_both_sources(pack):
     assert f.measured == {"architect.width_mm": {"s.csv": 1200.0},
                           "erp.width_mm": {"erp.csv": 1180.0}}  # fmt: skip
     assert f.expected == "architect.width_mm == erp.width_mm (within 1)"
-    assert f.message == "Frame K1: width s.csv 1200 in the drawings, erp.csv 1180 in production"
+    assert f.message == "Frame K1: width 1200 in the drawings, 1180 in production"
     assert [(s.file, s.cell) for s in f.evidence] == [("s.csv", "width_mm"),
                                                      ("erp.csv", "width_mm")]  # fmt: skip
     assert f.element_ids == ["a", "e"]
@@ -57,7 +57,7 @@ def test_quantity_compares_each_document_total_with_the_erp_total(pack):
                 frame("e", Side.ERP, "erp.csv", quantity=4)]  # fmt: skip
     [f] = by_rule(run(elements, pack), "quantity-matches")
     assert f.status is Status.FAIL
-    assert f.message == "mark K1: quantity differs: m.ifc 4, s.csv 3 vs erp.csv 4"
+    assert f.message == "mark K1: quantity differs: m.ifc 4, s.csv 3 vs 4"
 
 
 def test_missing_values_are_not_checked(pack):
