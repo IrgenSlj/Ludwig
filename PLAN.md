@@ -87,7 +87,7 @@ Goal: work for projects that arrive without a model.
 - [x] 3.2 Table extraction from DXF (schedules drawn as text and lines).
 - [x] 3.3 `parsers/pdf.py`: vector PDF only. Extract text with positions and ruled
       tables (pdfplumber). A page with no vector text gives a parse warning, not a guess.
-- [ ] 3.4 DWG: document the conversion step (external converter to DXF, run as a
+- [x] 3.4 DWG: document the conversion step (external converter to DXF, run as a
       separate process). No DWG library in-process.
 - [ ] 3.5 Parser mapping files per office convention (layer names, attribute tags).
 

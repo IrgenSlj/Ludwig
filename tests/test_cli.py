@@ -67,13 +67,17 @@ def test_missing_file_unknown_type_bad_pack_and_erp_give_exit_2(tmp_path, capsys
     dwg = tmp_path / "plan.dwg"
     dwg.write_text("x")
     assert run(tmp_path, "--architect", str(dwg), "--pack", str(pack)) == EXIT_USAGE
+    odd = tmp_path / "plan.skp"
+    odd.write_text("x")
+    assert run(tmp_path, "--architect", str(odd), "--pack", str(pack)) == EXIT_USAGE
     assert run(tmp_path, "--architect", str(DUPLEX), "--pack", str(tmp_path)) == EXIT_USAGE
     erp = ["--erp", str(ERP), "--mapping", "m.yaml"]
     assert run(tmp_path, "--architect", str(DUPLEX), *erp, "--pack", str(pack)) == EXIT_USAGE
     assert run(tmp_path, "--architect", str(DUPLEX), "--mapping", "m.yaml",
                "--pack", str(pack)) == EXIT_USAGE  # fmt: skip
     err = capsys.readouterr().err
-    assert "file not found" in err and "unsupported file type .dwg" in err
+    assert "file not found" in err and "unsupported file type .skp" in err
+    assert "convert it to DXF first (see docs/DWG.md)" in err
     assert "m.yaml: file not found" in err and "--mapping needs --erp" in err
 
 

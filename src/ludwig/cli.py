@@ -64,6 +64,9 @@ def read_architect(files: list[Path]) -> tuple[list[Element], list[ParseWarning]
             except ValueError as exc:
                 raise UsageError(str(exc)) from None
             found, warned = schedule.parse(path, mapping)
+        elif suffix == ".dwg":
+            raise UsageError(f"{path}: DWG is not read directly; convert it to DXF first "
+                             "(see docs/DWG.md)")  # fmt: skip
         else:
             raise UsageError(f"{path}: unsupported file type {suffix or '(none)'}")
         elements.extend(found)
