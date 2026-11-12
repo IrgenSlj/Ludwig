@@ -2,19 +2,33 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ludwig.api import jobs
-from ludwig.api.db import FindingRow, Project, Run, Upload, connect
+from ludwig.api.db import FindingRow, Project, Review, Run, Upload, connect
 from ludwig.api.guards import origin_ok, token_ok
 from ludwig.api.settings import Settings
 from ludwig.api.storage import Storage
+from ludwig.model import SourceRef
+from ludwig.report import describe_source
 from ludwig.rules.packs import Pack, PackError, load_pack
 
 ROLES = ("architect", "erp", "mapping")
@@ -26,9 +40,30 @@ class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
 
+class ReviewIn(BaseModel):
+    decision: str = Field(pattern="^(accept|dismiss)$")
+    reason: str = Field(default="", max_length=2000)
+
+
 class RunIn(BaseModel):
     pack: str
     uploads: list[int] = Field(min_length=1)
+
+
+PAGE_SCALE = 1.5  # image pixels per PDF point; boxes in evidence are in points
+
+
+def render_page(pdf: Path, page: int) -> bytes | None:
+    """One PDF page as PNG, or None when the page does not exist."""
+    import pdfplumber
+
+    with pdfplumber.open(pdf) as doc:
+        if not 1 <= page <= len(doc.pages):
+            return None
+        image = doc.pages[page - 1].to_image(resolution=72 * PAGE_SCALE).original
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    return out.getvalue()
 
 
 def _packs(folder: Path) -> dict[str, Pack]:
@@ -55,8 +90,24 @@ def _run(r: Run) -> dict[str, Any]:
     return {"id": r.id, "project_id": r.project_id, "status": r.status, "error": r.error,
             "pack": {"name": r.pack_name, "version": r.pack_version, "hash": r.pack_hash},
             "uploads": r.upload_ids, "upload_hashes": r.upload_hashes, "summary": r.summary,
+            "files": r.files or {},
             "created": r.created.isoformat(),
             "finished": r.finished.isoformat() if r.finished else None}  # fmt: skip
+
+
+def _review(r: Review | None) -> dict[str, Any] | None:
+    if r is None:
+        return None
+    return {"decision": r.decision, "reason": r.reason, "created": r.created.isoformat()}
+
+
+def _finding(row: FindingRow) -> dict[str, Any]:
+    return {"id": row.id, "run_id": row.run_id, **row.data,
+            "review": _review(row.reviews[-1] if row.reviews else None)}  # fmt: skip
+
+
+CSV_COLUMNS = ("id", "severity", "status", "mark", "rule_id", "message", "expected", "reason",
+               "review", "review_reason", "sources")  # fmt: skip
 
 
 def _safe_name(name: str | None) -> str:
@@ -84,7 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def guard(request: Request, call_next: Any) -> Any:
-        if request.url.path != "/health":
+        if request.url.path.startswith("/api/"):
             auth = request.headers.get("authorization", "")
             given = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else None
             if not token_ok(settings.api_token, given):
@@ -111,28 +162,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/packs")
+    api = APIRouter(prefix="/api")
+
+    @api.get("/packs")
     def packs() -> list[dict[str, Any]]:
         return [{"name": p.name, "version": p.version, "hash": p.content_hash,
                  "description": p.description, "rules": len(p.rules) + len(p.ids_specs)}
                 for p in _packs(settings.packs_dir).values()]  # fmt: skip
 
-    @app.post("/projects", status_code=201)
+    @api.post("/projects", status_code=201)
     def create_project(body: ProjectIn, session: DB) -> dict[str, Any]:
         project = Project(name=body.name)
         session.add(project)
         session.commit()
         return _project(project)
 
-    @app.get("/projects")
+    @api.get("/projects")
     def list_projects(session: DB) -> list[dict[str, Any]]:
         return [_project(p) for p in session.query(Project).order_by(Project.id)]
 
-    @app.get("/projects/{project_id}")
+    @api.get("/projects/{project_id}")
     def get_project(project_id: int, session: DB) -> dict[str, Any]:
         return _project(project_or_404(session, project_id))
 
-    @app.post("/projects/{project_id}/uploads", status_code=201)
+    @api.post("/projects/{project_id}/uploads", status_code=201)
     async def upload(project_id: int, session: DB, file: UploadFile,
                      role: Annotated[str, Form()],
                      for_upload: Annotated[int | None, Form()] = None,
@@ -157,13 +210,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session.commit()
         return _upload(row)
 
-    @app.get("/projects/{project_id}/uploads")
+    @api.get("/projects/{project_id}/uploads")
     def list_uploads(project_id: int, session: DB) -> list[dict[str, Any]]:
         project_or_404(session, project_id)
         rows = session.query(Upload).filter(Upload.project_id == project_id).order_by(Upload.id)
         return [_upload(u) for u in rows]
 
-    @app.post("/projects/{project_id}/runs", status_code=202)
+    @api.post("/projects/{project_id}/runs", status_code=202)
     def start_run(project_id: int, body: RunIn, session: DB,
                   background: BackgroundTasks) -> dict[str, Any]:  # fmt: skip
         project_or_404(session, project_id)
@@ -185,25 +238,78 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         background.add_task(jobs.execute, run.id, sessions, storage, pack)
         return _run(run)
 
-    @app.get("/projects/{project_id}/runs")
+    @api.get("/projects/{project_id}/runs")
     def list_runs(project_id: int, session: DB) -> list[dict[str, Any]]:
         project_or_404(session, project_id)
         return [_run(r) for r in session.query(Run).filter(Run.project_id == project_id)
                 .order_by(Run.id)]  # fmt: skip
 
-    @app.get("/runs/{run_id}")
+    @api.get("/runs/{run_id}")
     def get_run(run_id: int, session: DB) -> dict[str, Any]:
         return _run(run_or_404(session, run_id))
 
-    @app.get("/runs/{run_id}/findings")
+    @api.get("/runs/{run_id}/findings")
     def findings(run_id: int, session: DB, status: str | None = None) -> list[dict[str, Any]]:
         run_or_404(session, run_id)
         rows = session.query(FindingRow).filter(FindingRow.run_id == run_id)
         if status:
             rows = rows.filter(FindingRow.status.in_(status.split(",")))
-        return [{"id": r.id, **r.data} for r in rows.order_by(FindingRow.position)]
+        return [_finding(r) for r in rows.order_by(FindingRow.position)]
 
-    @app.get("/runs/{run_id}/reports/{name}")
+    @api.get("/runs/{run_id}/findings.csv")
+    def findings_csv(run_id: int, session: DB) -> Response:
+        run_or_404(session, run_id)
+        open_items = FindingRow.status.in_(("fail", "not_checked"))
+        rows = (session.query(FindingRow).filter(FindingRow.run_id == run_id, open_items)
+                .order_by(FindingRow.position))  # fmt: skip
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow(CSV_COLUMNS)
+        for row in rows:
+            f = _finding(row)
+            review = f["review"] or {}
+            sources = "; ".join(describe_source(SourceRef.from_dict(s)) for s in f["evidence"])
+            cells = [f["id"], f["severity"], f["status"], f["mark"], f["rule_id"], f["message"],
+                     f["expected"], f["reason"], review.get("decision"), review.get("reason"),
+                     sources]  # fmt: skip
+            # Customer text must not turn into a spreadsheet formula when the file is opened.
+            writer.writerow(["'" + c if isinstance(c, str) and c[:1] in "=+-@" else c
+                             for c in cells])  # fmt: skip
+        disposition = f'attachment; filename="run-{run_id}-findings.csv"'
+        return Response(out.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": disposition})  # fmt: skip
+
+    @api.get("/findings/{finding_id}")
+    def finding(finding_id: int, session: DB) -> dict[str, Any]:
+        row = session.get(FindingRow, finding_id)
+        if row is None:
+            raise HTTPException(404, "no such finding")
+        return {**_finding(row), "reviews": [_review(r) for r in row.reviews],
+                "files": row.run.files or {}}  # fmt: skip
+
+    @api.post("/findings/{finding_id}/review", status_code=201)
+    def review(finding_id: int, body: ReviewIn, session: DB) -> dict[str, Any]:
+        row = session.get(FindingRow, finding_id)
+        if row is None:
+            raise HTTPException(404, "no such finding")
+        if body.decision == "dismiss" and not body.reason.strip():
+            raise HTTPException(422, "a dismissal needs a reason")
+        decision = Review(finding_id=row.id, decision=body.decision, reason=body.reason.strip())
+        session.add(decision)
+        session.commit()
+        return _review(decision)
+
+    @api.get("/uploads/{upload_id}/pages/{page}.png")
+    def page_image(upload_id: int, page: int, session: DB) -> Response:
+        upload = session.get(Upload, upload_id)
+        if upload is None or not upload.filename.lower().endswith(".pdf"):
+            raise HTTPException(404, "no such PDF")
+        png = render_page(storage.object(upload.sha256), page)
+        if png is None:
+            raise HTTPException(404, "no such page")
+        return Response(png, media_type="image/png", headers={"X-Points-Scale": str(PAGE_SCALE)})
+
+    @api.get("/runs/{run_id}/reports/{name}")
     def report(run_id: int, name: str, session: DB) -> FileResponse:
         run_or_404(session, run_id)
         folder = storage.run_dir(run_id)
@@ -214,4 +320,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         media = REPORTS.get(name, "application/pdf")
         return FileResponse(path, media_type=media, filename=path.name)
 
+    app.include_router(api)
+    web = settings.web_dir
+    if web is not None and (web / "index.html").is_file():
+        app.mount("/", StaticFiles(directory=web, html=True), name="web")
     return app

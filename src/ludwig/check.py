@@ -117,8 +117,8 @@ def run(architect: list[Path], pack: Pack, erp: Path | None = None,
     return Outcome(result, warnings, elements)
 
 
-def write_reports(out: Path, outcome: Outcome, pack: Pack) -> list[Path]:
-    """Write report.json, report.xlsx, report.bcf and marked PDFs into `out`."""
+def write_reports(out: Path, outcome: Outcome, pack: Pack, markup: bool = True) -> list[Path]:
+    """Write report.json, report.xlsx, report.bcf and (unless told not to) marked PDFs."""
     out.mkdir(parents=True, exist_ok=True)
     meta = (pack.name, pack.version, outcome.warnings, pack.content_hash)
     written = [
@@ -126,4 +126,4 @@ def write_reports(out: Path, outcome: Outcome, pack: Pack) -> list[Path]:
         excel.write(out / "report.xlsx", outcome.result, *meta),
         bcf.write(out / "report.bcf", outcome.result),
     ]
-    return written + pdf_markup.write(out, outcome.result)
+    return written + (pdf_markup.write(out, outcome.result) if markup else [])

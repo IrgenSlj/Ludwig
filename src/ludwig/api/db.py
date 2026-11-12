@@ -59,6 +59,8 @@ class Run(Base):
     summary: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created: Mapped[datetime] = mapped_column(default=_now)
     finished: Mapped[datetime | None]
+    # Display name of each file in the findings -> its upload id.
+    files: Mapped[dict[str, int] | None] = mapped_column(JSON)
     findings: Mapped[list[FindingRow]] = relationship(back_populates="run")
 
 
@@ -76,6 +78,21 @@ class FindingRow(Base):
     mark: Mapped[str | None] = mapped_column(String(100))
     data: Mapped[dict[str, Any]] = mapped_column(JSON)
     run: Mapped[Run] = relationship(back_populates="findings")
+    reviews: Mapped[list[Review]] = relationship(back_populates="finding", order_by="Review.id")
+
+
+class Review(Base):
+    """A person's decision on a finding: accept or dismiss, with a reason. Never edited;
+    a new decision is a new row, the latest one counts."""
+
+    __tablename__ = "review"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    finding_id: Mapped[int] = mapped_column(ForeignKey("finding.id"), index=True)
+    decision: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str] = mapped_column(Text, default="")
+    created: Mapped[datetime] = mapped_column(default=_now)
+    finding: Mapped[FindingRow] = relationship(back_populates="reviews")
 
 
 def connect(url: str) -> sessionmaker:
