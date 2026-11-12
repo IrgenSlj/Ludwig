@@ -246,3 +246,17 @@ def test_assist_is_off_unless_configured_and_never_changes_findings(tmp_path):
     assert after["review"] is None
     draft = client.post("/api/assist/rule", json={"pack": "joinery-nl", "text": "x"}).json()
     assert draft["problems"]  # "y" is not a rule; shown to the person, never saved
+
+
+def test_project_stats_count_raised_accepted_dismissed(client):
+    run = finished_run(client, [FIX / "ifc" / "duplex_architectural_ifc2x3.ifc"])
+    open_items = client.get(
+        f"/api/runs/{run['id']}/findings", params={"status": "fail,not_checked"}
+    )
+    ids = [f["id"] for f in open_items.json()]
+    client.post(f"/api/findings/{ids[0]}/review", json={"decision": "accept"})
+    client.post(f"/api/findings/{ids[1]}/review", json={"decision": "dismiss", "reason": "ok"})
+    stats = client.get(f"/api/projects/{run['project_id']}/stats").json()
+    assert stats["total"] == {"raised": len(ids), "accepted": 1, "dismissed": 1,
+                              "unreviewed": len(ids) - 2}  # fmt: skip
+    assert stats["runs"][0]["run"] == run["id"]

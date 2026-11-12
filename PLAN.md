@@ -128,7 +128,7 @@ Gate: a work preparer who has not seen the tool completes a check unaided.
 - [ ] 6.1 **(Irgen)** Written agreement on data use with each pilot company before any
       real file is loaded.
 - [ ] 6.2 **(Irgen)** Three pilot factories; encode each one's limits and ERP mapping.
-- [ ] 6.3 Measure per project: findings raised, findings accepted, findings dismissed.
+- [x] 6.3 Measure per project: findings raised, findings accepted, findings dismissed.
 - [ ] 6.4 Price and contract for continued use.
 
 Gate: one pilot company pays to continue.

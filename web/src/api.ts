@@ -173,6 +173,10 @@ export const api = {
   startRun: (project: number, pack: string, uploads: number[]) =>
     call<Run>(`/projects/${project}/runs`, json({ pack, uploads })),
   run: (id: number) => call<Run>(`/runs/${id}`),
+  stats: (project: number) =>
+    call<{ total: Record<"raised" | "accepted" | "dismissed" | "unreviewed", number> }>(
+      `/projects/${project}/stats`,
+    ),
   findings: (run: number, status?: string) =>
     call<Finding[]>(`/runs/${run}/findings${status ? `?status=${status}` : ""}`),
   finding: (id: number) => call<FindingDetail>(`/findings/${id}`),

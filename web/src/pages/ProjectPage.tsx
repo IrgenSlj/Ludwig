@@ -10,6 +10,7 @@ export function ProjectPage({ id }: { id: number }) {
   const uploads = useLoad(() => api.uploads(id), [id]);
   const runs = useLoad(() => api.runs(id), [id]);
   const packs = useLoad(api.packs, []);
+  const stats = useLoad(() => api.stats(id), [id, runs.data]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -123,6 +124,12 @@ export function ProjectPage({ id }: { id: number }) {
       {chosenErp > 1 && <p className="warn">Choose one production export per check.</p>}
 
       <h2>Runs</h2>
+      {stats.data && stats.data.total.raised > 0 && (
+        <p className="muted">
+          Over all runs: {stats.data.total.raised} findings raised · {stats.data.total.accepted} accepted ·{" "}
+          {stats.data.total.dismissed} dismissed · {stats.data.total.unreviewed} not reviewed
+        </p>
+      )}
       {runs.data?.length === 0 && <p className="muted">No checks run yet.</p>}
       <table className="grid">
         <tbody>

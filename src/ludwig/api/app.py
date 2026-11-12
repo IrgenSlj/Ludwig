@@ -343,6 +343,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return [_run(r) for r in session.query(Run).filter(Run.project_id == project_id)
                 .order_by(Run.id)]  # fmt: skip
 
+    @api.get("/projects/{project_id}/stats")
+    def project_stats(project_id: int, session: DB) -> dict[str, Any]:
+        """Per run and in total: findings raised, accepted, dismissed, not yet reviewed."""
+        project_or_404(session, project_id)
+        runs = session.query(Run).filter(Run.project_id == project_id).order_by(Run.id).all()
+        per_run = []
+        for run in runs:
+            raised = (session.query(FindingRow).filter(FindingRow.run_id == run.id,
+                      FindingRow.status.in_(("fail", "not_checked"))).all())  # fmt: skip
+            counts = {"raised": len(raised), "accepted": 0, "dismissed": 0, "unreviewed": 0}
+            for row in raised:
+                latest = row.reviews[-1].decision if row.reviews else None
+                key = {"accept": "accepted", "dismiss": "dismissed"}.get(latest, "unreviewed")
+                counts[key] += 1
+            per_run.append({"run": run.id, "created": run.created.isoformat(), **counts})
+        total = {k: sum(r[k] for r in per_run)
+                 for k in ("raised", "accepted", "dismissed", "unreviewed")}  # fmt: skip
+        return {"project": project_id, "total": total, "runs": per_run}
+
     @api.get("/runs/{run_id}")
     def get_run(run_id: int, session: DB) -> dict[str, Any]:
         return _run(run_or_404(session, run_id))
