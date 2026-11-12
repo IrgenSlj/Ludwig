@@ -71,6 +71,7 @@ ruff check
 pytest
 ludwig check --architect <files...> [--erp <file> --mapping <file>] --pack packs/joinery-nl --out report/
 pip install -e ".[api]" && ludwig serve        # HTTP service, settings from LUDWIG_* env
+cd web && npm ci && npm run build               # web app; serve it with LUDWIG_WEB_DIR=web/dist
 ```
 
 ## Definition of done for a task

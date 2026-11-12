@@ -111,7 +111,7 @@ Gate: findings from one run open correctly as BCF in two different viewers.
 
 - [x] 5.1 `api/`: FastAPI service with projects, uploads, runs and findings; Postgres;
       a background job per run.
-- [ ] 5.2 Web app (TypeScript, React): upload, findings list, finding detail with
+- [x] 5.2 Web app (TypeScript, React): upload, findings list, finding detail with
       source side by side, accept or dismiss with a reason, export.
 - [ ] 5.3 Accounts per company; a company sees only its own projects and packs.
 - [ ] 5.4 Docker image for on-site installation; EU hosting for the cloud version.

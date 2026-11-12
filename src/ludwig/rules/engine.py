@@ -490,6 +490,8 @@ def _run_compare(rule: Rule, pack: Pack, matches: list[Match] | None, by_id: dic
         rside = _side_values(rmembers, right, pack, by_id)
         evidence: list[SourceRef] = []
         for el, name in [*((e, left) for e in lmembers), *((e, right) for e in rmembers)]:
+            if _Scope(el, pack, by_id)(name) is None:
+                continue  # an element that states nothing is no evidence
             for src in el.sources if name == "quantity" else el.sources_of(name):
                 if src is not None and src not in evidence:
                     evidence.append(src)

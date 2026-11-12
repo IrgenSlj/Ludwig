@@ -143,3 +143,12 @@ def test_count_per_value_must_agree_when_a_mark_has_several_values(pack):
     [f] = by_rule(run(skewed, pack), "glazing-matches")
     assert f.status is Status.FAIL
     assert f.measured["erp.props.glazing_type"] == {"erp.csv": {"HR++": 3, "Triple": 1}}
+
+
+def test_evidence_leaves_out_elements_without_the_value(pack):
+    elements = [frame("m", Side.ARCHITECT, "plan.dxf", props={}),
+                frame("s", Side.ARCHITECT, "s.csv", props={"glazing_type": "HR++"}),
+                frame("e", Side.ERP, "erp.csv", props={"glazing_type": "Triple"})]  # fmt: skip
+    result = run(elements, pack)
+    [f] = by_rule(result, "glazing-matches")
+    assert {s.file for s in f.evidence} == {"s.csv", "erp.csv"}
