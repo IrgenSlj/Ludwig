@@ -101,7 +101,7 @@ findings as the IFC version.
       restrictions. Acceptance: fixtures per facet; unsupported facets give `not_checked`.
 - [x] 4.2 `report/bcf.py`: one topic per blocker and warning, with the element
       reference, so findings open in common model checkers.
-- [ ] 4.3 `report/pdf_markup.py`: add annotations to a copy of the source PDF at the
+- [x] 4.3 `report/pdf_markup.py`: add annotations to a copy of the source PDF at the
       evidence location.
 - [x] 4.4 Pack versioning: reports record pack name, version and a content hash.
 
