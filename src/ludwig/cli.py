@@ -5,89 +5,16 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Any
 
-from ludwig.adapters import erp_table
-from ludwig.match import pairs
-from ludwig.model import Element, ParseWarning, Severity, Status
-from ludwig.parsers import dxf, ifc, pdf, schedule
-from ludwig.report import bcf, excel, pdf_markup
-from ludwig.report import json as json_report
-from ludwig.rules import engine, ids
+from ludwig import check as checking
+from ludwig.model import Severity
 from ludwig.rules.packs import PackError, load_pack
 
 EXIT_OK, EXIT_BLOCKERS, EXIT_USAGE = 0, 1, 2
-SCHEDULE_SUFFIXES = {".xlsx", ".xlsm", ".csv"}
 
 
 class UsageError(Exception):
     """A problem with the command line or its files, reported with exit code 2."""
-
-
-def _schedule_mapping(path: Path) -> Path:
-    mapping = path.with_name(f"{path.stem}.mapping.yaml")
-    if not mapping.exists():
-        raise UsageError(f"{path}: no column mapping; expected {mapping.name} next to it")
-    return mapping
-
-
-def _optional_mapping(path: Path, load: Any) -> Any:
-    """The office mapping `<name>.mapping.yaml` beside a drawing, else the default one."""
-    mapping = path.with_name(f"{path.stem}.mapping.yaml")
-    try:
-        return load(mapping if mapping.exists() else None)
-    except ValueError as exc:
-        raise UsageError(str(exc)) from None
-
-
-def read_architect(files: list[Path]) -> tuple[list[Element], list[ParseWarning]]:
-    """Parse every architect file by its extension."""
-    elements: list[Element] = []
-    warnings: list[ParseWarning] = []
-    for path in files:
-        if not path.is_file():
-            raise UsageError(f"{path}: file not found")
-        suffix = path.suffix.lower()
-        if suffix == ".ifc":
-            found, warned = ifc.parse(path, _optional_mapping(path, ifc.load_mapping))
-        elif suffix == ".dxf":
-            found, warned = dxf.parse(path, _optional_mapping(path, dxf.load_mapping))
-        elif suffix == ".pdf":
-            try:
-                mapping = pdf.load_mapping(_schedule_mapping(path))
-            except ValueError as exc:
-                raise UsageError(str(exc)) from None
-            found, warned = pdf.parse(path, mapping)
-        elif suffix in SCHEDULE_SUFFIXES:
-            try:
-                mapping = schedule.load_mapping(_schedule_mapping(path))
-            except ValueError as exc:
-                raise UsageError(str(exc)) from None
-            found, warned = schedule.parse(path, mapping)
-        elif suffix == ".dwg":
-            raise UsageError(f"{path}: DWG is not read directly; convert it to DXF first "
-                             "(see docs/DWG.md)")  # fmt: skip
-        else:
-            raise UsageError(f"{path}: unsupported file type {suffix or '(none)'}")
-        elements.extend(found)
-        warnings.extend(warned)
-    return elements, warnings
-
-
-def read_erp(path: Path, mapping: Path | None) -> tuple[list[Element], list[ParseWarning]]:
-    """Parse the production export with its mapping (default: <name>.mapping.yaml beside it)."""
-    if not path.is_file():
-        raise UsageError(f"{path}: file not found")
-    if path.suffix.lower() not in SCHEDULE_SUFFIXES:
-        raise UsageError(f"{path}: unsupported file type {path.suffix or '(none)'}")
-    mapping = mapping or _schedule_mapping(path)
-    if not mapping.is_file():
-        raise UsageError(f"{mapping}: file not found")
-    try:
-        loaded = erp_table.load_mapping(mapping)
-    except ValueError as exc:
-        raise UsageError(str(exc)) from None
-    return erp_table.parse(path, loaded)
 
 
 def check(args: argparse.Namespace) -> int:
@@ -98,33 +25,23 @@ def check(args: argparse.Namespace) -> int:
         pack = load_pack(args.pack)
     except PackError as exc:
         raise UsageError(f"pack: {exc}") from None
-    elements, warnings = read_architect([Path(p) for p in args.architect])
-    if args.erp:
-        found, warned = read_erp(Path(args.erp), Path(args.mapping) if args.mapping else None)
-        elements.extend(found)
-        warnings.extend(warned)
-    result = engine.run(elements, pack, pairs(elements, pack.match_tolerance_mm))
-    if pack.ids_specs:
-        found = ids.run(pack.ids_specs, elements, pack.name, pack.version, pack.ids_severity)
-        result = result.extended(found, len(pack.ids_specs))
-
+    try:
+        outcome = checking.run(
+            [Path(p) for p in args.architect],
+            pack,
+            Path(args.erp) if args.erp else None,
+            Path(args.mapping) if args.mapping else None,
+        )
+    except checking.InputError as exc:
+        raise UsageError(str(exc)) from None
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    meta = (pack.name, pack.version, warnings, pack.content_hash)
-    json_path = json_report.write(out / "report.json", result, *meta)
-    excel.write(out / "report.xlsx", result, *meta)
-    bcf.write(out / "report.bcf", result)
-    pdf_markup.write(out, result)
-
-    def fails(severity: Severity) -> int:
-        return sum(f.status is Status.FAIL and f.severity is severity for f in result.findings)
-
-    blockers = fails(Severity.BLOCKER)
+    checking.write_reports(out, outcome, pack)
+    result, blockers = outcome.result, outcome.fails(Severity.BLOCKER)
     print(
         f"{result.elements_total} elements, {result.rules_run} rules: "
-        f"{blockers} blockers, {fails(Severity.WARNING)} warnings, "
-        f"{result.not_checked} not checked, {len(warnings)} parse warnings. "
-        f"Report: {json_path.parent}"
+        f"{blockers} blockers, {outcome.fails(Severity.WARNING)} warnings, "
+        f"{result.not_checked} not checked, {len(outcome.warnings)} parse warnings. "
+        f"Report: {out}"
     )
     return EXIT_BLOCKERS if blockers else EXIT_OK
 
