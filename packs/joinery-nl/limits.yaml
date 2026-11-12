@@ -1,0 +1,6 @@
+# Factory numbers for the joinery-nl pack. Change them here or in the web app (Packs).
+# Values are placeholders until the factory states its own.
+
+reconcile:
+  width_tolerance_mm: 1  # drawings and production may differ this much in width
+  height_tolerance_mm: 1  # drawings and production may differ this much in height

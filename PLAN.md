@@ -119,7 +119,7 @@ Gate: findings from one run open correctly as BCF in two different viewers.
       Image done (docs/INSTALL.md); cloud hosting deferred with 5.3.
 - [ ] 5.5 `assist/`: optional help that drafts rules from specification text and
       explains findings in plain language, within SPEC section 9.
-- [ ] 5.6 Limits editor so a factory can maintain `limits.yaml` without a text editor.
+- [x] 5.6 Limits editor so a factory can maintain `limits.yaml` without a text editor.
 
 Gate: a work preparer who has not seen the tool completes a check unaided.
 

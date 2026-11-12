@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -109,6 +109,7 @@ class Rule:
     left: str | None = None
     right: str | None = None
     tolerance: float = 0.0
+    tolerance_limit: str | None = None  # `limits.<path>` the tolerance is read from
     group_by: str | None = None
     field: str | None = None
     missing_on: Side | None = None
@@ -186,6 +187,18 @@ def _expr(text: Any, file: Path, line: int | None, limits: set[str]) -> Expr:
     return expr
 
 
+def _tolerance(raw: Any, file: Path, limits: set[str]) -> dict[str, Any]:
+    """A tolerance: a number >= 0, or the name of a limit (resolved once limits are known)."""
+    tolerance = raw.get("tolerance", 0)
+    if isinstance(tolerance, str) and tolerance.startswith("limits."):
+        if tolerance not in limits:
+            raise PackError(file, _line(raw, "tolerance"), f"unknown limit {tolerance!r}")
+        return {"tolerance_limit": tolerance}
+    if isinstance(tolerance, bool) or not isinstance(tolerance, int | float) or tolerance < 0:
+        raise PackError(file, _line(raw, "tolerance"), "tolerance must be a number >= 0 or a limit")
+    return {"tolerance": float(tolerance)}
+
+
 def _one_of(value: Any, enum: type[StrEnum], what: str, file: Path, line: int | None) -> Any:
     try:
         return enum(value)
@@ -248,10 +261,7 @@ def _load_rule(raw: Any, file: Path, limits: set[str], seen: set[str]) -> Rule:
                 raise PackError(file, _line(raw, key), problem)
             fields[key] = raw[key]
             names_for_message.add(raw[key])
-        tolerance = raw.get("tolerance", 0)
-        if isinstance(tolerance, bool) or not isinstance(tolerance, int | float) or tolerance < 0:
-            raise PackError(file, _line(raw, "tolerance"), "tolerance must be a number >= 0")
-        fields["tolerance"] = float(tolerance)
+        fields.update(_tolerance(raw, file, limits))
     elif kind is RuleKind.UNMATCHED:
         if "when" in raw or "side" in applies:
             key = "when" if "when" in raw else "applies_to"
@@ -259,10 +269,7 @@ def _load_rule(raw: Any, file: Path, limits: set[str], seen: set[str]) -> Rule:
         fields["missing_on"] = _one_of(raw["missing_on"], Side, "missing_on", file,
                                        _line(raw, "missing_on"))  # fmt: skip
     else:
-        tolerance = raw.get("tolerance", 0)
-        if isinstance(tolerance, bool) or not isinstance(tolerance, int | float) or tolerance < 0:
-            raise PackError(file, _line(raw, "tolerance"), "tolerance must be a number >= 0")
-        fields["tolerance"] = float(tolerance)
+        fields.update(_tolerance(raw, file, limits))
         for key in ("group_by", "field"):
             problem = _element_name_error(str(raw[key]), set())
             if problem or str(raw[key]).startswith("parent."):
@@ -331,6 +338,16 @@ def load_pack(root: str | Path) -> Pack:
         raise PackError(checks_file, None, "must be a list of checks")
     seen: set[str] = set()
     rules = [_load_rule(raw, checks_file, limit_names, seen) for raw in checks]
+    plain_limits = _plain(limits)
+    for i, rule in enumerate(rules):
+        if rule.tolerance_limit:
+            node: Any = plain_limits
+            for part in rule.tolerance_limit.split(".")[1:]:
+                node = node[part]
+            if isinstance(node, bool) or not isinstance(node, int | float) or node < 0:
+                message = f"{rule.tolerance_limit} (tolerance of {rule.id}) must be a number >= 0"
+                raise PackError(limits_file, None, message)
+            rules[i] = replace(rule, tolerance=float(node))
 
     ids_path = root / files["ids"] if "ids" in files else None
     ids_specs = []

@@ -30,3 +30,5 @@ docker run -d -p 8000:8000 -v ludwig-data:/data -v /srv/packs:/app/packs:ro ludw
 
 Without a token the service is open to anyone who can reach the port: run it on the
 factory network only, or set `LUDWIG_API_TOKEN`.
+
+To change limits from the web app (Packs), mount the packs folder writable instead of `:ro`.

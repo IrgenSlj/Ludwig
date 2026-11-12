@@ -95,6 +95,20 @@ class Review(Base):
     finding: Mapped[FindingRow] = relationship(back_populates="reviews")
 
 
+class LimitChange(Base):
+    """A change to a pack's limits: the values set and both file versions (in storage)."""
+
+    __tablename__ = "limit_change"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pack_name: Mapped[str] = mapped_column(String(100), index=True)
+    values: Mapped[dict[str, Any]] = mapped_column(JSON)
+    old_sha256: Mapped[str] = mapped_column(String(64))
+    new_sha256: Mapped[str] = mapped_column(String(64))
+    reason: Mapped[str] = mapped_column(Text, default="")
+    created: Mapped[datetime] = mapped_column(default=_now)
+
+
 def connect(url: str) -> sessionmaker:
     """A session factory; creates missing tables (migrations come with the first schema change)."""
     args = {"check_same_thread": False} if url.startswith("sqlite") else {}

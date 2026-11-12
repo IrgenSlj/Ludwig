@@ -1,5 +1,5 @@
 # Reconciliation: architect set against production data (PLAN 2.5).
-# Tolerances are placeholders until a factory states its own.
+# Tolerances live in limits.yaml.
 
 - id: missing-in-erp
   kind: unmatched
@@ -28,7 +28,7 @@
   applies_to: {type: frame}
   left: architect.width_mm
   right: erp.width_mm
-  tolerance: 1
+  tolerance: limits.reconcile.width_tolerance_mm
   severity: blocker
   message: "Frame {mark}: width in drawings {architect.width_mm} mm, production {erp.width_mm} mm"
 
@@ -37,7 +37,7 @@
   applies_to: {type: frame}
   left: architect.height_mm
   right: erp.height_mm
-  tolerance: 1
+  tolerance: limits.reconcile.height_tolerance_mm
   severity: blocker
   message: "Frame {mark}: height in drawings {architect.height_mm} mm, production {erp.height_mm} mm"
 

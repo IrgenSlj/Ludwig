@@ -90,6 +90,21 @@ export interface Pack {
   rules: number;
 }
 
+export interface Limit {
+  path: string;
+  value: number;
+  line: number;
+  note: string;
+  used_by: string[];
+}
+
+export interface PackDetail extends Omit<Pack, "rules"> {
+  writable: boolean;
+  limits: Limit[];
+  rules: { id: string; kind: string; severity: Severity; description: string; message: string }[];
+  changes: { values: Record<string, number>; reason: string; created: string }[];
+}
+
 const TOKEN_KEY = "ludwig-token";
 
 export function setToken(token: string): void {
@@ -136,6 +151,13 @@ const json = (body: unknown): RequestInit => ({
 
 export const api = {
   packs: () => call<Pack[]>("/packs"),
+  pack: (name: string) => call<PackDetail>(`/packs/${encodeURIComponent(name)}`),
+  setLimits: (name: string, values: Record<string, number>, reason: string) =>
+    call<PackDetail>(`/packs/${encodeURIComponent(name)}/limits`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values, reason }),
+    }),
   projects: () => call<Project[]>("/projects"),
   project: (id: number) => call<Project>(`/projects/${id}`),
   createProject: (name: string) => call<Project>("/projects", json({ name })),

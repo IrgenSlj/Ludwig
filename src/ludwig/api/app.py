@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -23,12 +24,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ludwig.api import jobs
-from ludwig.api.db import FindingRow, Project, Review, Run, Upload, connect
+from ludwig.api.db import FindingRow, LimitChange, Project, Review, Run, Upload, connect
 from ludwig.api.guards import origin_ok, token_ok
 from ludwig.api.settings import Settings
 from ludwig.api.storage import Storage
 from ludwig.model import SourceRef
 from ludwig.report import describe_source
+from ludwig.rules import limits as pack_limits
 from ludwig.rules.packs import Pack, PackError, load_pack
 
 ROLES = ("architect", "erp", "mapping")
@@ -42,6 +44,11 @@ class ProjectIn(BaseModel):
 
 class ReviewIn(BaseModel):
     decision: str = Field(pattern="^(accept|dismiss)$")
+    reason: str = Field(default="", max_length=2000)
+
+
+class LimitsIn(BaseModel):
+    values: dict[str, float] = Field(min_length=1)
     reason: str = Field(default="", max_length=2000)
 
 
@@ -169,6 +176,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return [{"name": p.name, "version": p.version, "hash": p.content_hash,
                  "description": p.description, "rules": len(p.rules) + len(p.ids_specs)}
                 for p in _packs(settings.packs_dir).values()]  # fmt: skip
+
+    def pack_or_404(name: str) -> Pack:
+        pack = _packs(settings.packs_dir).get(name)
+        if pack is None:
+            raise HTTPException(404, f"no pack named {name!r}")
+        return pack
+
+    def pack_view(pack: Pack, session: Session) -> dict[str, Any]:
+        changes = (session.query(LimitChange).filter(LimitChange.pack_name == pack.name)
+                   .order_by(LimitChange.id.desc()).limit(20))  # fmt: skip
+        return {
+            "name": pack.name, "version": pack.version, "hash": pack.content_hash,
+            "description": pack.description,
+            "writable": os.access(pack.root / "limits.yaml", os.W_OK),
+            "limits": [vars(x) for x in pack_limits.read(pack)],
+            "rules": [{"id": r.id, "kind": r.kind.value, "severity": r.severity.value,
+                       "description": r.description, "message": r.message} for r in pack.rules],
+            "changes": [{"values": c.values, "reason": c.reason,
+                         "created": c.created.isoformat()} for c in changes],
+        }  # fmt: skip
+
+    @api.get("/packs/{name}")
+    def get_pack(name: str, session: DB) -> dict[str, Any]:
+        return pack_view(pack_or_404(name), session)
+
+    @api.put("/packs/{name}/limits")
+    def set_limits(name: str, body: LimitsIn, session: DB) -> dict[str, Any]:
+        pack = pack_or_404(name)
+        path = pack.root / "limits.yaml"
+        if not os.access(path, os.W_OK):
+            raise HTTPException(409, "this pack is read-only here; edit limits.yaml on the server")
+        old = storage.put(path.read_bytes())
+        try:
+            pack = pack_limits.update(pack, dict(body.values))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        session.add(LimitChange(pack_name=pack.name, values=dict(body.values), old_sha256=old,
+                                new_sha256=storage.put(path.read_bytes()),
+                                reason=body.reason.strip()))  # fmt: skip
+        session.commit()
+        return pack_view(pack, session)
 
     @api.post("/projects", status_code=201)
     def create_project(body: ProjectIn, session: DB) -> dict[str, Any]:
