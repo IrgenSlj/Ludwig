@@ -114,6 +114,7 @@ Gate: findings from one run open correctly as BCF in two different viewers.
 - [x] 5.2 Web app (TypeScript, React): upload, findings list, finding detail with
       source side by side, accept or dismiss with a reason, export.
 - [ ] 5.3 Accounts per company; a company sees only its own projects and packs.
+      **Deferred** (Irgen, 2026-11-12): no accounts for now; focus on the checking software.
 - [ ] 5.4 Docker image for on-site installation; EU hosting for the cloud version.
 - [ ] 5.5 `assist/`: optional help that drafts rules from specification text and
       explains findings in plain language, within SPEC section 9.
