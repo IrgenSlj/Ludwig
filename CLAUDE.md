@@ -48,30 +48,35 @@ It is not a CAD tool, not a generator and not a drawing viewer.
 
 ```
 src/ludwig/
-  model.py        # Element, SourceRef, Finding
-  parsers/        # ifc.py, schedule.py, dxf.py, pdf.py
+  model.py        # Element, SourceRef, Finding, Match
+  check.py        # one check end to end; used by cli.py and api/
+  parsers/        # ifc.py, schedule.py, dxf.py, pdf.py, tables.py, mappings/ (defaults)
   adapters/       # erp_table.py (generic CSV/Excel + mapping)
   match.py        # pairs architect elements with ERP elements
-  rules/          # expr.py (language), engine.py, ids.py, packs.py
+  rules/          # expr.py (language), engine.py, ids.py, packs.py, limits.py, fixtures.py
   report/         # json.py, excel.py, bcf.py, pdf_markup.py
-  assist/         # the only place an LLM may be called
-  cli.py
-  api/            # phase 5
-packs/joinery-nl/ # pack.yaml, checks.yaml, limits.yaml, requirements.ids, fixtures/
-fixtures/         # shared sample inputs
-tests/
-docs/
+  assist/         # the only place an LLM may be called (off unless LUDWIG_ASSIST_COMMAND)
+  cli.py          # `ludwig check`, `ludwig serve`
+  api/            # FastAPI service: app.py, db.py, jobs.py, storage.py, guards.py
+packs/joinery-nl/ # pack.yaml, checks.yaml, limits.yaml, fixtures/<rule>/pass|fail.json
+mappings/examples/# office mapping starting points
+fixtures/         # shared sample inputs (public or invented; see fixtures/README.md)
+tools/            # make_duplex_2d.py (regenerates invented 2D fixtures), minipdf.py
+web/              # React + TypeScript web app (Vite)
+tests/            # pytest; tests/packs/ hold engine test packs
+docs/             # SPEC, ARCHITECTURE, ERROR_CATALOGUE, DWG, INSTALL
+Dockerfile        # on-site image: service + web app + packs
 ```
 
 ## Commands
 
 ```
-pip install -e ".[dev]"
+pip install -e ".[dev,api]"
 ruff check
-pytest
+pytest                                          # set LUDWIG_TEST_DATABASE_URL to also hit Postgres
+cd web && npm ci && npm run typecheck && npm test && npm run build
 ludwig check --architect <files...> [--erp <file> --mapping <file>] --pack packs/joinery-nl --out report/
-pip install -e ".[api]" && ludwig serve        # HTTP service, settings from LUDWIG_* env
-cd web && npm ci && npm run build               # web app; serve it with LUDWIG_WEB_DIR=web/dist
+LUDWIG_WEB_DIR=web/dist ludwig serve           # service + web app; settings from LUDWIG_* env
 ```
 
 ## Definition of done for a task
