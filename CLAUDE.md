@@ -55,7 +55,8 @@ src/ludwig/
   model.py        # Element, SourceRef, Finding, Match
   check.py        # one check end to end; used by cli.py and api/
   parsers/        # ifc.py, schedule.py, dxf.py, pdf.py, tables.py, values.py (unit/number
-                  # coercion), mappings/ (defaults)
+                  # coercion), columns.py (mapping proposals), mappings/ (defaults,
+                  # column_names.yaml)
   adapters/       # erp_table.py (generic CSV/Excel + mapping)
   match.py        # pairs architect elements with ERP elements
   rules/          # expr.py (language), engine.py, ids.py, packs.py, limits.py, fixtures.py

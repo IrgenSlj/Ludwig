@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type Upload } from "../api";
 import { href } from "../route";
 import { useLoad } from "../useLoad";
+import { MappingEditor } from "./MappingEditor";
 
 const NEEDS_MAPPING = /\.(xlsx|xlsm|csv|pdf)$/i;
+const TABLE = /\.(xlsx|xlsm|csv)$/i;
 
 export function ProjectPage({ id }: { id: number }) {
   const project = useLoad(() => api.project(id), [id]);
@@ -15,6 +17,7 @@ export function ProjectPage({ id }: { id: number }) {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [pack, setPack] = useState("");
+  const [editing, setEditing] = useState<Upload | null>(null);
 
   const files = useMemo(() => (uploads.data ?? []).filter((u) => u.role !== "mapping"), [uploads.data]);
   const mappingOf = useMemo(() => {
@@ -38,13 +41,18 @@ export function ProjectPage({ id }: { id: number }) {
     if (!list?.length) return;
     setBusy(true);
     setError(null);
+    let table: Upload | null = null;
     try {
-      for (const file of Array.from(list)) await api.upload(id, file, role, forUpload);
+      for (const file of Array.from(list)) {
+        const added = await api.upload(id, file, role, forUpload);
+        if (role !== "mapping" && TABLE.test(added.filename)) table ??= added;
+      }
     } catch (e) {
       setError(String(e));
     }
     setBusy(false);
     uploads.reload();
+    if (table) setEditing(table);
   }
 
   async function start() {
@@ -89,6 +97,7 @@ export function ProjectPage({ id }: { id: number }) {
           setSelected={setSelected}
           onFiles={(l) => send(l, "architect")}
           onMapping={(l, f) => send(l, "mapping", f)}
+          onBuild={setEditing}
           busy={busy}
         />
         <FileGroup
@@ -101,9 +110,21 @@ export function ProjectPage({ id }: { id: number }) {
           setSelected={setSelected}
           onFiles={(l) => send(l, "erp")}
           onMapping={(l, f) => send(l, "mapping", f)}
+          onBuild={setEditing}
           busy={busy}
         />
       </div>
+
+      {editing && (
+        <MappingEditor
+          key={editing.id}
+          file={editing}
+          onDone={() => {
+            setEditing(null);
+            uploads.reload();
+          }}
+        />
+      )}
 
       <h2>Check</h2>
       <div className="row">
@@ -119,7 +140,10 @@ export function ProjectPage({ id }: { id: number }) {
         </button>
       </div>
       {missing.length > 0 && (
-        <p className="warn">Needs a column mapping: {missing.map((f) => f.filename).join(", ")}</p>
+        <p className="warn">
+          Set the columns of {missing.map((f) => f.filename).join(", ")} first
+          {missing.some((f) => !TABLE.test(f.filename)) && " (PDF schedules need a mapping file)"}.
+        </p>
       )}
       {chosenErp > 1 && <p className="warn">Choose one production export per check.</p>}
 
@@ -172,6 +196,7 @@ interface GroupProps {
   setSelected: (s: Set<number>) => void;
   onFiles: (l: FileList | null) => void;
   onMapping: (l: FileList | null, forUpload: number) => void;
+  onBuild: (f: Upload) => void;
   busy: boolean;
 }
 
@@ -213,18 +238,36 @@ function FileGroup(p: GroupProps) {
                 {f.filename}
               </label>
               <span className="muted"> {(f.size / 1024).toFixed(0)} kB</span>
-              <label className="link small">
-                {mapping ? `mapping: ${mapping.filename}` : "add mapping"}
-                <input
-                  type="file"
-                  hidden
-                  accept=".yaml,.yml"
-                  onChange={(e) => {
-                    p.onMapping(e.target.files, f.id);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
+              <span className="actions small">
+                {mapping && (
+                  <span className="ok" title={mapping.filename}>
+                    ✓ {TABLE.test(f.filename) ? "columns set" : "mapping"}
+                  </span>
+                )}
+                {TABLE.test(f.filename) && (
+                  <button className="link" onClick={() => p.onBuild(f)}>
+                    {mapping ? "edit columns" : "set columns"}
+                  </button>
+                )}
+                <label className="link" title="Upload a mapping file (.yaml)">
+                  {TABLE.test(f.filename)
+                    ? "file…"
+                    : mapping
+                      ? "replace"
+                      : NEEDS_MAPPING.test(f.filename)
+                        ? "add mapping"
+                        : "office mapping (optional)"}
+                  <input
+                    type="file"
+                    hidden
+                    accept=".yaml,.yml"
+                    onChange={(e) => {
+                      p.onMapping(e.target.files, f.id);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </span>
             </li>
           );
         })}

@@ -5,9 +5,13 @@ from __future__ import annotations
 import csv
 import io
 import os
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated, Any
 
+import yaml
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -30,7 +34,9 @@ from ludwig.api.settings import Settings
 from ludwig.api.storage import Storage
 from ludwig.assist import drafts
 from ludwig.assist.provider import AssistFailed, CommandProvider
-from ludwig.model import Finding, SourceRef
+from ludwig.model import Finding, Side, SourceRef
+from ludwig.parsers import columns as table_columns
+from ludwig.parsers import schedule
 from ludwig.report import describe_source
 from ludwig.rules import limits as pack_limits
 from ludwig.rules.packs import Pack, PackError, load_pack
@@ -62,6 +68,11 @@ class RuleDraftIn(BaseModel):
 class MappingDraftIn(BaseModel):
     headers: list[str] = Field(min_length=1, max_length=200)
     sample: list[list[str]] = Field(default_factory=list, max_length=5)
+
+
+class MappingIn(BaseModel):
+    mapping: dict[str, Any]
+    save: bool = False
 
 
 class RunIn(BaseModel):
@@ -416,6 +427,94 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session.add(decision)
         session.commit()
         return _review(decision)
+
+    TABLES = (".xlsx", ".xlsm", ".csv")
+
+    def table_or_422(session: Session, upload_id: int) -> Upload:
+        upload = session.get(Upload, upload_id)
+        if upload is None or upload.role == "mapping":
+            raise HTTPException(404, "no such file")
+        if not upload.filename.lower().endswith(TABLES):
+            raise HTTPException(422, "only .xlsx and .csv tables get a mapping here; PDF "
+                                "schedules need a mapping file (mappings/examples)")  # fmt: skip
+        return upload
+
+    @contextmanager
+    def named_copy(upload: Upload) -> Iterator[Path]:
+        # The readers choose CSV or Excel by the file name; stored objects have none.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / upload.filename
+            path.symlink_to(storage.object(upload.sha256))
+            yield path
+
+    def previous_mappings(session: Session, upload: Upload, headers: list[str]) -> list[dict]:
+        """Saved mappings for the same kind of file whose columns are all in these headers."""
+        out: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        rows = (session.query(Upload).filter(Upload.role == "mapping")
+                .order_by(Upload.id.desc()).limit(500))  # fmt: skip
+        for m in rows:
+            target = session.get(Upload, m.for_upload_id) if m.for_upload_id else None
+            if m.sha256 in seen or target is None or target.role != upload.role:
+                continue
+            seen.add(m.sha256)
+            try:
+                mapping = yaml.safe_load(storage.object(m.sha256).read_text()) or {}
+                schedule.load_mapping_dict(mapping)
+            except (OSError, ValueError, yaml.YAMLError, TypeError, AttributeError):
+                continue
+            if table_columns.fits(mapping, headers):
+                out.append({"upload": m.id, "filename": m.filename,
+                            "project": target.project_id, "mapping": mapping})  # fmt: skip
+            if len(out) == 5:
+                break
+        return out
+
+    @api.get("/uploads/{upload_id}/columns")
+    def upload_columns(upload_id: int, session: DB, header_row: int | None = None,
+                       sheet: str | None = None) -> dict[str, Any]:  # fmt: skip
+        upload = table_or_422(session, upload_id)
+        side = Side.ERP if upload.role == "erp" else Side.ARCHITECT
+        with named_copy(upload) as path:
+            try:
+                names = table_columns.sheets(path)
+                rows = table_columns.read_rows(path, sheet)
+            except Exception as exc:  # noqa: BLE001 - shown to the user, never a crash
+                raise HTTPException(422, f"cannot read {upload.filename}: {exc}") from None
+        out = table_columns.propose(rows, side, header_row)
+        if sheet:
+            out["mapping"]["sheet"] = sheet
+        out["sheets"] = names
+        out["previous"] = previous_mappings(session, upload, out["headers"])
+        return out
+
+    @api.post("/uploads/{upload_id}/mapping")
+    def upload_mapping(upload_id: int, body: MappingIn, session: DB) -> dict[str, Any]:
+        upload = table_or_422(session, upload_id)
+        name = f"{Path(upload.filename).stem}.mapping.yaml"
+        try:
+            text = table_columns.to_yaml(body.mapping, name)
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            raise HTTPException(422, f"mapping: {exc}") from None
+        side = Side.ERP if upload.role == "erp" else Side.ARCHITECT
+        with named_copy(upload) as path:
+            elements, warnings = schedule.parse(path, body.mapping, side=side)
+        out: dict[str, Any] = {
+            "elements": len(elements),
+            "quantity": sum(e.quantity for e in elements),
+            "warnings": [w.message for w in warnings[:20]],
+            "more_warnings": max(0, len(warnings) - 20),
+            "upload": None,
+        }
+        if body.save:
+            data = text.encode()
+            row = Upload(project_id=upload.project_id, role="mapping", filename=name,
+                         sha256=storage.put(data), size=len(data),
+                         for_upload_id=upload.id)  # fmt: skip
+            session.add(row)
+            session.commit()
+            out["upload"] = _upload(row)
+        return out
 
     @api.get("/uploads/{upload_id}/pages/{page}.png")
     def page_image(upload_id: int, page: int, session: DB) -> Response:

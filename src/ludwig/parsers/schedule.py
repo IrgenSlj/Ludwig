@@ -79,8 +79,8 @@ def cell_name(col: int, row: int) -> str:
     return f"{letters}{row}"
 
 
-def _read_rows(path: Path, sheet: str | None) -> tuple[list[list[Any]], str | None]:
-    """All rows as lists, and the sheet name used (None for CSV)."""
+def read_rows(path: Path, sheet: str | None) -> tuple[list[list[Any]], str | None]:
+    """All rows as lists, and the sheet name used (None for CSV). Raises on unreadable files."""
     if path.suffix.lower() in (".xlsx", ".xlsm"):
         import openpyxl
 
@@ -110,7 +110,7 @@ def parse(
     path = Path(path)
     file = str(path)
     try:
-        rows, sheet = _read_rows(path, mapping.get("sheet"))
+        rows, sheet = read_rows(path, mapping.get("sheet"))
     except Exception as exc:  # noqa: BLE001 - any read failure becomes a warning
         return [], [ParseWarning(file, f"cannot read schedule: {exc}")]
 

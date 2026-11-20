@@ -1,6 +1,8 @@
 // Typed calls to the Ludwig service (/api). The token, when the service needs one, is kept
 // for this browser tab only.
 
+import type { Mapping, Preview, Proposal } from "./mapping";
+
 export type Status = "fail" | "pass" | "not_checked" | "not_applicable";
 export type Severity = "blocker" | "warning" | "info";
 
@@ -180,6 +182,15 @@ export const api = {
   findings: (run: number, status?: string) =>
     call<Finding[]>(`/runs/${run}/findings${status ? `?status=${status}` : ""}`),
   finding: (id: number) => call<FindingDetail>(`/findings/${id}`),
+  columns: (upload: number, headerRow?: number, sheet?: string) => {
+    const q = new URLSearchParams();
+    if (headerRow) q.set("header_row", String(headerRow));
+    if (sheet) q.set("sheet", sheet);
+    const query = q.toString();
+    return call<Proposal>(`/uploads/${upload}/columns${query ? `?${query}` : ""}`);
+  },
+  mapping: (upload: number, mapping: Mapping, save: boolean) =>
+    call<Preview>(`/uploads/${upload}/mapping`, json({ mapping, save })),
   review: (id: number, decision: Review["decision"], reason: string) =>
     call<Review>(`/findings/${id}/review`, json({ decision, reason })),
 };

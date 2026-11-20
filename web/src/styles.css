@@ -99,3 +99,13 @@ input.number { width: 90px; text-align: right; }
 code { font-size: 13px; }
 .explain { margin: 8px 0 12px; }
 pre.draft { background: var(--bg); border: 1px solid var(--line); padding: 8px; overflow: auto; }
+.mapping { margin: 12px 0; }
+.grid.compact th, .grid.compact td { padding: 4px 8px; }
+.grid tr.sub td { border-bottom: none; padding-top: 0; }
+.notice { background: color-mix(in srgb, var(--accent) 10%, transparent); padding: 6px 10px; border-radius: 6px; }
+.scroll { overflow-x: auto; max-width: 100%; }
+.files li .actions { margin-left: auto; display: flex; gap: 4px; }
+.files li .actions .link { margin-left: 0; }
+.files li .ok { color: var(--ok); white-space: nowrap; }
+.files li > label:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files li > .muted, .files li .actions { white-space: nowrap; }

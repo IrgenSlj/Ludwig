@@ -260,3 +260,67 @@ def test_project_stats_count_raised_accepted_dismissed(client):
     assert stats["total"] == {"raised": len(ids), "accepted": 1, "dismissed": 1,
                               "unreviewed": len(ids) - 2}  # fmt: skip
     assert stats["runs"][0]["run"] == run["id"]
+
+
+def build_mapping(client, upload):
+    """What the web app does: take the proposal and save it unchanged."""
+    proposal = client.get(f"/api/uploads/{upload}/columns").json()
+    r = client.post(f"/api/uploads/{upload}/mapping",
+                    json={"mapping": proposal["mapping"], "save": True})  # fmt: skip
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_mappings_built_in_the_app_give_the_same_findings(client):
+    """PLAN 5.7: no YAML written by hand, same findings as the hand-written mappings."""
+    project = client.post("/api/projects", json={"name": "Built"}).json()["id"]
+    model = put(client, project, FIX / "ifc" / "duplex_architectural_ifc2x3.ifc", "architect")
+    sched = put(client, project, FIX / "schedule" / "duplex_joinery_schedule.csv", "architect")
+    erp = put(client, project, FIX / "erp" / "duplex_erp_export_seeded.csv", "erp")
+    built = [build_mapping(client, sched), build_mapping(client, erp)]
+    assert built[0]["elements"] > 0 and built[0]["warnings"] == []
+    assert built[1]["upload"]["filename"] == "duplex_erp_export_seeded.mapping.yaml"
+    ids = [model, sched, erp] + [b["upload"]["id"] for b in built]
+    r = client.post(f"/api/projects/{project}/runs", json={"pack": "joinery-nl", "uploads": ids})
+    run = client.get(f"/api/runs/{r.json()['id']}").json()
+    assert run["status"] == "done", run["error"]
+    assert run["summary"]["fails_by_severity"] == {"blocker": 8, "warning": 2}
+
+
+def test_preview_does_not_save_and_reports_problems(client):
+    project = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    sched = put(client, project, FIX / "schedule" / "duplex_joinery_schedule.csv", "architect")
+    mapping = {"type": "frame", "columns": {"mark": "Merk", "width_mm": "Breed"}}
+    r = client.post(f"/api/uploads/{sched}/mapping", json={"mapping": mapping}).json()
+    assert r["upload"] is None and r["elements"] > 0
+    assert any("'Breed'" in w for w in r["warnings"])
+    uploads = client.get(f"/api/projects/{project}/uploads").json()
+    assert [u["role"] for u in uploads] == ["architect"]
+    bad = client.post(f"/api/uploads/{sched}/mapping", json={"mapping": {"type": "door"}})
+    assert bad.status_code == 422
+
+
+def test_a_saved_mapping_is_offered_for_the_next_export_with_the_same_columns(client):
+    first = client.post("/api/projects", json={"name": "A"}).json()["id"]
+    erp = put(client, first, FIX / "erp" / "duplex_erp_export.csv", "erp")
+    build_mapping(client, erp)
+    second = client.post("/api/projects", json={"name": "B"}).json()["id"]
+    again = put(client, second, FIX / "erp" / "duplex_erp_export_seeded.csv", "erp")
+    offered = client.get(f"/api/uploads/{again}/columns").json()["previous"]
+    assert [o["filename"] for o in offered] == ["duplex_erp_export.mapping.yaml"]
+    assert offered[0]["project"] == first
+    # A schedule is a different kind of file: export mappings are not offered for it.
+    sched = put(client, second, FIX / "schedule" / "duplex_joinery_schedule.csv", "architect")
+    assert client.get(f"/api/uploads/{sched}/columns").json()["previous"] == []
+
+
+def test_columns_only_for_tables(client):
+    project = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    model = put(client, project, FIX / "ifc" / "duplex_architectural_ifc2x3.ifc", "architect")
+    assert client.get(f"/api/uploads/{model}/columns").status_code == 422
+    assert client.get("/api/uploads/999/columns").status_code == 404
+    book = put(client, project, FIX / "schedule" / "duplex_design_cobie.xlsx", "architect")
+    sheets = client.get(f"/api/uploads/{book}/columns").json()["sheets"]
+    assert len(sheets) > 1
+    chosen = client.get(f"/api/uploads/{book}/columns", params={"sheet": sheets[1]}).json()
+    assert chosen["mapping"]["sheet"] == sheets[1]

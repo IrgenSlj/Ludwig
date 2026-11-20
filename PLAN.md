@@ -120,6 +120,12 @@ Gate: findings from one run open correctly as BCF in two different viewers.
 - [x] 5.5 `assist/`: optional help that drafts rules from specification text and
       explains findings in plain language, within SPEC section 9.
 - [x] 5.6 Limits editor so a factory can maintain `limits.yaml` without a text editor.
+- [x] 5.7 Column mappings made in the web app: headers read and a mapping proposed from
+      known column names (no LLM), confirmed field by field with example values, checked
+      against the file before saving, offered again for files with the same columns.
+      Acceptance: mappings built from the proposals give the same findings as the
+      hand-written fixture mappings. Added 2026-11-20: a walkthrough found hand-written
+      YAML to be the step that stops a work preparer completing a check unaided.
 
 Gate: a work preparer who has not seen the tool completes a check unaided.
 

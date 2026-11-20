@@ -58,6 +58,8 @@ A value that could not be read is `None`. It is never zero or an empty string.
 - Convert units at the boundary. Reject nothing: unreadable items become parse warnings.
 - Each parser has a mapping file for office conventions (property set names, column
   headers, layer names, attribute tags). No convention is hard-coded.
+- For spreadsheet and CSV tables the web app proposes the mapping from the headers,
+  using the names in `parsers/mappings/column_names.yaml`; a person confirms it.
 - The same physical element described in two architect documents (model and schedule)
   produces two elements on the `architect` side. Consistency rules compare them.
 

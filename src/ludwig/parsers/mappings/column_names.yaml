@@ -1,0 +1,60 @@
+# Header names the mapping builder recognises, per element field or property.
+# Compared after lower-casing and removing spaces, punctuation and a unit in brackets.
+# Add a name here when an office or production system uses one that is not listed.
+
+columns:
+  mark: [merk, positie, pos, posnr, positienummer, kozijnmerk, merknr, mark, position, ref, reference, tag, markering]
+  quantity: [aantal, stuks, st, aant, qty, quantity, count, anzahl, stk]
+  width_mm: [breedte, br, kozijnbreedte, buitenwerkse breedte, bwbreedte, width, w, breite]
+  height_mm: [hoogte, h, kozijnhoogte, buitenwerkse hoogte, bwhoogte, height, hohe, höhe]
+  depth_mm: [diepte, dikte, depth, thickness, tiefe]
+  location: [verdieping, bouwlaag, laag, etage, level, storey, floor, zone, geschoss]
+
+props:
+  opening_direction:
+    as: text
+    names: [draairichting, draaiing, openingsrichting, draai, opening direction, handing, hand, swing, anschlag]
+  fire_rating_min:
+    as: number
+    names: [brandwerendheid, wbdbo, brandwerend, fire rating, fire resistance, fr, brandschutz]
+  glazing_type:
+    as: text
+    names: [glas, beglazing, glassoort, glastype, glazing, glass, glazing type, verglasung]
+  burglary_class:
+    as: number
+    names: [inbraakwerendheid, weerstandsklasse, wk, inbraakklasse, burglary class, rc, rc klasse, security class]
+  u_value:
+    as: number
+    names: [uwaarde, uw, ug, u value, uvalue, thermal transmittance]
+  sound_reduction_db:
+    as: number
+    names: [geluidwering, geluidsisolatie, rw, rwctr, sound reduction, acoustic, schallschutz]
+  threshold_type:
+    as: text
+    names: [dorpel, onderdorpel, dorpeltype, threshold, sill, schwelle]
+  ventilation_grille:
+    as: text
+    names: [ventilatierooster, rooster, ventilatie, vent, ventilation grille, trickle vent, lüfter]
+  material:
+    as: text
+    names: [houtsoort, materiaal, material, wood species, holzart]
+  finish:
+    as: text
+    names: [kleur, afwerking, ral, kleur buiten, colour, color, finish, farbe]
+
+# Element type column, read only for production exports.
+type_column: [artikelsoort, soort, artikeltype, producttype, elementtype, type, article type, item type, kind]
+
+# Cell values per element type (compared like headers).
+types:
+  frame: [kozijn, deurkozijn, raamkozijn, gevelkozijn, binnenkozijn, frame, window frame, door frame, rahmen]
+  window_sash: [raam, vleugel, draairaam, kiepraam, sash, casement, flügel]
+  door_leaf: [deur, deurblad, buitendeur, binnendeur, door, door leaf, türblatt]
+  glazing: [glas, beglazing, ruit, glazing, glass, glas unit]
+  panel: [paneel, borstwering, panel, infill]
+  hardware_set: [beslag, hang en sluitwerk, hangensluitwerk, hardware, ironmongery, beschlag]
+
+# Cell values for opening direction.
+opening_direction:
+  left: [links, l, li, lh, left, linksdraaiend, din links]
+  right: [rechts, r, re, rh, right, rechtsdraaiend, din rechts]
