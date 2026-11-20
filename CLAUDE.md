@@ -71,7 +71,7 @@ tools/            # make_duplex_2d.py (regenerates invented 2D fixtures), minipd
 web/              # React + TypeScript web app (Vite)
 tests/            # pytest; tests/packs/ (demo, reconcile) engine test packs, tests/ids/ IDS files,
                   # test_gate_phaseN.py are the end-to-end gate checks from PLAN.md
-docs/             # SPEC, ARCHITECTURE, ERROR_CATALOGUE, DWG, INSTALL
+docs/             # SPEC, ARCHITECTURE, ERROR_CATALOGUE (+ ERROR_CANDIDATES), ERP_SYSTEMS, DWG, INSTALL
 Dockerfile        # on-site image: service + web app + packs
 ```
 
