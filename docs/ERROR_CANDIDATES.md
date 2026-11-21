@@ -23,16 +23,16 @@ Columns:
 | 5 | Fire rating dropped between drawings and production | covered: `erp-fire-rating` | spec | erp |
 | 6 | A position on the drawings never entered for production | covered: `missing-in-erp` | spec | erp |
 | 7 | A position produced after it was removed in a revision | covered: `not-in-architect-set` | spec | erp |
-| 8 | Burglary class lower in production than specified [3] | compare `props.burglary_class` | spec | erp |
-| 9 | Thermal value (glass or frame U-value) differs from the specification | compare `props.u_value` | spec | erp |
-| 10 | Sound reduction requirement not carried into production | compare `props.sound_reduction_db` | spec | erp |
-| 11 | Threshold type wrong (e.g. standard sill where a level threshold was asked) | compare `props.threshold_type` | spec | erp |
-| 12 | Ventilation grille missing in production | compare `props.ventilation_grille` | spec | erp |
-| 13 | Colour or finish wrong, or inside and outside swapped | compare `props.finish`; inside/outside needs two fields | new | erp |
-| 14 | Wood species or material differs from the specification | compare `props.material` | spec | erp |
-| 15 | Model and schedule disagree on the count per mark | consistent `quantity` by `mark` | spec | files |
-| 16 | Model and schedule disagree on the size per mark | consistent `width_mm`, `height_mm` | spec | files |
-| 17 | Drawing and schedule disagree on opening direction or glazing | consistent `props.*` by `mark` | spec | files |
+| 8 | Burglary class lower in production than specified [3] | covered: `erp-burglary-class` | spec | erp |
+| 9 | Thermal value (glass or frame U-value) differs from the specification | covered: `erp-u-value` | spec | erp |
+| 10 | Sound reduction requirement not carried into production | covered: `erp-sound-reduction` | spec | erp |
+| 11 | Threshold type wrong (e.g. standard sill where a level threshold was asked) | covered: `erp-threshold-type` | spec | erp |
+| 12 | Ventilation grille missing in production | covered: `erp-ventilation-grille` | spec | erp |
+| 13 | Colour or finish wrong, or inside and outside swapped | covered: `erp-finish`; inside/outside needs two fields | new | erp |
+| 14 | Wood species or material differs from the specification | covered: `erp-material` | spec | erp |
+| 15 | Model and schedule disagree on the count per mark | covered: `drawings-count` | spec | files |
+| 16 | Model and schedule disagree on the size per mark | covered: `drawings-width`, `drawings-height` | spec | files |
+| 17 | Drawing and schedule disagree on opening direction or glazing | covered: `drawings-opening-direction`, `drawings-glazing-type`, `drawings-fire-rating` | spec | files |
 | 18 | Sash larger or heavier than the hardware or machine allows | require on `window_sash` against `limits.sash.*` | spec (weight: new) | erp |
 | 19 | Glass pane over the factory's handling size or weight | require on `glazing` against `limits.glass.*` | spec (weight: new) | erp |
 | 20 | Safety glass missing where NEN 3569 asks for it (doors, low glazing) [1] | require on `glazing` with `parent.type`; sill height for low glazing | new (sill height) | files |

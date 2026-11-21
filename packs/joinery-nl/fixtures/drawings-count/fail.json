@@ -1,0 +1,4 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "K1", "quantity": 2, "props": {}, "sources": [{"file": "model.ifc", "kind": "ifc", "ifc_guid": "gK12"}]},
+  {"side": "architect", "type": "frame", "mark": "K1", "quantity": 3, "props": {}, "sources": [{"file": "schedule.xlsx", "kind": "sheet", "cell": "A2"}]}
+]}

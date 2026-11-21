@@ -19,7 +19,7 @@ def pack(tmp_path):
 def test_reads_values_notes_and_users(pack):
     found = {x.path: x for x in limits.read(pack)}
     width = found["reconcile.width_tolerance_mm"]
-    assert (width.value, width.line, width.used_by) == (1, 5, ["erp-width"])
+    assert (width.value, width.line, width.used_by) == (1, 5, ["drawings-width", "erp-width"])
     assert width.note.startswith("drawings and production may differ")
     demo = {x.path: x.used_by for x in limits.read(load_pack(DEMO))}
     assert demo["sash.max_width_mm"] == ["sash-width-max"]

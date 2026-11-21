@@ -1,0 +1,4 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "K1", "props": {"burglary_class": 2}},
+  {"side": "erp", "type": "frame", "mark": "K1", "props": {"burglary_class": 2}}
+]}

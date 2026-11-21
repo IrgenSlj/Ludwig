@@ -1,6 +1,6 @@
 # Ludwig — development plan
 
-Status: phases 2–5 built on invented data. Waiting on people: 0.5–0.6 and 1.7 (error catalogue; candidates to confirm in docs/ERROR_CANDIDATES.md), 2.1 (real ERP export; systems in docs/ERP_SYSTEMS.md), phase 4 gate (BCF in two viewers), phase 5 gate (a work preparer uses it unaided); 5.3 deferred.
+Status: phases 2–5 built on invented data. Waiting on people: 0.5–0.6 (error catalogue; candidates in docs/ERROR_CANDIDATES.md, rules already built from them), 2.1 (real ERP export; systems in docs/ERP_SYSTEMS.md), phase 4 gate (BCF in two viewers; schema and reader checks automated), phase 5 gate (a work preparer uses it unaided); 5.3 deferred.
 
 Each phase ends in a gate. A phase is finished only when its gate is met. Tasks marked
 **(Irgen)** need a person and cannot be done by Claude Code.
@@ -48,8 +48,10 @@ Goal: `ludwig check` runs on an IFC model and an Excel schedule and produces a r
       Acceptance: an unknown key or a bad expression fails at load time with file and line.
 - [x] 1.6 `rules/engine.py`: run checks over the element table and return findings,
       including `not_checked`. Acceptance: fixture tests per rule.
-- [ ] 1.7 First ten rules in `packs/joinery-nl/checks.yaml`, chosen from the error
-      catalogue, each with a passing and a failing fixture.
+- [x] 1.7 First ten rules in `packs/joinery-nl/checks.yaml`, chosen from the error
+      catalogue, each with a passing and a failing fixture. Done 2026-11-21 from
+      `docs/ERROR_CANDIDATES.md` (Irgen: build and test the checks, do not wait for the
+      catalogue): 13 rules, candidates 8–17.
 - [x] 1.8 `report/json.py` and `report/excel.py`. Acceptance: Excel has one row per
       finding, sorted by severity, with mark, measured, expected and source.
 - [x] 1.9 `cli.py`: `ludwig check` as in `CLAUDE.md`. Exit code 0 with no blockers,

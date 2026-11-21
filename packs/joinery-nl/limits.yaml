@@ -4,3 +4,4 @@
 reconcile:
   width_tolerance_mm: 1  # drawings and production may differ this much in width
   height_tolerance_mm: 1  # drawings and production may differ this much in height
+  u_value_tolerance: 0.05  # drawings and production may differ this much in U-value (W/m2K)

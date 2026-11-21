@@ -67,3 +67,128 @@
   right: erp.props.fire_rating_min
   severity: blocker
   message: "Frame {mark}: fire rating in drawings {architect.props.fire_rating_min} min, production {erp.props.fire_rating_min} min"
+
+# Drawings against production for the remaining standard properties (PLAN 1.7,
+# docs/ERROR_CANDIDATES.md 8-14). Each runs only where a document states the value.
+
+- id: erp-burglary-class
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.burglary_class)
+  left: architect.props.burglary_class
+  right: erp.props.burglary_class
+  severity: blocker
+  message: "Frame {mark}: burglary class in drawings {architect.props.burglary_class}, production {erp.props.burglary_class}"
+
+- id: erp-u-value
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.u_value)
+  left: architect.props.u_value
+  right: erp.props.u_value
+  tolerance: limits.reconcile.u_value_tolerance
+  severity: warning
+  message: "Frame {mark}: U-value in drawings {architect.props.u_value}, production {erp.props.u_value}"
+
+- id: erp-sound-reduction
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.sound_reduction_db)
+  left: architect.props.sound_reduction_db
+  right: erp.props.sound_reduction_db
+  severity: warning
+  message: "Frame {mark}: sound reduction in drawings {architect.props.sound_reduction_db} dB, production {erp.props.sound_reduction_db} dB"
+
+- id: erp-threshold-type
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.threshold_type)
+  left: architect.props.threshold_type
+  right: erp.props.threshold_type
+  severity: warning
+  message: "Frame {mark}: threshold in drawings {architect.props.threshold_type}, production {erp.props.threshold_type}"
+
+- id: erp-ventilation-grille
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.ventilation_grille)
+  left: architect.props.ventilation_grille
+  right: erp.props.ventilation_grille
+  severity: warning
+  message: "Frame {mark}: ventilation grille in drawings {architect.props.ventilation_grille}, production {erp.props.ventilation_grille}"
+
+- id: erp-material
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.material)
+  left: architect.props.material
+  right: erp.props.material
+  severity: blocker
+  message: "Frame {mark}: material in drawings {architect.props.material}, production {erp.props.material}"
+
+- id: erp-finish
+  kind: compare
+  applies_to: {type: frame}
+  when: is_set(props.finish)
+  left: architect.props.finish
+  right: erp.props.finish
+  severity: warning
+  message: "Frame {mark}: finish in drawings {architect.props.finish}, production {erp.props.finish}"
+
+# The architect's own documents against each other: model, schedule, drawing
+# (docs/ERROR_CANDIDATES.md 15-17). Catchable from the architect set alone.
+
+- id: drawings-count
+  kind: consistent
+  applies_to: {side: architect, type: frame}
+  group_by: mark
+  field: quantity
+  severity: warning
+  message: "Frame {mark}: count differs between the architect's documents ({measured})"
+
+- id: drawings-width
+  kind: consistent
+  applies_to: {side: architect, type: frame}
+  when: is_set(width_mm)
+  group_by: mark
+  field: width_mm
+  tolerance: limits.reconcile.width_tolerance_mm
+  severity: warning
+  message: "Frame {mark}: width differs between the architect's documents ({measured})"
+
+- id: drawings-height
+  kind: consistent
+  applies_to: {side: architect, type: frame}
+  when: is_set(height_mm)
+  group_by: mark
+  field: height_mm
+  tolerance: limits.reconcile.height_tolerance_mm
+  severity: warning
+  message: "Frame {mark}: height differs between the architect's documents ({measured})"
+
+- id: drawings-opening-direction
+  kind: consistent
+  applies_to: {side: architect, type: frame}
+  when: is_set(props.opening_direction)
+  group_by: mark
+  field: props.opening_direction
+  severity: warning
+  message: "Frame {mark}: opening direction differs between the architect's documents ({measured})"
+
+- id: drawings-glazing-type
+  kind: consistent
+  applies_to: {side: architect, type: frame}
+  when: is_set(props.glazing_type)
+  group_by: mark
+  field: props.glazing_type
+  severity: warning
+  message: "Frame {mark}: glazing differs between the architect's documents ({measured})"
+
+- id: drawings-fire-rating
+  kind: consistent
+  applies_to: {side: architect, type: frame}
+  when: is_set(props.fire_rating_min) and props.fire_rating_min > 0
+  group_by: mark
+  field: props.fire_rating_min
+  severity: blocker
+  message: "Frame {mark}: fire rating differs between the architect's documents ({measured})"

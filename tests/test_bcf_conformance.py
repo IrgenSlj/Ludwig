@@ -81,7 +81,8 @@ def test_an_independent_reader_finds_every_topic(run):
                           text=True, timeout=120, check=True)  # fmt: skip
     topics = {t["guid"]: t for t in json.loads(done.stdout)}
     expected = reported(outcome)
-    assert len(topics) == len(expected) == 10
+    # 8 blockers and 5 warnings in the seeded duplex set.
+    assert len(topics) == len(expected) == 13
     for finding in expected:
         topic = topics[bcf.topic_guid(finding)]
         assert topic["type"] == ("Error" if finding.severity is Severity.BLOCKER else "Warning")

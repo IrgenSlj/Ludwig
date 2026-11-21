@@ -161,6 +161,15 @@ def _run_require(rule: Rule, pack: Pack, elements: list[Element], by_id: dict) -
     return findings
 
 
+def _spread(members: list[Element], name: str, pack: Pack, by_id: dict) -> dict[str, int]:
+    """Quantity per text value, compared ignoring case and surrounding spaces."""
+    spread: dict[str, int] = {}
+    for el in members:
+        key = str(_Scope(el, pack, by_id)(name)).strip().casefold()
+        spread[key] = spread.get(key, 0) + el.quantity
+    return spread
+
+
 def _values_agree(values: list[Any], tolerance: float) -> bool:
     numbers = [v for v in values if isinstance(v, int | float) and not isinstance(v, bool)]
     if len(numbers) == len(values):
@@ -249,7 +258,14 @@ def _run_consistent(rule: Rule, pack: Pack, elements: list[Element], by_id: dict
             for doc, values in raw_per_doc.items():
                 distinct = sorted(set(values), key=format_value)
                 per_doc[doc] = distinct if len(distinct) > 1 else distinct[0]
-        ok = _values_agree(compared, rule.tolerance)
+        if rule.field != "quantity" and all(isinstance(v, str) for v in compared):
+            # Text such as handing may differ within one mark (two left, two right);
+            # documents agree when they hold the same values in the same quantities.
+            spreads = [_spread([el for el in members if el.sources[0].file == doc], rule.field,
+                               pack, by_id) for doc in raw_per_doc]  # fmt: skip
+            ok = all(s == spreads[0] for s in spreads)
+        else:
+            ok = _values_agree(compared, rule.tolerance)
         if ok:
             message = ""
         else:

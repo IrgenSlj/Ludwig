@@ -1,0 +1,4 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "K1", "props": {"ventilation_grille": "yes"}},
+  {"side": "erp", "type": "frame", "mark": "K1", "props": {"ventilation_grille": "no"}}
+]}

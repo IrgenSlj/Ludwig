@@ -1,5 +1,5 @@
 name: joinery-nl
-version: 0.1.0
+version: 0.2.0
 description: >
   Pre-production checks for joinery (kozijnen, ramen, deuren). Reconciliation of the
   architect set with the production export. Factory limits follow from the error catalogue.

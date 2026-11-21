@@ -1,0 +1,4 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "K1", "quantity": 1, "props": {"glazing_type": "HR++"}, "sources": [{"file": "model.ifc", "kind": "ifc", "ifc_guid": "gK11"}]},
+  {"side": "architect", "type": "frame", "mark": "K1", "quantity": 1, "props": {"glazing_type": "Triple"}, "sources": [{"file": "schedule.xlsx", "kind": "sheet", "cell": "A2"}]}
+]}

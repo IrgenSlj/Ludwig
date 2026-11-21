@@ -1,0 +1,4 @@
+{"elements": [
+  {"side": "architect", "type": "frame", "mark": "K1", "props": {"u_value": 1.1}},
+  {"side": "erp", "type": "frame", "mark": "K1", "props": {"u_value": 1.4}}
+]}
