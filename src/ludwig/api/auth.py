@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ludwig.api.activity import log
-from ludwig.api.db import User, UserSession
+from ludwig.api.db import User, UserSession, iso
 from ludwig.api.guards import token_ok
 
 COOKIE = "ludwig_session"
@@ -107,7 +107,7 @@ class UserChange(BaseModel):
 
 def _user(u: User) -> dict[str, Any]:
     return {"id": u.id, "name": u.name, "admin": u.is_admin, "active": u.active,
-            "created": u.created.isoformat()}  # fmt: skip
+            "created": iso(u.created)}  # fmt: skip
 
 
 def router(settings: Any, sessions: Any) -> tuple[APIRouter, Any, Any]:

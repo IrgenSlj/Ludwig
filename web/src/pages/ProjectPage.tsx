@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type Upload } from "../api";
+import { api, download, exportUrl, type Upload } from "../api";
+import { ActivityList } from "./Account";
 import { href } from "../route";
 import { useLoad } from "../useLoad";
 import { MappingEditor } from "./MappingEditor";
@@ -181,7 +182,81 @@ export function ProjectPage({ id }: { id: number }) {
             ))}
         </tbody>
       </table>
+
+      <details className="activity">
+        <summary>Activity</summary>
+        <ActivityList project={id} />
+      </details>
+
+      <ProjectData id={id} name={project.data?.name ?? ""} />
     </section>
+  );
+}
+
+function ProjectData({ id, name }: { id: number; name: string }) {
+  const settings = useLoad(api.settings, []);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const days = settings.data?.retention_days;
+  return (
+    <div className="card danger-zone">
+      <h2>Project data</h2>
+      <p className="muted small">
+        {days
+          ? `Projects with no activity for ${days} days are deleted automatically.`
+          : "Projects are kept until someone deletes them."}{" "}
+        The export holds every uploaded file, all reports, findings with their reviews, and this project's activity.
+      </p>
+      <div className="row">
+        <button
+          className="secondary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await download(exportUrl(id), `ludwig-project-${id}.zip`);
+            } catch (e) {
+              setError(String(e));
+            }
+            setBusy(false);
+          }}
+        >
+          {busy ? "Preparing…" : "Export everything (.zip)"}
+        </button>
+        {confirm === null ? (
+          <button className="danger" onClick={() => setConfirm("")}>
+            Delete project…
+          </button>
+        ) : (
+          <form
+            className="row"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                await api.deleteProject(id);
+                window.location.hash = href.projects();
+              } catch (err) {
+                setError(String(err));
+              }
+            }}
+          >
+            <span className="small">
+              This deletes all files, runs, findings and reviews for good. Type <strong>{name}</strong> to confirm:
+            </span>
+            <input value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+            <button type="submit" className="danger" disabled={confirm !== name}>
+              Delete
+            </button>
+            <button type="button" className="secondary" onClick={() => setConfirm(null)}>
+              Cancel
+            </button>
+          </form>
+        )}
+      </div>
+      {error && <p className="error">{error}</p>}
+    </div>
   );
 }
 

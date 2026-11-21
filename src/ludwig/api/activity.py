@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from ludwig.api.db import Event
+from ludwig.api.db import Event, iso
 
 
 def log(session: Session, actor: str | None, action: str, project_id: int | None = None,
@@ -20,7 +20,7 @@ def log(session: Session, actor: str | None, action: str, project_id: int | None
 
 def view(e: Event) -> dict[str, Any]:
     """An event as the API returns it."""
-    return {"id": e.id, "created": e.created.isoformat(), "user": e.user_name,
+    return {"id": e.id, "created": iso(e.created), "user": e.user_name,
             "action": e.action, "project_id": e.project_id, "detail": e.detail}  # fmt: skip
 
 

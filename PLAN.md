@@ -143,7 +143,7 @@ Gate: a work preparer who has not seen the tool completes a check unaided.
       reviews and limit changes record who; activity log; project delete and export;
       automatic deletion of idle projects after LUDWIG_RETENTION_DAYS; schema migrations
       (Alembic) run at start. Acceptance: tests/test_pilot.py, on SQLite and Postgres.
-- [ ] 6.6 Web app for 6.5: sign-in, users (admin), activity, project export and delete.
+- [x] 6.6 Web app for 6.5: sign-in, users (admin), activity, project export and delete.
 - [ ] 6.7 Hosting kit: one instance per factory behind HTTPS, with backups and upgrades.
 
 Gate: one pilot company pays to continue.

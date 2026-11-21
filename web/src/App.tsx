@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { setToken } from "./api";
+import { useEffect, useState } from "react";
+import { account, type Me } from "./api";
+import { Activity, Login, Users } from "./pages/Account";
 import { FindingPage } from "./pages/FindingPage";
 import { PackPage, Packs } from "./pages/Packs";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -9,6 +10,32 @@ import { href, useRoute } from "./route";
 
 export function App() {
   const route = useRoute();
+  const [me, setMe] = useState<Me | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const check = () =>
+    account
+      .me()
+      .then((m) => {
+        setMe(m);
+        setError(null);
+      })
+      .catch((e) => setError(String(e)));
+  useEffect(() => {
+    check();
+    const onOut = () => check();
+    window.addEventListener("ludwig-signed-out", onOut);
+    return () => window.removeEventListener("ludwig-signed-out", onOut);
+  }, []);
+
+  if (!me) return <main>{error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>}</main>;
+  if (!me.signed_in)
+    return (
+      <main>
+        <Login onDone={check} />
+      </main>
+    );
+
+  const admin = !me.login_required || me.user?.admin;
   return (
     <>
       <header className="top">
@@ -18,7 +45,22 @@ export function App() {
         <span className="tagline">pre-production check</span>
         <a href={href.projects()}>Projects</a>
         <a href={href.packs()}>Packs</a>
-        <TokenField />
+        <a href={href.activity()}>Activity</a>
+        {admin && <a href={href.users()}>Users</a>}
+        <span className="who">
+          {me.name && <span className="muted">{me.name}</span>}
+          {me.user && (
+            <button
+              className="link"
+              onClick={async () => {
+                await account.logout();
+                check();
+              }}
+            >
+              Sign out
+            </button>
+          )}
+        </span>
       </header>
       <main>
         {route.page === "projects" && <Projects />}
@@ -27,32 +69,9 @@ export function App() {
         {route.page === "finding" && <FindingPage id={route.id} />}
         {route.page === "packs" && <Packs />}
         {route.page === "pack" && <PackPage name={route.name} />}
+        {route.page === "activity" && <Activity />}
+        {route.page === "users" && (admin ? <Users me={me.user} /> : <p>Only an admin can manage users.</p>)}
       </main>
     </>
-  );
-}
-
-function TokenField() {
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("");
-  if (!open)
-    return (
-      <button className="link token" onClick={() => setOpen(true)}>
-        Access token
-      </button>
-    );
-  return (
-    <form
-      className="token"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setToken(value);
-        setOpen(false);
-        window.location.reload();
-      }}
-    >
-      <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="token" />
-      <button type="submit">Use</button>
-    </form>
   );
 }

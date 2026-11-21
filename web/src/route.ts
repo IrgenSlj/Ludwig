@@ -7,7 +7,9 @@ export type Route =
   | { page: "run"; id: number }
   | { page: "finding"; id: number }
   | { page: "packs" }
-  | { page: "pack"; name: string };
+  | { page: "pack"; name: string }
+  | { page: "activity" }
+  | { page: "users" };
 
 export function parse(hash: string): Route {
   const [, kind, id] = hash.replace(/^#/, "").split("/");
@@ -16,6 +18,8 @@ export function parse(hash: string): Route {
   if (kind === "projects" && n) return { page: "project", id: n };
   if (kind === "runs" && n) return { page: "run", id: n };
   if (kind === "findings" && n) return { page: "finding", id: n };
+  if (kind === "activity") return { page: "activity" };
+  if (kind === "users") return { page: "users" };
   return { page: "projects" };
 }
 
@@ -36,4 +40,6 @@ export const href = {
   finding: (id: number) => `#/findings/${id}`,
   packs: () => "#/packs",
   pack: (name: string) => `#/packs/${encodeURIComponent(name)}`,
+  activity: () => "#/activity",
+  users: () => "#/users",
 };

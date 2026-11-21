@@ -13,7 +13,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from ludwig.api.activity import recent
-from ludwig.api.db import Event, FindingRow, LimitChange, Project, Review, Run, Upload
+from ludwig.api.db import Event, FindingRow, LimitChange, Project, Review, Run, Upload, iso
 from ludwig.api.storage import Storage
 
 
@@ -68,7 +68,7 @@ def export_project(session: Session, storage: Storage, project: Project) -> Path
     path = Path(name)
     with open(fd, "wb") as fh, zipfile.ZipFile(fh, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("project.json", json.dumps(
-            {"id": project.id, "name": project.name, "created": project.created.isoformat(),
+            {"id": project.id, "name": project.name, "created": iso(project.created),
              "exported": _now().isoformat()}, indent=2))  # fmt: skip
         listing = []
         for u in uploads:
@@ -78,7 +78,7 @@ def export_project(session: Session, storage: Storage, project: Project) -> Path
                 zf.write(obj, arc)
             listing.append({"id": u.id, "role": u.role, "filename": u.filename, "file": arc,
                             "for_upload": u.for_upload_id, "sha256": u.sha256,
-                            "created": u.created.isoformat()})  # fmt: skip
+                            "created": iso(u.created)})  # fmt: skip
         zf.writestr("files.json", json.dumps(listing, indent=2))
         out_runs = []
         for run in runs:
@@ -93,12 +93,12 @@ def export_project(session: Session, storage: Storage, project: Project) -> Path
             ):
                 findings.append({**row.data, "reviews": [
                     {"decision": r.decision, "reason": r.reason, "by": r.user_name,
-                     "created": r.created.isoformat()} for r in row.reviews]})  # fmt: skip
+                     "created": iso(r.created)} for r in row.reviews]})  # fmt: skip
             out_runs.append({"id": run.id, "status": run.status, "error": run.error,
                              "pack": {"name": run.pack_name, "version": run.pack_version,
                                       "hash": run.pack_hash},
                              "uploads": run.upload_ids, "summary": run.summary,
-                             "created": run.created.isoformat(),
+                             "created": iso(run.created),
                              "findings": findings})  # fmt: skip
         zf.writestr("runs.json", json.dumps(out_runs, indent=2, default=str))
         zf.writestr("activity.json", json.dumps(recent(session, project.id, 1000), indent=2))

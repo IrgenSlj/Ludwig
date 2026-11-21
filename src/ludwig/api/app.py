@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ludwig.api import activity, auth, data, jobs
-from ludwig.api.db import FindingRow, LimitChange, Project, Review, Run, Upload, connect
+from ludwig.api.db import FindingRow, LimitChange, Project, Review, Run, Upload, connect, iso
 from ludwig.api.guards import origin_ok
 from ludwig.api.settings import Settings
 from ludwig.api.storage import Storage
@@ -109,7 +109,7 @@ def _packs(folder: Path) -> dict[str, Pack]:
 
 
 def _project(p: Project) -> dict[str, Any]:
-    return {"id": p.id, "name": p.name, "created": p.created.isoformat()}
+    return {"id": p.id, "name": p.name, "created": iso(p.created)}
 
 
 def _upload(u: Upload) -> dict[str, Any]:
@@ -122,15 +122,15 @@ def _run(r: Run) -> dict[str, Any]:
             "pack": {"name": r.pack_name, "version": r.pack_version, "hash": r.pack_hash},
             "uploads": r.upload_ids, "upload_hashes": r.upload_hashes, "summary": r.summary,
             "files": r.files or {},
-            "created": r.created.isoformat(),
-            "finished": r.finished.isoformat() if r.finished else None}  # fmt: skip
+            "created": iso(r.created),
+            "finished": iso(r.finished) if r.finished else None}  # fmt: skip
 
 
 def _review(r: Review | None) -> dict[str, Any] | None:
     if r is None:
         return None
     return {"decision": r.decision, "reason": r.reason, "by": r.user_name,
-            "created": r.created.isoformat()}  # fmt: skip
+            "created": iso(r.created)}  # fmt: skip
 
 
 def _finding(row: FindingRow) -> dict[str, Any]:
@@ -220,7 +220,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "rules": [{"id": r.id, "kind": r.kind.value, "severity": r.severity.value,
                        "description": r.description, "message": r.message} for r in pack.rules],
             "changes": [{"values": c.values, "reason": c.reason, "by": c.user_name,
-                         "created": c.created.isoformat()} for c in changes],
+                         "created": iso(c.created)} for c in changes],
         }  # fmt: skip
 
     @api.get("/packs/{name}")
@@ -381,7 +381,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 latest = row.reviews[-1].decision if row.reviews else None
                 key = {"accept": "accepted", "dismiss": "dismissed"}.get(latest, "unreviewed")
                 counts[key] += 1
-            per_run.append({"run": run.id, "created": run.created.isoformat(), **counts})
+            per_run.append({"run": run.id, "created": iso(run.created), **counts})
         total = {k: sum(r[k] for r in per_run)
                  for k in ("raised", "accepted", "dismissed", "unreviewed")}  # fmt: skip
         return {"project": project_id, "total": total, "runs": per_run}

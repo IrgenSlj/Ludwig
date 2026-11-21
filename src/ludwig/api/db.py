@@ -14,6 +14,11 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def iso(t: datetime) -> str:
+    """A stored time as ISO 8601 in UTC. Databases return it without a zone; it is UTC."""
+    return (t if t.tzinfo else t.replace(tzinfo=UTC)).isoformat()
+
+
 class Base(DeclarativeBase):
     pass
 

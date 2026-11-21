@@ -132,7 +132,10 @@ export function PackPage({ name }: { name: string }) {
                   .map(([k, v]) => `${k} = ${v}`)
                   .join(", ")}{" "}
                 {c.reason && <span>— {c.reason}</span>}{" "}
-                <span className="muted">{new Date(c.created).toLocaleString()}</span>
+                <span className="muted">
+                  {c.by ? `${c.by}, ` : ""}
+                  {new Date(c.created).toLocaleString()}
+                </span>
               </li>
             ))}
           </ul>

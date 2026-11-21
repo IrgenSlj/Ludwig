@@ -21,7 +21,32 @@ export interface SourceRef {
 export interface Review {
   decision: "accept" | "dismiss";
   reason: string;
+  by: string | null;
   created: string;
+}
+
+export interface User {
+  id: number;
+  name: string;
+  admin: boolean;
+  active: boolean;
+  created: string;
+}
+
+export interface Me {
+  signed_in: boolean;
+  user: User | null;
+  name: string | null;
+  login_required: boolean;
+}
+
+export interface ActivityEvent {
+  id: number;
+  created: string;
+  user: string | null;
+  action: string;
+  project_id: number | null;
+  detail: Record<string, unknown>;
 }
 
 export interface Finding {
@@ -104,7 +129,7 @@ export interface PackDetail extends Omit<Pack, "rules"> {
   writable: boolean;
   limits: Limit[];
   rules: { id: string; kind: string; severity: Severity; description: string; message: string }[];
-  changes: { values: Record<string, number>; reason: string; created: string }[];
+  changes: { values: Record<string, number>; reason: string; by: string | null; created: string }[];
 }
 
 const TOKEN_KEY = "ludwig-token";
@@ -140,6 +165,8 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* not JSON */
     }
+    // A lapsed session sends the app back to the sign-in screen.
+    if (response.status === 401) window.dispatchEvent(new Event("ludwig-signed-out"));
     throw new ApiError(response.status, detail);
   }
   return (await response.json()) as T;
@@ -150,6 +177,20 @@ const json = (body: unknown): RequestInit => ({
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
+
+export const account = {
+  me: () => call<Me>("/auth/me"),
+  login: (name: string, password: string) => call<User>("/auth/login", json({ name, password })),
+  logout: () => call<{ signed_out: boolean }>("/auth/logout", { method: "POST" }),
+  users: () => call<User[]>("/users"),
+  addUser: (name: string, password: string, admin: boolean) => call<User>("/users", json({ name, password, admin })),
+  changeUser: (id: number, change: { password?: string; active?: boolean; admin?: boolean }) =>
+    call<User>(`/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(change),
+    }),
+};
 
 export const api = {
   packs: () => call<Pack[]>("/packs"),
@@ -191,6 +232,12 @@ export const api = {
   },
   mapping: (upload: number, mapping: Mapping, save: boolean) =>
     call<Preview>(`/uploads/${upload}/mapping`, json({ mapping, save })),
+  activity: (project?: number) => call<ActivityEvent[]>(`/activity${project ? `?project_id=${project}` : ""}`),
+  settings: () => call<{ retention_days: number | null }>("/settings"),
+  deleteProject: (id: number) =>
+    call<{ deleted: number; files: number; runs: number; findings: number }>(`/projects/${id}`, {
+      method: "DELETE",
+    }),
   review: (id: number, decision: Review["decision"], reason: string) =>
     call<Review>(`/findings/${id}/review`, json({ decision, reason })),
 };
@@ -212,6 +259,7 @@ export const assist = {
 
 export const reportUrl = (run: number, name: string) => `/api/runs/${run}/reports/${name}`;
 export const csvUrl = (run: number) => `/api/runs/${run}/findings.csv`;
+export const exportUrl = (project: number) => `/api/projects/${project}/export`;
 export const pageUrl = (upload: number, page: number) => `/api/uploads/${upload}/pages/${page}.png`;
 export const PAGE_SCALE = 1.5;
 

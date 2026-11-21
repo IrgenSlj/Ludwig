@@ -81,7 +81,10 @@ export function FindingPage({ id }: { id: number }) {
             {f.reviews.map((r, i) => (
               <li key={i}>
                 <span className={`badge ${r.decision}`}>{r.decision}</span> {r.reason}{" "}
-                <span className="muted">{new Date(r.created).toLocaleString()}</span>
+                <span className="muted">
+                  {r.by ? `${r.by}, ` : ""}
+                  {new Date(r.created).toLocaleString()}
+                </span>
               </li>
             ))}
           </ul>
