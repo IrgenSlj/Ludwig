@@ -1,0 +1,76 @@
+# One Ludwig instance for one factory: Caddy (HTTPS), Ludwig, Postgres, nightly backups.
+# Setup and upkeep: docs/HOSTING.md. Settings come from .env beside this file.
+
+services:
+  caddy:
+    image: caddy:2.11
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      LUDWIG_DOMAIN: ${LUDWIG_DOMAIN:?set LUDWIG_DOMAIN in .env}
+      LUDWIG_MAX_UPLOAD_MB: ${LUDWIG_MAX_UPLOAD_MB:-200}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - ludwig
+
+  ludwig:
+    build: ..
+    image: ludwig:local
+    restart: unless-stopped
+    environment:
+      LUDWIG_DATABASE_URL: postgresql+psycopg://ludwig:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db/ludwig
+      LUDWIG_SECURE_COOKIES: "1"
+      LUDWIG_RETENTION_DAYS: ${LUDWIG_RETENTION_DAYS:-}
+      LUDWIG_MAX_UPLOAD_MB: ${LUDWIG_MAX_UPLOAD_MB:-200}
+      LUDWIG_ASSIST_COMMAND: ${LUDWIG_ASSIST_COMMAND:-}
+    volumes:
+      - ludwig_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ludwig
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ludwig
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ludwig -d ludwig"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: ludwig
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ludwig
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ludwig_data:/data:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    entrypoint: ["sh", "/backup.sh", "loop"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:
+  ludwig_data:
+  db_data:

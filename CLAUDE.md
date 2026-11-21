@@ -59,12 +59,15 @@ src/ludwig/
                   # column_names.yaml)
   adapters/       # erp_table.py (generic CSV/Excel + mapping)
   match.py        # pairs architect elements with ERP elements
-  rules/          # expr.py (language), engine.py, ids.py, packs.py, limits.py, fixtures.py
+  rules/          # expr.py (language), engine.py, ids.py, packs.py, limits.py, fixtures.py,
+                  # install.py (pack upgrades keeping factory limits)
   report/         # json.py, excel.py, bcf.py, pdf_markup.py
   assist/         # provider.py, drafts.py; the only place an LLM may be called
                   # (off unless LUDWIG_ASSIST_COMMAND)
   cli.py          # `ludwig check`, `ludwig serve`
-  api/            # FastAPI service: app.py, db.py, jobs.py, storage.py, guards.py, settings.py
+  api/            # FastAPI service: app.py, db.py (+ migrations/, Alembic), jobs.py, storage.py,
+                  # guards.py, settings.py, auth.py (logins), activity.py, data.py (delete,
+                  # export, retention)
 packs/joinery-nl/ # pack.yaml, checks.yaml, limits.yaml, fixtures/<rule>/pass|fail.json
 mappings/examples/# office mapping starting points
 fixtures/         # shared sample inputs (public or invented; see fixtures/README.md)
@@ -72,8 +75,10 @@ tools/            # make_duplex_2d.py (regenerates invented 2D fixtures), minipd
 web/              # React + TypeScript web app (Vite)
 tests/            # pytest; tests/packs/ (demo, reconcile) engine test packs, tests/ids/ IDS files,
                   # test_gate_phaseN.py are the end-to-end gate checks from PLAN.md
-docs/             # SPEC, ARCHITECTURE, ERROR_CATALOGUE (+ ERROR_CANDIDATES), ERP_SYSTEMS, DWG, INSTALL
-Dockerfile        # on-site image: service + web app + packs
+docs/             # SPEC, ARCHITECTURE, ERROR_CATALOGUE (+ ERROR_CANDIDATES), ERP_SYSTEMS, DWG,
+                  # INSTALL, HOSTING
+Dockerfile        # image: service + web app + released packs (on site, and for deploy/)
+deploy/           # hosted kit per factory: compose.yaml, Caddyfile, backup.sh, restore.sh
 ```
 
 ## Commands
@@ -87,6 +92,8 @@ pytest tests/test_pack_joinery_nl.py            # pack fixtures + clean duplex e
 cd web && npm ci && npm run typecheck && npm test && npm run build
 ludwig check --architect <files...> [--erp <file> --mapping <file>] --pack packs/joinery-nl --out report/
 LUDWIG_WEB_DIR=web/dist ludwig serve           # service + web app
+ludwig user add <name> --admin                  # first admin; from then on everyone signs in
+cd deploy && docker compose up -d --build       # hosted instance (docs/HOSTING.md)
 ```
 
 Service settings are `LUDWIG_*` environment variables, all listed in `api/settings.py`.

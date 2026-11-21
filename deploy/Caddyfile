@@ -1,0 +1,16 @@
+# HTTPS for one Ludwig instance. Caddy gets and renews the certificate (Let's Encrypt)
+# for LUDWIG_DOMAIN once its DNS points at this server and ports 80 and 443 are open.
+{$LUDWIG_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size {$LUDWIG_MAX_UPLOAD_MB}MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+	reverse_proxy ludwig:8000
+}

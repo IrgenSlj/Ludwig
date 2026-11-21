@@ -1,4 +1,4 @@
-"""Command line: `ludwig check`, `serve`, `user`, `purge`.
+"""Command line: `ludwig check`, `serve`, `user`, `purge`, `packs`.
 
 `check` exits 0 without blockers, 1 with blockers; any command exits 2 on a usage error.
 """
@@ -135,6 +135,18 @@ def purge(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def packs(args: argparse.Namespace) -> int:
+    """Install or upgrade packs from a release folder, keeping the factory's limit values."""
+    from ludwig.rules.install import sync
+
+    try:
+        for line in sync(Path(args.released), Path(args.working)):
+            print(line)
+    except PackError as exc:
+        raise UsageError(f"released pack: {exc}") from None
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The argument parser for the `ludwig` command."""
     parser = argparse.ArgumentParser(prog="ludwig", description=__doc__)
@@ -167,6 +179,10 @@ def build_parser() -> argparse.ArgumentParser:
     g = sub.add_parser("purge", help="delete projects older than the retention period")
     g.add_argument("--days", type=int, help="default: LUDWIG_RETENTION_DAYS")
     g.set_defaults(func=purge)
+    k = sub.add_parser("packs", help="install or upgrade packs, keeping factory limits")
+    k.add_argument("released", help="folder with the released packs (e.g. /app/packs-release)")
+    k.add_argument("working", help="the instance's packs folder (LUDWIG_PACKS_DIR)")
+    k.set_defaults(func=packs)
     return parser
 
 

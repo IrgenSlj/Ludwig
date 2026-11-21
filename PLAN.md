@@ -1,6 +1,6 @@
 # Ludwig — development plan
 
-Status: phases 2–5 built on invented data. Waiting on people: 0.5–0.6 (error catalogue; candidates in docs/ERROR_CANDIDATES.md, rules already built from them), 2.1 (real ERP export; systems in docs/ERP_SYSTEMS.md), phase 4 gate (BCF in two viewers; schema and reader checks automated), phase 5 gate (a work preparer uses it unaided); 5.3 deferred.
+Status: phases 2–5 built on invented data. Waiting on people: 0.5–0.6 (error catalogue; candidates in docs/ERROR_CANDIDATES.md, rules already built from them), 2.1 (real ERP export; systems in docs/ERP_SYSTEMS.md), phase 4 gate (BCF in two viewers; schema and reader checks automated), phase 5 gate (a work preparer uses it unaided); 5.3 deferred. Pilot-ready since 2026-11-21: hosted kit (docs/HOSTING.md), logins, data controls.
 
 Each phase ends in a gate. A phase is finished only when its gate is met. Tasks marked
 **(Irgen)** need a person and cannot be done by Claude Code.
@@ -144,7 +144,9 @@ Gate: a work preparer who has not seen the tool completes a check unaided.
       automatic deletion of idle projects after LUDWIG_RETENTION_DAYS; schema migrations
       (Alembic) run at start. Acceptance: tests/test_pilot.py, on SQLite and Postgres.
 - [x] 6.6 Web app for 6.5: sign-in, users (admin), activity, project export and delete.
-- [ ] 6.7 Hosting kit: one instance per factory behind HTTPS, with backups and upgrades.
+- [x] 6.7 Hosting kit: one instance per factory behind HTTPS, with backups and upgrades.
+      Checked 2026-11-21 with Docker: HTTPS, sign-in, a check on Postgres, backup, and a
+      restore into empty volumes.
 
 Gate: one pilot company pays to continue.
 

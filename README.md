@@ -14,7 +14,8 @@ Command line:
 Each schedule or export needs a column mapping `<name>.mapping.yaml` beside it (examples in `fixtures/` and
 `mappings/examples/`). The report folder gets `report.json`, `report.xlsx`, `report.bcf` and marked copies of PDFs.
 
-Service and web app (or the Docker image, see [docs/INSTALL.md](docs/INSTALL.md)):
+Service and web app (or the Docker image, see [docs/INSTALL.md](docs/INSTALL.md); one hosted
+instance per factory with HTTPS and backups: [docs/HOSTING.md](docs/HOSTING.md)):
 
     pip install -e ".[api]"
     (cd web && npm ci && npm run build)
