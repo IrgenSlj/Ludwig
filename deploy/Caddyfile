@@ -5,11 +5,9 @@
 	request_body {
 		max_size {$LUDWIG_MAX_UPLOAD_MB}MB
 	}
+	# Ludwig sets Content-Security-Policy and the other security headers itself.
 	header {
 		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "same-origin"
 		-Server
 	}
 	reverse_proxy ludwig:8000

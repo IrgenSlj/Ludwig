@@ -81,6 +81,17 @@ class RunIn(BaseModel):
     uploads: list[int] = Field(min_length=1)
 
 
+# Sent with every response. The web app loads only its own files; page previews are blob:
+# images; React sets style through the DOM, which style-src does not restrict.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; "
+    "img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'self'; "
+    "form-action 'self'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin",
+}
+
 PAGE_SCALE = 1.5  # image pixels per PDF point; boxes in evidence are in points
 
 
@@ -176,8 +187,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if request.method not in ("GET", "HEAD", "OPTIONS") and not origin_ok(
                 request.headers.get("origin"), request.headers.get("host"), settings.allowed_origins
             ):
-                return JSONResponse({"detail": "cross-origin request refused"}, status_code=403)
-        return await call_next(request)
+                return JSONResponse({"detail": "cross-origin request refused"}, status_code=403,
+                                    headers=SECURITY_HEADERS)  # fmt: skip
+        response = await call_next(request)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
 
     def project_or_404(session: Session, project_id: int) -> Project:
         project = session.get(Project, project_id)

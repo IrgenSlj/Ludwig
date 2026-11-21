@@ -152,7 +152,7 @@ Gate: a work preparer who has not seen the tool completes a check unaided.
 - [x] 6.9 People change their own password.
 - [x] 6.10 Housekeeping: activity lines and expired sessions are deleted with retention.
 - [x] 6.11 Admin status: version, packs, last backup, free disk, with warnings.
-- [ ] 6.12 Content-Security-Policy and other security headers from the service itself.
+- [x] 6.12 Content-Security-Policy and other security headers from the service itself.
 - [ ] 6.13 CI runs the hosting kit: HTTPS, sign-in, a check, backup, wipe, restore.
 
 Gate: one pilot company pays to continue.

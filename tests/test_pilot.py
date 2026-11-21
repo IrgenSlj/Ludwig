@@ -336,3 +336,11 @@ def test_status_for_admins_warns_about_backups(tmp_path, monkeypatch):
     bob = TestClient(create_app(settings))
     bob.post("/api/auth/login", json={"name": "bob", "password": PASSWORD})
     assert bob.get("/api/status").status_code == 403
+
+
+def test_every_response_carries_the_security_headers(client):
+    for path in ("/health", "/api/projects", "/api/nothing-here"):
+        headers = client.get(path).headers
+        assert "frame-ancestors 'none'" in headers["content-security-policy"]
+        assert "script-src 'self'" in headers["content-security-policy"]
+        assert headers["x-content-type-options"] == "nosniff"
