@@ -5,7 +5,7 @@ import { useLoad } from "../useLoad";
 
 const message = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
 
-export function Login({ onDone }: { onDone: () => void }) {
+export function Login({ onDone, noUsers }: { onDone: () => void; noUsers?: boolean }) {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -14,6 +14,12 @@ export function Login({ onDone }: { onDone: () => void }) {
   return (
     <section className="login card">
       <h1>Sign in</h1>
+      {noUsers && (
+        <p className="notice small">
+          Nobody can sign in yet. On the server, add the first admin with{" "}
+          <code>docker compose exec ludwig ludwig user add &lt;name&gt; --admin</code>.
+        </p>
+      )}
       <form
         onSubmit={async (e) => {
           e.preventDefault();

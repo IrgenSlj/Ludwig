@@ -26,6 +26,8 @@ services:
     environment:
       LUDWIG_DATABASE_URL: postgresql+psycopg://ludwig:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db/ludwig
       LUDWIG_SECURE_COOKIES: "1"
+      # Never open, not even before the first admin exists (add it with `ludwig user add`).
+      LUDWIG_REQUIRE_LOGIN: "1"
       LUDWIG_RETENTION_DAYS: ${LUDWIG_RETENTION_DAYS:-}
       LUDWIG_MAX_UPLOAD_MB: ${LUDWIG_MAX_UPLOAD_MB:-200}
       LUDWIG_ASSIST_COMMAND: ${LUDWIG_ASSIST_COMMAND:-}

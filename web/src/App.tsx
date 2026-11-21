@@ -31,7 +31,7 @@ export function App() {
   if (!me.signed_in)
     return (
       <main>
-        <Login onDone={check} />
+        <Login onDone={check} noUsers={me.no_users} />
       </main>
     );
 

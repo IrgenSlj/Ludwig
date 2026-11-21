@@ -119,6 +119,12 @@ def router(settings: Any, sessions: Any) -> tuple[APIRouter, Any, Any]:
 
     DB = Annotated[Session, Depends(db)]
 
+    def open_install(session: Session) -> bool:
+        """No users, no token and sign-in not required: a local single-person install."""
+        if settings.require_login or settings.api_token is not None:
+            return False
+        return not has_users(session)
+
     def identify(request: Request, session: Session) -> tuple[bool, User | None, str | None]:
         """(allowed, user, name to log) for this request."""
         auth = request.headers.get("authorization", "")
@@ -133,7 +139,7 @@ def router(settings: Any, sessions: Any) -> tuple[APIRouter, Any, Any]:
                 user = session.get(User, row.user_id)
                 if user is not None and user.active:
                     return True, user, user.name
-        if settings.api_token is None and not has_users(session):
+        if open_install(session):
             return True, None, None
         return False, None, None
 
@@ -194,7 +200,8 @@ def router(settings: Any, sessions: Any) -> tuple[APIRouter, Any, Any]:
     def me(request: Request, session: DB) -> dict:
         allowed, user, name = identify(request, session)
         return {"signed_in": allowed, "user": _user(user) if user else None, "name": name,
-                "login_required": has_users(session) or settings.api_token is not None}  # fmt: skip
+                "login_required": not open_install(session),
+                "no_users": not has_users(session)}  # fmt: skip
 
     users = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
 

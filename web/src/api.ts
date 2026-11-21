@@ -38,6 +38,7 @@ export interface Me {
   user: User | null;
   name: string | null;
   login_required: boolean;
+  no_users: boolean;
 }
 
 export interface ActivityEvent {

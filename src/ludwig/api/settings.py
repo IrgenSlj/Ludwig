@@ -22,13 +22,15 @@ class Settings:
     secure_cookies: bool = False
     session_days: int = 14
     retention_days: int | None = None
+    require_login: bool = False
 
     @classmethod
     def from_env(cls) -> Settings:
         """LUDWIG_DATABASE_URL, LUDWIG_STORAGE_DIR, LUDWIG_PACKS_DIR, LUDWIG_API_TOKEN,
         LUDWIG_ALLOWED_ORIGINS (comma separated), LUDWIG_MAX_UPLOAD_MB, LUDWIG_WEB_DIR,
         LUDWIG_ASSIST_COMMAND (assist off when unset), LUDWIG_SECURE_COOKIES (1 behind HTTPS),
-        LUDWIG_SESSION_DAYS, LUDWIG_RETENTION_DAYS (unset: keep projects until deleted)."""
+        LUDWIG_SESSION_DAYS, LUDWIG_RETENTION_DAYS (unset: keep projects until deleted),
+        LUDWIG_REQUIRE_LOGIN (1: never open, even before the first user exists)."""
         env = os.environ
         raw = env.get("LUDWIG_ALLOWED_ORIGINS", "")
         origins = tuple(o.strip() for o in raw.split(",") if o.strip())
@@ -42,6 +44,7 @@ class Settings:
             web_dir=Path(env["LUDWIG_WEB_DIR"]) if env.get("LUDWIG_WEB_DIR") else None,
             assist_command=env.get("LUDWIG_ASSIST_COMMAND") or None,
             secure_cookies=env.get("LUDWIG_SECURE_COOKIES", "") in ("1", "true", "yes"),
+            require_login=env.get("LUDWIG_REQUIRE_LOGIN", "") in ("1", "true", "yes"),
             session_days=int(env.get("LUDWIG_SESSION_DAYS", "14")),
             retention_days=int(env["LUDWIG_RETENTION_DAYS"])
             if env.get("LUDWIG_RETENTION_DAYS")

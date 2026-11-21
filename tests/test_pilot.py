@@ -83,7 +83,8 @@ def test_a_database_from_before_migrations_is_stamped_and_upgraded(tmp_path):
 
 def test_open_until_the_first_user_then_sign_in_required(client):
     assert client.get("/api/auth/me").json() == {"signed_in": True, "user": None, "name": None,
-                                                 "login_required": False}  # fmt: skip
+                                                 "login_required": False,
+                                                 "no_users": True}  # fmt: skip
     assert client.get("/api/projects").status_code == 200
     first = client.post("/api/users", json={"name": "anna", "password": PASSWORD}).json()
     assert first["admin"] is True  # the first user always manages the others
@@ -257,3 +258,14 @@ def test_settings_from_environment(monkeypatch):
     s = Settings.from_env()
     assert s.secure_cookies and s.retention_days == 90 and s.session_days == 14
     assert Path(s.storage_dir) == Path("storage")
+
+
+def test_hosted_instance_is_never_open(tmp_path):
+    settings = Settings(database_url=database_url(tmp_path), storage_dir=tmp_path / "s",
+                        packs_dir=ROOT / "packs", require_login=True)  # fmt: skip
+    c = TestClient(create_app(settings))
+    me = c.get("/api/auth/me").json()
+    assert me["signed_in"] is False and me["login_required"] and me["no_users"]
+    assert c.get("/api/projects").status_code == 401
+    # Nobody can make themselves the first admin over the web.
+    assert c.post("/api/users", json={"name": "eve", "password": PASSWORD}).status_code == 401
