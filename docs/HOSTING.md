@@ -76,7 +76,8 @@ Take a backup before an upgrade.
 
 ## Data agreement checklist
 
-- Retention: set `LUDWIG_RETENTION_DAYS` to the period agreed with the factory.
+- Retention: set `LUDWIG_RETENTION_DAYS` to the period agreed with the factory. Idle
+  projects and activity lines older than that are deleted.
 - Deletion request: delete the project in the web app (Project data → Delete). Backups
   hold it until they age out (`BACKUP_KEEP_DAYS`).
 - Handing data back: Project data → Export everything gives one zip per project.

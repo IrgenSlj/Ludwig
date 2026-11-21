@@ -180,6 +180,7 @@ def router(settings: Any, sessions: Any) -> tuple[APIRouter, Any, Any]:
             _FAILS[body.name] = [*fails, now]
             raise HTTPException(401, "wrong name or password")
         _FAILS.pop(body.name, None)
+        session.query(UserSession).filter(UserSession.expires < _now()).delete()
         token = secrets.token_urlsafe(32)
         expires = _now() + timedelta(days=settings.session_days)
         session.add(UserSession(token_hash=_token_hash(token), user_id=user.id,

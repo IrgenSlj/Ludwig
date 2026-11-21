@@ -119,8 +119,11 @@ def last_activity(session: Session, project: Project) -> datetime:
 
 
 def purge_expired(session: Session, storage: Storage, days: int) -> list[int]:
-    """Delete every project with no activity for `days` days; returns their ids."""
+    """Delete every project with no activity for `days` days, and activity lines older than
+    that (they hold names and sign-in times); returns the deleted project ids."""
     cutoff = _now() - timedelta(days=days)
+    session.query(Event).filter(Event.created < cutoff).delete()
+    session.commit()
     gone = []
     for project in session.query(Project).all():
         if last_activity(session, project) < cutoff:

@@ -286,3 +286,21 @@ def test_people_change_their_own_password(settings):
     c.post("/api/auth/logout")
     assert c.post("/api/auth/login", json={"name": "anna", "password": new}).status_code == 200
     assert "password changed" in {e["action"] for e in c.get("/api/activity").json()}
+
+
+def test_retention_also_deletes_old_activity_and_sign_ins_clear_expired_sessions(settings):
+    from ludwig.api.db import Event, UserSession
+
+    c = admin_client(settings)
+    sessions = connect(settings.database_url)
+    long_ago = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=400)
+    with sessions() as session:
+        session.add(Event(user_name="anna", action="sign in", created=long_ago, detail={}))
+        session.add(UserSession(token_hash="0" * 64, user_id=1, expires=long_ago))
+        session.commit()
+        data.purge_expired(session, Storage(settings.storage_dir), 365)
+        assert all(e.created > long_ago for e in session.query(Event))
+    c.post("/api/auth/logout")
+    c.post("/api/auth/login", json={"name": "anna", "password": PASSWORD})
+    with sessions() as session:
+        assert session.query(UserSession).filter(UserSession.token_hash == "0" * 64).count() == 0
