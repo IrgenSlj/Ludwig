@@ -1,14 +1,23 @@
-"""Command line: `ludwig check`. Exit 0 without blockers, 1 with blockers, 2 on a usage error."""
+"""Command line: `ludwig check`, `serve`, `user`, `purge`.
+
+`check` exits 0 without blockers, 1 with blockers; any command exits 2 on a usage error.
+"""
 
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ludwig import check as checking
 from ludwig.model import Severity
 from ludwig.rules.packs import PackError, load_pack
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import sessionmaker
+
+    from ludwig.api.settings import Settings
 
 EXIT_OK, EXIT_BLOCKERS, EXIT_USAGE = 0, 1, 2
 
@@ -58,6 +67,74 @@ def serve(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _service_db() -> tuple[Settings, sessionmaker]:
+    try:
+        from ludwig.api.db import connect
+        from ludwig.api.settings import Settings
+    except ImportError:
+        raise UsageError("this needs: pip install 'ludwig[api]'") from None
+    settings = Settings.from_env()
+    return settings, connect(settings.database_url)
+
+
+def _new_password() -> str:
+    import getpass
+    import os
+
+    given = os.environ.get("LUDWIG_NEW_PASSWORD")
+    if given:
+        return given
+    first = getpass.getpass("Password: ")
+    if first != getpass.getpass("Again: "):
+        raise UsageError("the passwords differ")
+    return first
+
+
+def user(args: argparse.Namespace) -> int:
+    """Add a user or set a password, on the database in LUDWIG_DATABASE_URL."""
+    from ludwig.api import auth
+    from ludwig.api.activity import log
+    from ludwig.api.db import User, UserSession
+
+    _, sessions = _service_db()
+    with sessions() as session:
+        try:
+            if args.action == "add":
+                made = auth.create_user(session, args.name, _new_password(), admin=args.admin)
+                log(session, "command line", "user added", user=made.name, admin=made.is_admin)
+                print(f"added {made.name}" + (" (admin)" if made.is_admin else ""))
+            else:
+                found = session.query(User).filter(User.name == args.name).first()
+                if found is None:
+                    raise UsageError(f"no user {args.name!r}")
+                password = _new_password()
+                auth.check_password(password)
+                found.password_hash = auth.hash_password(password)
+                session.query(UserSession).filter(UserSession.user_id == found.id).delete()
+                log(session, "command line", "user changed", user=found.name,
+                    changes=["password"])  # fmt: skip
+                print(f"password set for {found.name}")
+            session.commit()
+        except ValueError as exc:
+            raise UsageError(str(exc)) from None
+    return EXIT_OK
+
+
+def purge(args: argparse.Namespace) -> int:
+    """Delete projects with no activity for the retention period."""
+    from ludwig.api.data import purge_expired
+    from ludwig.api.storage import Storage
+
+    settings, sessions = _service_db()
+    days = args.days or settings.retention_days
+    if not days:
+        raise UsageError("give --days or set LUDWIG_RETENTION_DAYS")
+    with sessions() as session:
+        gone = purge_expired(session, Storage(settings.storage_dir), days)
+    print(f"deleted {len(gone)} projects" + (f": {gone}" if gone else ""))
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The argument parser for the `ludwig` command."""
     parser = argparse.ArgumentParser(prog="ludwig", description=__doc__)
@@ -82,6 +159,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
     s.set_defaults(func=serve)
+    u = sub.add_parser("user", help="add a user or set a password (service database)")
+    u.add_argument("action", choices=["add", "password"])
+    u.add_argument("name")
+    u.add_argument("--admin", action="store_true", help="may manage users")
+    u.set_defaults(func=user)
+    g = sub.add_parser("purge", help="delete projects older than the retention period")
+    g.add_argument("--days", type=int, help="default: LUDWIG_RETENTION_DAYS")
+    g.set_defaults(func=purge)
     return parser
 
 

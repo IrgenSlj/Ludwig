@@ -27,6 +27,7 @@ api = [
     "SQLAlchemy>=2.0",
     "psycopg[binary]>=3.2",
     "python-multipart>=0.0.9",
+    "alembic>=1.14",
 ]
 dev = [
     "pytest>=8",
@@ -39,7 +40,8 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-ludwig = ["**/*.yaml"]
+ludwig = ["**/*.yaml", "api/migrations/*.py", "api/migrations/*.mako",
+          "api/migrations/versions/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

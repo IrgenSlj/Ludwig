@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, String, Text, create_engine
+from sqlalchemy import JSON, Engine, ForeignKey, String, Text, create_engine, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 
@@ -92,6 +93,7 @@ class Review(Base):
     decision: Mapped[str] = mapped_column(String(20))
     reason: Mapped[str] = mapped_column(Text, default="")
     created: Mapped[datetime] = mapped_column(default=_now)
+    user_name: Mapped[str | None] = mapped_column(String(100))
     finding: Mapped[FindingRow] = relationship(back_populates="reviews")
 
 
@@ -107,11 +109,70 @@ class LimitChange(Base):
     new_sha256: Mapped[str] = mapped_column(String(64))
     reason: Mapped[str] = mapped_column(Text, default="")
     created: Mapped[datetime] = mapped_column(default=_now)
+    user_name: Mapped[str | None] = mapped_column(String(100))
+
+
+class User(Base):
+    """A person who signs in. Passwords are stored as scrypt hashes only."""
+
+    __tablename__ = "app_user"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(300))
+    is_admin: Mapped[bool] = mapped_column(default=False)
+    active: Mapped[bool] = mapped_column(default=True)
+    created: Mapped[datetime] = mapped_column(default=_now)
+
+
+class UserSession(Base):
+    """A signed-in browser. Only the sha256 of the cookie token is stored."""
+
+    __tablename__ = "user_session"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"), index=True)
+    created: Mapped[datetime] = mapped_column(default=_now)
+    expires: Mapped[datetime]
+
+
+class Event(Base):
+    """One line of the activity log. `project_id` has no foreign key: the log outlives
+    nothing it names, a deleted project's lines are deleted with it."""
+
+    __tablename__ = "event"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created: Mapped[datetime] = mapped_column(default=_now, index=True)
+    user_name: Mapped[str | None] = mapped_column(String(100))
+    action: Mapped[str] = mapped_column(String(50))
+    project_id: Mapped[int | None] = mapped_column(index=True)
+    detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+MIGRATIONS = Path(__file__).parent / "migrations"
+BASELINE = "0001"  # the schema of databases made before migrations existed
+
+
+def migrate(engine: Engine) -> None:
+    """Bring the database to the newest schema; a pre-migration database is stamped first."""
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config()
+    cfg.set_main_option("script_location", str(MIGRATIONS))
+    with engine.begin() as conn:
+        cfg.attributes["connection"] = conn
+        tables = set(inspect(conn).get_table_names())
+        if "project" in tables and "alembic_version" not in tables:
+            command.stamp(cfg, BASELINE)
+        command.upgrade(cfg, "head")
 
 
 def connect(url: str) -> sessionmaker:
-    """A session factory; creates missing tables (migrations come with the first schema change)."""
+    """A session factory on a database migrated to the newest schema."""
     args = {"check_same_thread": False} if url.startswith("sqlite") else {}
     engine = create_engine(url, connect_args=args)
-    Base.metadata.create_all(engine)
+    migrate(engine)
     return sessionmaker(engine, expire_on_commit=False)

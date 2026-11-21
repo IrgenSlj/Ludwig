@@ -19,12 +19,16 @@ class Settings:
     max_upload_mb: int = 200
     web_dir: Path | None = None
     assist_command: str | None = None
+    secure_cookies: bool = False
+    session_days: int = 14
+    retention_days: int | None = None
 
     @classmethod
     def from_env(cls) -> Settings:
         """LUDWIG_DATABASE_URL, LUDWIG_STORAGE_DIR, LUDWIG_PACKS_DIR, LUDWIG_API_TOKEN,
         LUDWIG_ALLOWED_ORIGINS (comma separated), LUDWIG_MAX_UPLOAD_MB, LUDWIG_WEB_DIR,
-        LUDWIG_ASSIST_COMMAND (assist off when unset)."""
+        LUDWIG_ASSIST_COMMAND (assist off when unset), LUDWIG_SECURE_COOKIES (1 behind HTTPS),
+        LUDWIG_SESSION_DAYS, LUDWIG_RETENTION_DAYS (unset: keep projects until deleted)."""
         env = os.environ
         raw = env.get("LUDWIG_ALLOWED_ORIGINS", "")
         origins = tuple(o.strip() for o in raw.split(",") if o.strip())
@@ -37,4 +41,9 @@ class Settings:
             max_upload_mb=int(env.get("LUDWIG_MAX_UPLOAD_MB", "200")),
             web_dir=Path(env["LUDWIG_WEB_DIR"]) if env.get("LUDWIG_WEB_DIR") else None,
             assist_command=env.get("LUDWIG_ASSIST_COMMAND") or None,
+            secure_cookies=env.get("LUDWIG_SECURE_COOKIES", "") in ("1", "true", "yes"),
+            session_days=int(env.get("LUDWIG_SESSION_DAYS", "14")),
+            retention_days=int(env["LUDWIG_RETENTION_DAYS"])
+            if env.get("LUDWIG_RETENTION_DAYS")
+            else None,
         )

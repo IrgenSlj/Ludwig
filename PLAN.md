@@ -138,6 +138,13 @@ Gate: a work preparer who has not seen the tool completes a check unaided.
 - [ ] 6.2 **(Irgen)** Three pilot factories; encode each one's limits and ERP mapping.
 - [x] 6.3 Measure per project: findings raised, findings accepted, findings dismissed.
 - [ ] 6.4 Price and contract for continued use.
+- [x] 6.5 Pilot service (2026-11-21, Irgen: one hosted instance per factory, personal
+      logins, all data controls): users with scrypt passwords and server-side sessions,
+      reviews and limit changes record who; activity log; project delete and export;
+      automatic deletion of idle projects after LUDWIG_RETENTION_DAYS; schema migrations
+      (Alembic) run at start. Acceptance: tests/test_pilot.py, on SQLite and Postgres.
+- [ ] 6.6 Web app for 6.5: sign-in, users (admin), activity, project export and delete.
+- [ ] 6.7 Hosting kit: one instance per factory behind HTTPS, with backups and upgrades.
 
 Gate: one pilot company pays to continue.
 

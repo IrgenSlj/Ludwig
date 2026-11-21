@@ -6,6 +6,7 @@ import csv
 import io
 import os
 import tempfile
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -27,9 +28,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ludwig.api import jobs
+from ludwig.api import activity, auth, data, jobs
 from ludwig.api.db import FindingRow, LimitChange, Project, Review, Run, Upload, connect
-from ludwig.api.guards import origin_ok, token_ok
+from ludwig.api.guards import origin_ok
 from ludwig.api.settings import Settings
 from ludwig.api.storage import Storage
 from ludwig.assist import drafts
@@ -128,7 +129,8 @@ def _run(r: Run) -> dict[str, Any]:
 def _review(r: Review | None) -> dict[str, Any] | None:
     if r is None:
         return None
-    return {"decision": r.decision, "reason": r.reason, "created": r.created.isoformat()}
+    return {"decision": r.decision, "reason": r.reason, "by": r.user_name,
+            "created": r.created.isoformat()}  # fmt: skip
 
 
 def _finding(row: FindingRow) -> dict[str, Any]:
@@ -162,14 +164,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     storage = Storage(settings.storage_dir)
     app = FastAPI(title="Ludwig", version="0.1")
     app.state.sessions = sessions
+    auth_routes, user_routes, require_user = auth.router(settings, sessions)
+
+    def who(request: Request) -> str | None:
+        return getattr(request.state, "user_name", None)
 
     @app.middleware("http")
     async def guard(request: Request, call_next: Any) -> Any:
+        # Sign-in is checked per route (auth.require_user); this refuses cross-site writes.
         if request.url.path.startswith("/api/"):
-            auth = request.headers.get("authorization", "")
-            given = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else None
-            if not token_ok(settings.api_token, given):
-                return JSONResponse({"detail": "missing or wrong token"}, status_code=401)
             if request.method not in ("GET", "HEAD", "OPTIONS") and not origin_ok(
                 request.headers.get("origin"), request.headers.get("host"), settings.allowed_origins
             ):
@@ -192,7 +195,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    api = APIRouter(prefix="/api")
+    api = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 
     @api.get("/packs")
     def packs() -> list[dict[str, Any]]:
@@ -216,7 +219,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "limits": [vars(x) for x in pack_limits.read(pack)],
             "rules": [{"id": r.id, "kind": r.kind.value, "severity": r.severity.value,
                        "description": r.description, "message": r.message} for r in pack.rules],
-            "changes": [{"values": c.values, "reason": c.reason,
+            "changes": [{"values": c.values, "reason": c.reason, "by": c.user_name,
                          "created": c.created.isoformat()} for c in changes],
         }  # fmt: skip
 
@@ -225,7 +228,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return pack_view(pack_or_404(name), session)
 
     @api.put("/packs/{name}/limits")
-    def set_limits(name: str, body: LimitsIn, session: DB) -> dict[str, Any]:
+    def set_limits(name: str, body: LimitsIn, request: Request, session: DB) -> dict[str, Any]:
         pack = pack_or_404(name)
         path = pack.root / "limits.yaml"
         if not os.access(path, os.W_OK):
@@ -237,7 +240,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(422, str(exc)) from None
         session.add(LimitChange(pack_name=pack.name, values=dict(body.values), old_sha256=old,
                                 new_sha256=storage.put(path.read_bytes()),
-                                reason=body.reason.strip()))  # fmt: skip
+                                reason=body.reason.strip(), user_name=who(request)))  # fmt: skip
+        activity.log(session, who(request), "limits changed", pack=pack.name,
+                     values=dict(body.values))  # fmt: skip
         session.commit()
         return pack_view(pack, session)
 
@@ -281,9 +286,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return vars(assisted(lambda: drafts.suggest_mapping(body.headers, assist(), body.sample)))
 
     @api.post("/projects", status_code=201)
-    def create_project(body: ProjectIn, session: DB) -> dict[str, Any]:
+    def create_project(body: ProjectIn, request: Request, session: DB) -> dict[str, Any]:
         project = Project(name=body.name)
         session.add(project)
+        session.flush()
+        activity.log(session, who(request), "project created", project.id, name=project.name)
         session.commit()
         return _project(project)
 
@@ -296,7 +303,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _project(project_or_404(session, project_id))
 
     @api.post("/projects/{project_id}/uploads", status_code=201)
-    async def upload(project_id: int, session: DB, file: UploadFile,
+    async def upload(project_id: int, request: Request, session: DB, file: UploadFile,
                      role: Annotated[str, Form()],
                      for_upload: Annotated[int | None, Form()] = None,
                      ) -> dict[str, Any]:  # fmt: skip
@@ -317,6 +324,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                      sha256=storage.put(data), size=len(data),
                      for_upload_id=for_upload)  # fmt: skip
         session.add(row)
+        session.flush()
+        activity.log(session, who(request), "file uploaded", project_id, upload=row.id,
+                     filename=row.filename, role=role)  # fmt: skip
         session.commit()
         return _upload(row)
 
@@ -327,7 +337,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return [_upload(u) for u in rows]
 
     @api.post("/projects/{project_id}/runs", status_code=202)
-    def start_run(project_id: int, body: RunIn, session: DB,
+    def start_run(project_id: int, body: RunIn, request: Request, session: DB,
                   background: BackgroundTasks) -> dict[str, Any]:  # fmt: skip
         project_or_404(session, project_id)
         pack = _packs(settings.packs_dir).get(body.pack)
@@ -344,6 +354,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                   pack_hash=pack.content_hash, upload_ids=[u.id for u in uploads],
                   upload_hashes=[u.sha256 for u in uploads])  # fmt: skip
         session.add(run)
+        session.flush()
+        activity.log(session, who(request), "check run", project_id, run=run.id,
+                     pack=f"{pack.name} {pack.version}")  # fmt: skip
         session.commit()
         background.add_task(jobs.execute, run.id, sessions, storage, pack)
         return _run(run)
@@ -417,14 +430,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "files": row.run.files or {}}  # fmt: skip
 
     @api.post("/findings/{finding_id}/review", status_code=201)
-    def review(finding_id: int, body: ReviewIn, session: DB) -> dict[str, Any]:
+    def review(finding_id: int, body: ReviewIn, request: Request, session: DB) -> dict[str, Any]:
         row = session.get(FindingRow, finding_id)
         if row is None:
             raise HTTPException(404, "no such finding")
         if body.decision == "dismiss" and not body.reason.strip():
             raise HTTPException(422, "a dismissal needs a reason")
-        decision = Review(finding_id=row.id, decision=body.decision, reason=body.reason.strip())
+        decision = Review(finding_id=row.id, decision=body.decision, reason=body.reason.strip(),
+                          user_name=who(request))  # fmt: skip
         session.add(decision)
+        activity.log(session, who(request), f"finding {body.decision}ed", row.run.project_id,
+                     finding=row.id, rule=row.rule_id, mark=row.mark)  # fmt: skip
         session.commit()
         return _review(decision)
 
@@ -489,7 +505,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return out
 
     @api.post("/uploads/{upload_id}/mapping")
-    def upload_mapping(upload_id: int, body: MappingIn, session: DB) -> dict[str, Any]:
+    def upload_mapping(upload_id: int, body: MappingIn, request: Request,
+                       session: DB) -> dict[str, Any]:  # fmt: skip
         upload = table_or_422(session, upload_id)
         name = f"{Path(upload.filename).stem}.mapping.yaml"
         try:
@@ -512,6 +529,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                          sha256=storage.put(data), size=len(data),
                          for_upload_id=upload.id)  # fmt: skip
             session.add(row)
+            session.flush()
+            activity.log(session, who(request), "columns set", upload.project_id,
+                         upload=upload.id, filename=upload.filename)  # fmt: skip
             session.commit()
             out["upload"] = _upload(row)
         return out
@@ -537,6 +557,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         media = REPORTS.get(name, "application/pdf")
         return FileResponse(path, media_type=media, filename=path.name)
 
+    @api.delete("/projects/{project_id}")
+    def delete_project(project_id: int, request: Request, session: DB) -> dict[str, Any]:
+        project = project_or_404(session, project_id)
+        counts = data.delete_project(session, storage, project)
+        activity.log(session, who(request), "project deleted", None, project=project_id,
+                     **counts)  # fmt: skip
+        session.commit()
+        return {"deleted": project_id, **counts}
+
+    @api.get("/projects/{project_id}/export")
+    def export_project(project_id: int, request: Request, session: DB,
+                       background: BackgroundTasks) -> FileResponse:  # fmt: skip
+        project = project_or_404(session, project_id)
+        path = data.export_project(session, storage, project)
+        activity.log(session, who(request), "project exported", project_id)
+        session.commit()
+        background.add_task(path.unlink, missing_ok=True)
+        name = f"ludwig-project-{project_id}.zip"
+        return FileResponse(path, media_type="application/zip", filename=name)
+
+    @api.get("/activity")
+    def get_activity(session: DB, project_id: int | None = None,
+                     limit: int = 200) -> list[dict[str, Any]]:  # fmt: skip
+        return activity.recent(session, project_id, limit)
+
+    @api.get("/settings")
+    def public_settings() -> dict[str, Any]:
+        return {"retention_days": settings.retention_days}
+
+    if settings.retention_days:
+        days = settings.retention_days
+
+        def retention_loop() -> None:
+            while True:
+                with sessions() as session:
+                    data.purge_expired(session, storage, days)
+                if app.state.stop.wait(6 * 3600):
+                    return
+
+        app.state.stop = threading.Event()
+        threading.Thread(target=retention_loop, name="retention", daemon=True).start()
+
+    app.include_router(auth_routes)
+    app.include_router(user_routes)
     app.include_router(api)
     web = settings.web_dir
     if web is not None and (web / "index.html").is_file():
