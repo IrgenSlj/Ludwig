@@ -271,3 +271,49 @@ export function Activity() {
     </section>
   );
 }
+
+export function ChangePassword() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [state, setState] = useState<{ ok?: boolean; error?: string }>({});
+  const mismatch = again.length > 0 && next !== again;
+  return (
+    <section className="login card">
+      <h1>Your password</h1>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            await account.changePassword(current, next);
+            setState({ ok: true });
+            setCurrent("");
+            setNext("");
+            setAgain("");
+          } catch (err) {
+            setState({ error: message(err) });
+          }
+        }}
+      >
+        <label>
+          Current password
+          <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+        </label>
+        <label>
+          New password (10+ characters)
+          <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+        </label>
+        <label>
+          New password again
+          <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
+        </label>
+        {mismatch && <p className="warn">The new passwords differ.</p>}
+        {state.error && <p className="error">{state.error}</p>}
+        {state.ok && <p className="ok-text">Password changed. Other browsers signed in as you are signed out.</p>}
+        <button type="submit" disabled={!current || next.length < 10 || next !== again}>
+          Change password
+        </button>
+      </form>
+    </section>
+  );
+}

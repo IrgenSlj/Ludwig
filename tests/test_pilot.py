@@ -269,3 +269,20 @@ def test_hosted_instance_is_never_open(tmp_path):
     assert c.get("/api/projects").status_code == 401
     # Nobody can make themselves the first admin over the web.
     assert c.post("/api/users", json={"name": "eve", "password": PASSWORD}).status_code == 401
+
+
+def test_people_change_their_own_password(settings):
+    c = admin_client(settings)
+    other = TestClient(create_app(settings))
+    other.post("/api/auth/login", json={"name": "anna", "password": PASSWORD})
+    new = "a much better passphrase"
+    assert c.post("/api/auth/password",
+                  json={"current": "wrong one!!", "new": new}).status_code == 403
+    short = {"current": PASSWORD, "new": "short"}
+    assert c.post("/api/auth/password", json=short).status_code == 422
+    assert c.post("/api/auth/password", json={"current": PASSWORD, "new": new}).status_code == 200
+    assert c.get("/api/projects").status_code == 200  # this browser stays signed in
+    assert other.get("/api/projects").status_code == 401  # the other one does not
+    c.post("/api/auth/logout")
+    assert c.post("/api/auth/login", json={"name": "anna", "password": new}).status_code == 200
+    assert "password changed" in {e["action"] for e in c.get("/api/activity").json()}

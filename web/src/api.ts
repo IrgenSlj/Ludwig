@@ -183,6 +183,8 @@ export const account = {
   me: () => call<Me>("/auth/me"),
   login: (name: string, password: string) => call<User>("/auth/login", json({ name, password })),
   logout: () => call<{ signed_out: boolean }>("/auth/logout", { method: "POST" }),
+  changePassword: (current: string, next: string) =>
+    call<{ changed: boolean }>("/auth/password", json({ current, new: next })),
   users: () => call<User[]>("/users"),
   addUser: (name: string, password: string, admin: boolean) => call<User>("/users", json({ name, password, admin })),
   changeUser: (id: number, change: { password?: string; active?: boolean; admin?: boolean }) =>

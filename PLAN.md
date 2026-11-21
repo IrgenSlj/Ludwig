@@ -149,7 +149,7 @@ Gate: a work preparer who has not seen the tool completes a check unaided.
       restore into empty volumes.
 - [x] 6.8 A hosted instance is never open: LUDWIG_REQUIRE_LOGIN=1 in the kit; the first
       admin comes from the command line only.
-- [ ] 6.9 People change their own password.
+- [x] 6.9 People change their own password.
 - [ ] 6.10 Housekeeping: activity lines and expired sessions are deleted with retention.
 - [ ] 6.11 Admin status: version, packs, last backup, free disk, with warnings.
 - [ ] 6.12 Content-Security-Policy and other security headers from the service itself.

@@ -119,3 +119,4 @@ pre.draft { background: var(--bg); border: 1px solid var(--line); padding: 8px; 
 .danger-zone { border-color: color-mix(in srgb, var(--blocker) 40%, var(--line)); }
 .activity { margin: 16px 0; }
 .activity summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+.ok-text { color: var(--ok); }

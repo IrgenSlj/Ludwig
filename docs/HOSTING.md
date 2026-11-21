@@ -24,8 +24,8 @@ docker compose exec ludwig ludwig user add <your-name> --admin
 ```
 
 Open `https://<LUDWIG_DOMAIN>`, sign in, and add the factory's people under Users.
-Ludwig sends no email: give each person their password yourself; they cannot change it
-themselves yet, an admin sets a new one.
+Ludwig sends no email: give each person a first password yourself and ask them to change
+it (click their name, top right). A forgotten password is reset by an admin under Users.
 
 The kit sets `LUDWIG_REQUIRE_LOGIN=1`, so the instance is never open: until the first
 admin exists the sign-in page says how to add one, and nothing else answers.

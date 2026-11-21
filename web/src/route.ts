@@ -9,7 +9,8 @@ export type Route =
   | { page: "packs" }
   | { page: "pack"; name: string }
   | { page: "activity" }
-  | { page: "users" };
+  | { page: "users" }
+  | { page: "account" };
 
 export function parse(hash: string): Route {
   const [, kind, id] = hash.replace(/^#/, "").split("/");
@@ -20,6 +21,7 @@ export function parse(hash: string): Route {
   if (kind === "findings" && n) return { page: "finding", id: n };
   if (kind === "activity") return { page: "activity" };
   if (kind === "users") return { page: "users" };
+  if (kind === "account") return { page: "account" };
   return { page: "projects" };
 }
 
@@ -42,4 +44,5 @@ export const href = {
   pack: (name: string) => `#/packs/${encodeURIComponent(name)}`,
   activity: () => "#/activity",
   users: () => "#/users",
+  account: () => "#/account",
 };

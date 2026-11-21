@@ -99,6 +99,11 @@ class UserIn(BaseModel):
     admin: bool = False
 
 
+class PasswordChange(BaseModel):
+    current: str = Field(min_length=1, max_length=500)
+    new: str = Field(min_length=1, max_length=500)
+
+
 class UserChange(BaseModel):
     password: str | None = Field(default=None, max_length=500)
     active: bool | None = None
@@ -202,6 +207,26 @@ def router(settings: Any, sessions: Any) -> tuple[APIRouter, Any, Any]:
         return {"signed_in": allowed, "user": _user(user) if user else None, "name": name,
                 "login_required": not open_install(session),
                 "no_users": not has_users(session)}  # fmt: skip
+
+    @auth.post("/auth/password")
+    def change_password(body: PasswordChange, request: Request, session: DB) -> dict:
+        allowed, user, _ = identify(request, session)
+        if not allowed or user is None:
+            raise HTTPException(401, "sign in first")
+        if not verify_password(body.current, user.password_hash):
+            raise HTTPException(403, "the current password is wrong")
+        try:
+            check_password(body.new)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        user.password_hash = hash_password(body.new)
+        # Other browsers signed in as this person are signed out; this one stays.
+        mine = _token_hash(request.cookies.get(COOKIE, ""))
+        session.query(UserSession).filter(UserSession.user_id == user.id,
+                                          UserSession.token_hash != mine).delete()  # fmt: skip
+        log(session, user.name, "password changed")
+        session.commit()
+        return {"changed": True}
 
     users = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
 

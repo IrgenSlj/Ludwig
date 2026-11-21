@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { account, type Me } from "./api";
-import { Activity, Login, Users } from "./pages/Account";
+import { Activity, ChangePassword, Login, Users } from "./pages/Account";
 import { FindingPage } from "./pages/FindingPage";
 import { PackPage, Packs } from "./pages/Packs";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -48,7 +48,7 @@ export function App() {
         <a href={href.activity()}>Activity</a>
         {admin && <a href={href.users()}>Users</a>}
         <span className="who">
-          {me.name && <span className="muted">{me.name}</span>}
+          {me.user ? <a href={href.account()}>{me.name}</a> : me.name && <span className="muted">{me.name}</span>}
           {me.user && (
             <button
               className="link"
@@ -70,6 +70,7 @@ export function App() {
         {route.page === "packs" && <Packs />}
         {route.page === "pack" && <PackPage name={route.name} />}
         {route.page === "activity" && <Activity />}
+        {route.page === "account" && <ChangePassword />}
         {route.page === "users" && (admin ? <Users me={me.user} /> : <p>Only an admin can manage users.</p>)}
       </main>
     </>
