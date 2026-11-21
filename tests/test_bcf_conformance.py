@@ -1,7 +1,7 @@
 """Phase 4 gate, the part a machine can check: report.bcf from a real run is valid BCF 2.1
 and opens in an independent reader with the right topics and elements selected.
 
-The schemas in tests/bcf/ are buildingSMART's, unmodified (see tests/bcf/README.md).
+The schemas in tests/bcf_schemas/ are buildingSMART's, unmodified (see tests/bcf_schemas/README.md).
 """
 
 import importlib.util
@@ -23,7 +23,7 @@ xmlschema = pytest.importorskip("xmlschema")
 
 ROOT = Path(__file__).resolve().parent.parent
 FIX = ROOT / "fixtures"
-SCHEMAS = Path(__file__).parent / "bcf"
+SCHEMAS = Path(__file__).parent / "bcf_schemas"
 MODEL = FIX / "ifc" / "duplex_architectural_ifc2x3.ifc"
 
 
@@ -73,10 +73,17 @@ def _attr_values(xml: str, attr: str) -> list[str]:
     return [e.get(attr) for e in ET.fromstring(xml).iter() if e.get(attr)]
 
 
-@pytest.mark.skipif(importlib.util.find_spec("bcf") is None, reason="bcf-client not installed")
+def _has_bcf_client() -> bool:
+    try:
+        return importlib.util.find_spec("bcf.v2.bcfxml") is not None
+    except ModuleNotFoundError:
+        return False
+
+
+@pytest.mark.skipif(not _has_bcf_client(), reason="bcf-client not installed")
 def test_an_independent_reader_finds_every_topic(run):
     outcome, path = run
-    script = Path(__file__).parent / "bcf" / "read_with_bcf_client.py"
+    script = SCHEMAS / "read_with_bcf_client.py"
     done = subprocess.run([sys.executable, str(script), str(path)], capture_output=True,
                           text=True, timeout=120, check=True)  # fmt: skip
     topics = {t["guid"]: t for t in json.loads(done.stdout)}
