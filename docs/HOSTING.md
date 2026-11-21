@@ -19,7 +19,7 @@ accounts to keep apart.
 git clone <this repository> ludwig && cd ludwig/deploy
 cp .env.example .env
 # edit .env: LUDWIG_DOMAIN, POSTGRES_PASSWORD (openssl rand -base64 32), retention
-docker compose up -d --build
+LUDWIG_VERSION=$(git describe --always --dirty) docker compose up -d --build
 docker compose exec ludwig ludwig user add <your-name> --admin
 ```
 
@@ -65,8 +65,12 @@ again. Signed-in users stay signed in if their session was in the backup.
 
 ```
 git pull
-docker compose up -d --build
+LUDWIG_VERSION=$(git describe --always --dirty) docker compose up -d --build
 ```
+
+Admins see the running version, the packs, the age of the newest backup and the free disk
+space under Users, with a warning when a backup is late (over 26 hours) or the disk is
+nearly full.
 
 On start Ludwig migrates the database to the new schema and upgrades the packs: a pack
 whose version changed is replaced by the new release, the factory's limit values are

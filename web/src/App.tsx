@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { account, type Me } from "./api";
-import { Activity, ChangePassword, Login, Users } from "./pages/Account";
+import { Activity, ChangePassword, Login, Users, useStatusWarnings } from "./pages/Account";
 import { FindingPage } from "./pages/FindingPage";
 import { PackPage, Packs } from "./pages/Packs";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -36,6 +36,21 @@ export function App() {
     );
 
   const admin = !me.login_required || me.user?.admin;
+  return <Shell me={me} admin={Boolean(admin)} route={route} check={check} />;
+}
+
+function Shell({
+  me,
+  admin,
+  route,
+  check,
+}: {
+  me: Me;
+  admin: boolean;
+  route: ReturnType<typeof useRoute>;
+  check: () => void;
+}) {
+  const warnings = useStatusWarnings(Boolean(me.user?.admin));
   return (
     <>
       <header className="top">
@@ -46,7 +61,11 @@ export function App() {
         <a href={href.projects()}>Projects</a>
         <a href={href.packs()}>Packs</a>
         <a href={href.activity()}>Activity</a>
-        {admin && <a href={href.users()}>Users</a>}
+        {admin && (
+          <a href={href.users()}>
+            Users{warnings > 0 && <span className="badge warning" title="see This instance">{warnings}</span>}
+          </a>
+        )}
         <span className="who">
           {me.user ? <a href={href.account()}>{me.name}</a> : me.name && <span className="muted">{me.name}</span>}
           {me.user && (

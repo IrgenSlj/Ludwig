@@ -9,6 +9,8 @@ COPY web/ ./
 RUN npm run build
 
 FROM python:3.12-slim
+ARG LUDWIG_VERSION=unknown
+ENV LUDWIG_VERSION=$LUDWIG_VERSION
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     LUDWIG_DATABASE_URL=sqlite:////data/ludwig.db \
     LUDWIG_STORAGE_DIR=/data/storage \

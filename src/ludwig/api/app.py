@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ludwig.api import activity, auth, data, jobs
+from ludwig.api import activity, auth, data, jobs, status
 from ludwig.api.db import FindingRow, LimitChange, Project, Review, Run, Upload, connect, iso
 from ludwig.api.guards import origin_ok
 from ludwig.api.settings import Settings
@@ -164,7 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     storage = Storage(settings.storage_dir)
     app = FastAPI(title="Ludwig", version="0.1")
     app.state.sessions = sessions
-    auth_routes, user_routes, require_user = auth.router(settings, sessions)
+    auth_routes, user_routes, require_user, require_admin = auth.router(settings, sessions)
 
     def who(request: Request) -> str | None:
         return getattr(request.state, "user_name", None)
@@ -581,6 +581,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_activity(session: DB, project_id: int | None = None,
                      limit: int = 200) -> list[dict[str, Any]]:  # fmt: skip
         return activity.recent(session, project_id, limit)
+
+    @api.get("/status", dependencies=[Depends(require_admin)])
+    def instance_status(session: DB) -> dict[str, Any]:
+        from ludwig.api.db import User
+
+        packs = [{"name": p.name, "version": p.version}
+                 for p in _packs(settings.packs_dir).values()]  # fmt: skip
+        counts = {"users": session.query(User).filter(User.active).count(),
+                  "projects": session.query(Project).count()}  # fmt: skip
+        return status.report(settings.version, packs, settings.storage_dir, settings.backup_dir,
+                             settings.retention_days, counts)  # fmt: skip
 
     @api.get("/settings")
     def public_settings() -> dict[str, Any]:

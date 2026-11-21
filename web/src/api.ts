@@ -41,6 +41,16 @@ export interface Me {
   no_users: boolean;
 }
 
+export interface InstanceStatus {
+  version: string;
+  packs: { name: string; version: string }[];
+  backup: { newest: string | null; age_hours: number | null } | null;
+  disk: { free_gb: number; total_gb: number };
+  retention_days: number | null;
+  counts: { users: number; projects: number };
+  warnings: string[];
+}
+
 export interface ActivityEvent {
   id: number;
   created: string;
@@ -237,6 +247,7 @@ export const api = {
     call<Preview>(`/uploads/${upload}/mapping`, json({ mapping, save })),
   activity: (project?: number) => call<ActivityEvent[]>(`/activity${project ? `?project_id=${project}` : ""}`),
   settings: () => call<{ retention_days: number | null }>("/settings"),
+  status: () => call<InstanceStatus>("/status"),
   deleteProject: (id: number) =>
     call<{ deleted: number; files: number; runs: number; findings: number }>(`/projects/${id}`, {
       method: "DELETE",

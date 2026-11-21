@@ -276,4 +276,4 @@ def router(settings: Any, sessions: Any) -> tuple[APIRouter, Any, Any]:
         session.commit()
         return _user(user)
 
-    return auth, users, require_user
+    return auth, users, require_user, require_admin

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { account, ApiError, type ActivityEvent, api, setToken, type User } from "../api";
 import { href } from "../route";
 import { useLoad } from "../useLoad";
@@ -74,6 +74,58 @@ export function Login({ onDone, noUsers }: { onDone: () => void; noUsers?: boole
   );
 }
 
+function InstanceCard() {
+  const s = useLoad(api.status, []);
+  if (s.error) return <p className="error">{s.error}</p>;
+  if (!s.data) return null;
+  const d = s.data;
+  const backup = !d.backup
+    ? "not watched here (LUDWIG_BACKUP_DIR not set)"
+    : d.backup.newest
+      ? `${new Date(d.backup.newest).toLocaleString()} (${d.backup.age_hours} hours ago)`
+      : "none yet";
+  return (
+    <div className={`card instance${d.warnings.length ? " has-warnings" : ""}`}>
+      <h2>This instance</h2>
+      {d.warnings.map((w) => (
+        <p key={w} className="warn">
+          ⚠ {w}
+        </p>
+      ))}
+      <dl className="facts">
+        <dt>Version</dt>
+        <dd>{d.version}</dd>
+        <dt>Packs</dt>
+        <dd>{d.packs.map((p) => `${p.name} ${p.version}`).join(", ")}</dd>
+        <dt>Newest backup</dt>
+        <dd>{backup}</dd>
+        <dt>Free disk</dt>
+        <dd>
+          {d.disk.free_gb} GB of {d.disk.total_gb} GB
+        </dd>
+        <dt>Retention</dt>
+        <dd>{d.retention_days ? `idle projects deleted after ${d.retention_days} days` : "off"}</dd>
+        <dt>In use</dt>
+        <dd>
+          {d.counts.users} active people, {d.counts.projects} projects
+        </dd>
+      </dl>
+    </div>
+  );
+}
+
+export function useStatusWarnings(enabled: boolean): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    api
+      .status()
+      .then((s) => setCount(s.warnings.length))
+      .catch(() => setCount(0));
+  }, [enabled]);
+  return count;
+}
+
 export function Users({ me }: { me: User | null }) {
   const users = useLoad(account.users, []);
   const [name, setName] = useState("");
@@ -98,6 +150,7 @@ export function Users({ me }: { me: User | null }) {
   return (
     <section>
       <h1>Users</h1>
+      <InstanceCard />
       <p className="muted">
         Admins add people and set their passwords. Ludwig sends no email: give each person their password yourself.
         Deactivating someone signs them out everywhere; their reviews keep their name.

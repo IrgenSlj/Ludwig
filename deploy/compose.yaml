@@ -20,7 +20,10 @@ services:
       - ludwig
 
   ludwig:
-    build: ..
+    build:
+      context: ..
+      args:
+        LUDWIG_VERSION: ${LUDWIG_VERSION:-unknown}
     image: ludwig:local
     restart: unless-stopped
     environment:
@@ -31,8 +34,10 @@ services:
       LUDWIG_RETENTION_DAYS: ${LUDWIG_RETENTION_DAYS:-}
       LUDWIG_MAX_UPLOAD_MB: ${LUDWIG_MAX_UPLOAD_MB:-200}
       LUDWIG_ASSIST_COMMAND: ${LUDWIG_ASSIST_COMMAND:-}
+      LUDWIG_BACKUP_DIR: /backups
     volumes:
       - ludwig_data:/data
+      - ${BACKUP_DIR:-./backups}:/backups:ro
     depends_on:
       db:
         condition: service_healthy

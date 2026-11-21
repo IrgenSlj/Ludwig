@@ -304,3 +304,35 @@ def test_retention_also_deletes_old_activity_and_sign_ins_clear_expired_sessions
     c.post("/api/auth/login", json={"name": "anna", "password": PASSWORD})
     with sessions() as session:
         assert session.query(UserSession).filter(UserSession.token_hash == "0" * 64).count() == 0
+
+
+def test_status_for_admins_warns_about_backups(tmp_path, monkeypatch):
+    import os
+    import time
+    from collections import namedtuple
+
+    from ludwig.api import status
+
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(status.shutil, "disk_usage", lambda _: usage(100e9, 50e9, 50e9))
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    settings = Settings(database_url=database_url(tmp_path), storage_dir=tmp_path / "s",
+                        packs_dir=ROOT / "packs", backup_dir=backups, version="v1")  # fmt: skip
+    c = admin_client(settings)
+    s = c.get("/api/status").json()
+    assert s["version"] == "v1" and {"name": "joinery-nl", "version": "0.2.0"} in s["packs"]
+    assert s["warnings"] == ["no backup found yet"] and s["counts"] == {"users": 1, "projects": 0}
+    old = backups / "db-20260101-020000.dump"
+    old.write_bytes(b"x")
+    two_days = time.time() - 48 * 3600
+    os.utime(old, (two_days, two_days))
+    assert c.get("/api/status").json()["warnings"] == ["the newest backup is 48 hours old"]
+    (backups / "db-20260102-020000.dump").write_bytes(b"x")
+    assert c.get("/api/status").json()["warnings"] == []
+    monkeypatch.setattr(status.shutil, "disk_usage", lambda _: usage(100e9, 95e9, 5e9))
+    assert c.get("/api/status").json()["warnings"] == ["disk nearly full: 5.0 GB free of 100 GB"]
+    c.post("/api/users", json={"name": "bob", "password": PASSWORD})
+    bob = TestClient(create_app(settings))
+    bob.post("/api/auth/login", json={"name": "bob", "password": PASSWORD})
+    assert bob.get("/api/status").status_code == 403
