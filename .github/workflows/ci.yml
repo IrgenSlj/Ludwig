@@ -33,6 +33,10 @@ jobs:
         run: ruff check
       - name: Test (SQLite)
         run: pytest
+      - name: Read report.bcf with bcf-client (GPL-3; separate process, test only)
+        run: |
+          pip install "bcf-client==0.9.0"
+          pytest tests/test_bcf_conformance.py -rs
       - name: Test the service on Postgres
         env:
           LUDWIG_TEST_DATABASE_URL: postgresql+psycopg://ludwig:ludwig@localhost:5432/ludwig_test
